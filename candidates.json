@@ -1,157 +1,153 @@
 [
- {
-  "id": "guard-allowlist-spike",
-  "title": "spike: the gh-doors and shell-doors allowlists, prototyped in scratch against the route corpus",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "light",
-  "scores": {"value": 5, "time": 8, "risk": 13, "size": 1},
-  "why": "gh-doors is the riskiest item in the queue (draft-raise took five gate rounds of denylist fixes on the same parser); a scratch prototype run against tests/fixtures/routes.json shows in one sitting whether the allowlists fit their line budgets and leave every seat route where it is.",
-  "files": [],
-  "runtime_lines": "0 (touches no files)",
-  "after": [],
-  "promise": "A run, not a change. In a copy of main made with git archive into a new empty scratch folder, prototype the rules gh-doors and shell-doors promise: (a) gh pr merge reads --admin and --auto through guards._flags; (b) a gh api graphql write whose query WUWEI cannot read (--input -, -F query=@-, an --input file that is missing or not in a plain one-segment command) is refused, and an --input file's query is read for door mutations; (c) any write to a repositories/<id>/... endpoint is refused with a hint to spell repos/<owner>/<repo>; (d) a shlex token made only of the characters ();<>|& that is not a known separator or redirect makes the command unreadable, and so does $' or $\" quoting; (e) the ledger pattern also matches .wuwei/ledger and .wuwei with no trailing slash. Then run python3 -m pytest -q tests/test_guards.py (or pytest -q) in the copy and count the runtime lines. Record with `wuwei plan run guard-allowlist-spike --reason \"<lines each rule cost, the routes.json rows that moved and why, the suite result>\"`. A row that moves to a refusal a seat needs is evidence to narrow gh-doors or shell-doors before they start. Outside: committing anything; the spike's code is thrown away. Real-execution evidence already taken on main fe5bc0b by the lead (stub git on PATH logging argv; real gh 2.89.0 with http_unix_socket pointed at a logging server): bash runs git push origin main for cat <(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; gh sends POST /graphql with the mutation for --input q.json and for --input -, and POST /repositories/123/pulls/5/requested_reviewers as typed; guards.bash on main passes every one of them. gh pr merge flag shapes were not executed: the merge door refused the probe (correct behaviour), so the merge-flag rules rest on pflag's parsing (a valued short flag takes the next word even when it starts with -).",
-  "acceptance": [
-   "given a git archive copy of main in a new empty scratch folder, when the five prototype rules are applied and tests/test_guards.py runs there, then the run evidence names each rule's runtime line cost and every tests/fixtures/routes.json row whose verdict moved",
-   "given the prototype, when the commands in the promise's real-execution list are read by guards.bash, then each is refused, and the run evidence says so command by command",
-   "given the spike's outcome, when the planner records it with wuwei plan run, then the reason names the line costs, the moved rows (or none) and the suite result, and no file in the repository changed"
-  ]
- },
- {
-  "id": "free-lines-3",
-  "title": "refactor: one plugin path and version read in ws, one git helper in guards, and two dead or one-caller definitions go",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 5, "time": 13, "risk": 8, "size": 2},
-  "why": "cli/wuwei is at 3,000 of 3,000 lines on main fe5bc0b (wc -l), so #1085's fix and the door fixes cannot land; a scratch prototype of these edits measured 2,985 lines with 929 tests passing (the only failure was vendored drift, fixed by re-vendoring).",
-  "files": ["cli/wuwei/ws.py", "cli/wuwei/__main__.py", "cli/wuwei/hook.py", "cli/wuwei/setup.py", "cli/wuwei/guards.py", "cli/wuwei/verdict.py", "tests/test_hook.py", ".claude/wuwei/cli/wuwei/ (re-vendored)"],
-  "runtime_lines": "-15 measured in a scratch prototype (3,000 to 2,985); accept 2,987 or fewer",
-  "after": ["the parent session's claude/1098-no-item-message (it edits guards.create_door)"],
-  "promise": "Free at least 13 runtime lines with no change in behaviour, so the next items fit under the 3,000-line budget (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Where the lines come from, measured on main fe5bc0b: (1) verdict.CONFIDENCE (verdict.py line 7) has no reader in cli/ or tests/: 1 line. (2) The plugin path Path(__file__).resolve().parents[2] is defined four times (__main__.py line 10, hook.py line 304, setup.py line 50, guards.PR_STANDARD line 53) and plugin.json's version is read three times (__main__.version, guards.py line 228, setup.py line 109). ws gains PLUGIN and version(); the others use them, and __main__ drops its unused pathlib import: about 10 lines. tests/test_hook.py line 252 reads ws.PLUGIN. (3) guards.origin and guards.current_branch share one _git(cwd, *args) helper with the same 5 s timeout and '' on OSError or SubprocessError: 1 line. (4) hook._confidence has one caller (hook.py line 128) and is read in place: 3 lines. The prototype reached 2,985 lines; the item passes at 2,987 or fewer. Touches the files listed and the vendored copy under .claude/wuwei/ by re-vendoring. Starts after the parent session lands claude/1098-no-item-message, which edits guards.create_door. Rollback: revert the commit; no data, config or CLI output changes. Outside: any CLI flag, output or guard route; moving replay.py and wuwei evidence --record into scripts/ (about 45 lines, but it removes a documented flag: a breaking: question, kept as the fallback if room runs short). The guards.py line 208 clause len(segments(command) or ()) == 1 is redundant (the plain-word allowlist refuses ;, &&, | and parentheses, and a newline is refused earlier) but frees no line; gh-doors rewrites that check. Assumption: tier full because guards.py and hook.py hold the doors, as for free-lines-2; the diff picks fewer gates if the owner rates a behaviour-neutral change lower.",
-  "acceptance": [
-   "given the change, when the suite runs, then the runtime under cli/wuwei is 2,987 lines or fewer and every test passes, the vendored-drift test included after re-vendoring",
-   "given the change, when cli/wuwei is searched, then Path(__file__).resolve().parents[2] appears once (in ws.py), plugin.json is read once, and no module defines CONFIDENCE or _confidence",
-   "given a scratch git repository whose origin is https://github.com/o/r.git on branch i-1-x, when guards.origin and guards.current_branch read it, then they answer o/r and i-1-x, and given a cwd that is not a directory, then both answer ''",
-   "given a seat transcript ending with 'Confidence: High (reason)', when SubagentStop records seat.stopped, then its confidence is high, and with no Confidence line it is null, as on main",
-   "given wuwei --version, wuwei agents build and a first gh pr create note, when each runs, then the version and the PR standard text match main's output"
-  ]
- },
- {
-  "id": "ci-not-started",
-  "title": "fix(evidence): a head with no CI checks registered yet reads as CI not started, never as ready to merge",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 13, "time": 13, "risk": 13, "size": 3},
-  "why": "Open bug #1085 (labelled bug, opened 2026-10-16 13:25 UTC; G-2 allows three days, so due 2026-10-19): evidence.ci_gaps returns no gap for an empty statusCheckRollup (evidence.py lines 359-370), so a seat can arm auto-merge on an unverified head.",
-  "files": ["cli/wuwei/evidence.py", "tests/test_evidence.py", "tests/test_guards.py", "docs/site/concepts/evidence.md (if it lists the CI gaps)", ".claude/wuwei/ (re-vendored)"],
-  "runtime_lines": "+4 estimated, budget +7",
-  "after": ["free-lines-3"],
-  "promise": "Fixes #1085. When a PR head has no check runs and no commit statuses and the repository has run a workflow on pull_request (gh api repos/<o>/<r>/actions/runs?event=pull_request&per_page=1, cached a day per repository), wuwei evidence reports the safety gap 'CI not started at <sha7>' as waiting (not actionable), never 'no gaps'. An unreadable Actions host counts as having CI, so the gap shows rather than a pass. The merge door holds on it for gh pr merge and for --auto alike: only 'CI running' stays exempt for auto-merge, because GitHub's auto-merge with no required checks merges at once. A repository that never ran a pull_request workflow gets no CI gap, as on main. A gate verdict owed at a moved head is reported whatever the CI state (this holds on main; a test pins it). Touches the files listed. Starts after free-lines-3 (needs runtime room). Rollback: revert the commit; no data or config changes. Outside: CI that runs only on push (its checks already appear in the rollup), required-check settings, the board's wording beyond the new gap text. Assumption: one Actions read per repository per day is cheap enough; overturned if the gh call rate shows in the report.",
-  "acceptance": [
-   "given PR o/r#5 whose head has an empty statusCheckRollup and a repository whose Actions runs list one pull_request run, when wuwei evidence o/r#5 runs with the code host stubbed, then it prints 'CI not started at <sha7>' and not 'no gaps: ready to merge'",
-   "given the same PR, when gh pr merge 5 -R o/r --auto --squash is read by guards.bash, then it is refused naming 'CI not started', while a head whose only gap is 'CI running' still passes with --auto",
-   "given a repository whose Actions runs list no pull_request run, when the same empty-rollup PR is read, then no CI gap appears, as on main",
-   "given the Actions runs read raises GhError, when the empty-rollup PR is read, then 'CI not started at <sha7>' appears",
-   "given a PR whose previous head has a quality FIX verdict and whose new head has no verdict and no checks, when wuwei evidence runs, then it names both the quality gate missing at the new head and 'CI not started'"
-  ]
- },
- {
-  "id": "gate-rules",
-  "title": "docs(charters): gates stay out of the main worktree, write verdicts with Write, re-run surviving mutants and show shell findings by stub execution; approval checks the line budget",
-  "goal": "G-1",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 8, "time": 5, "risk": 5, "size": 2},
-  "why": "Today's findings: two gates checked out commits in /home/user/wuwei; heredoc verdicts naming door programs were refused by the Bash door; a wrong env-wrapper claim became an acceptance line without real execution; draft-raise was approved at +25 lines and landed at +37; the verdict template and verdict.py still say 'before the PR opens' though PRs now open as drafts first (#1102); the Stop hook says nothing will wake the session even with a cloud check-in armed.",
-  "files": ["charters/_common.md", "charters/_gate.md", "charters/sentinel-security.md", "charters/builder.md", "charters/planner.md", "charters/lead.md", "agents/*.md (wuwei agents build)", "cli/wuwei/verdict.py", "cli/wuwei/hook.py", "docs/site/reference.md", "tests/test_verdict.py", "tests/test_hook.py", ".claude/wuwei/ (re-vendored)"],
-  "runtime_lines": "0 (wording only), budget 0: the runtime must not grow",
-  "after": ["free-lines-3 (both edit hook.py and verdict.py)"],
-  "promise": "Charter rules, built into agents/ with bin/wuwei agents build: (1) _common.md Evidence 4 and _gate.md rule 3: never check out, reset or build in the main worktree; copy the tree with git archive or git worktree add into your scratch folder. (2) _gate.md: write the verdict file with the Write tool, never a shell heredoc (the Bash door refuses a heredoc that names a door program). (3) _gate.md rule 3: re-run every mutant you list as surviving, in a fresh copy, before you list it. (4) _gate.md: a finding about how a shell, wrapper or gh parses a command names a run with a stub program on PATH (or gh with http_unix_socket pointed at a logging server) that shows what really executes; without one it is a note. (5) sentinel-security.md: a normalisation round probes one input per path class (//, %xx, /./, /../) and per working-directory wrapper (cd, env -C, sudo -D). (6) builder.md AUTH sweep: for a guard change, run the route corpus on main and on the branch, record the sha256 of tests/fixtures/routes.json, and list a refusal that names a different PR or repository as its own row. (7) planner.md approval and lead.md Scope: an item that adds runtime lines states its estimate and a budget about one and a half times it; the planner checks the budget against the headroom (3,000 minus the measured lines) before it asks for approval, and orders a free-lines item first when it does not fit. Wording: the verdict template (_gate.md line 46, verdict.py lines 12 and 49, docs/site/reference.md line 79) says '<owner/repo> alone before its draft PR exists'; the Stop hook line (hook.py lines 90-91) says nothing will wake the session unless a check-in or PR subscription is armed, which WUWEI cannot see. Rollback: revert the commit. Outside: any guard or evidence rule; #1078's attestation path.",
-  "acceptance": [
-   "given the change, when bin/wuwei agents build runs, then agents/ matches the charters and the drift test passes, and agents/sentinel-*.md hold the main-worktree, Write-tool, mutant re-run and stub-execution rules",
-   "given a verdict whose PR line is 'taoq-ai/wuwei' alone, when verdict.parse reads it, then it parses as before, and given a malformed PR line, then the error names '<owner/repo> before its draft PR exists'",
-   "given only waiting work and no watch pass in the last hour, when the Stop hook fires, then its line says nothing will wake the session unless a check-in or PR subscription is armed",
-   "given the change, when the suite runs, then the runtime line count is no higher than before the item",
-   "given charters/planner.md, when it is read, then the approval step names the line-budget check against headroom and the free-lines-first order"
-  ]
- },
- {
-  "id": "ascii-digits",
-  "title": "fix(hook): PR numbers in owner answers, verdicts, refs and CLI arguments are ASCII digits only",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 3, "time": 2, "risk": 5, "size": 2},
-  "why": "Python's \\d and str.isdigit() accept Unicode digits and int() converts them, so an owner question naming #７ records a ruling for PR 7: hook.py lines 249 and 281, evidence.py line 52, verdict.py lines 8 and 45, guards.py lines 344 and 349, and __main__._ref line 22 (grep -n '\\\\d' and isdigit on main fe5bc0b). draft-raise made the guards ASCII-only; these readers were left.",
-  "files": ["cli/wuwei/hook.py", "cli/wuwei/evidence.py", "cli/wuwei/verdict.py", "cli/wuwei/guards.py", "cli/wuwei/__main__.py", "tests/test_hook.py", "tests/test_setup.py", ".claude/wuwei/ (re-vendored)"],
-  "runtime_lines": "-2 estimated (the owner review and breaking rulings read one REF match), budget 0: must not grow",
-  "after": ["ci-not-started (evidence.py)", "gate-rules (hook.py, verdict.py)"],
-  "promise": "Every pattern under cli/wuwei that reads a number uses [0-9] (or re.ASCII), and every isdigit() check is preceded by isascii(), so a PR number written in non-ASCII digits is never read as a PR. The owner review: and breaking: rulings in hook._answers read the same REF match (owner/repo#n at <sha>) instead of two patterns, which frees about 2 lines. A test scans cli/wuwei for \\d and for isdigit() without isascii(). Rollback: revert the commit. Outside: \\w in repository names; the wording of any message.",
-  "acceptance": [
-   "given an AskUserQuestion answer 'yes' to 'owner review: o/r#７ at abc1234. Approve?', when PostToolUse records it, then no ruling for o/r#7 is written, and with 'o/r#7' it is written as on main",
-   "given a verdict whose PR line is 'o/r#７', when verdict.parse reads it, then it reports the PR line error",
-   "given wuwei evidence 'o/r#７', when it runs, then it exits naming the owner/repo#number shape and makes no gh call",
-   "given a text naming o/r#７, when evidence.refs reads it, then it returns no ref",
-   "given the change, when tests/test_setup.py scans cli/wuwei, then no pattern holds \\d and every isdigit() call is guarded by isascii(), and the runtime line count is no higher than before"
-  ]
- },
- {
-  "id": "gh-doors",
-  "title": "fix(guards): gh api graphql queries WUWEI cannot read, repositories/<id> writes, and merge flags read the way gh reads them meet the doors",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 13, "time": 5, "risk": 13, "size": 5},
-  "why": "On main fe5bc0b guards.bash passes gh api graphql --input q.json carrying markPullRequestReadyForReview, gh api graphql --input -, and gh api -X POST repositories/123/pulls/5/requested_reviewers, -X PUT repositories/123/pulls/5/merge and contents writes; real gh 2.89.0 sends each of them (logged through http_unix_socket). gh pr merge reads --auto and --admin from raw argv (guards.py lines 195 and 198).",
-  "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", "docs/site/concepts/doors.md", "SECURITY.md", ".claude/wuwei/ (re-vendored)"],
-  "runtime_lines": "+5 estimated, budget +8; if headroom at start is below 8 it frees the difference in the same diff",
-  "after": ["guard-allowlist-spike", "free-lines-3", "ascii-digits (guards.py)"],
-  "promise": "Allowlist plain shapes, never denylist spellings. (1) gh pr merge reads --admin and --auto through guards._flags with merge's value flags: --admin and --admin=<any value gh accepts as true> are refused; --auto counts only when pflag reads it as the auto flag (so in 'gh pr merge 5 -t --auto' it is -t's subject, and the CI-running exemption does not apply); the last --auto wins and --auto=false is off. (2) A gh api graphql call is refused when it could carry a write WUWEI cannot read: --input - or -F query=@-, an --input or -F @ file that is missing, or an --input file in a command that is not one plain segment. An --input file WUWEI reads has its query checked for door mutations like -f query=. (3) Any write method to an endpoint starting repositories/ is refused with a hint to spell repos/<owner>/<repo>/...; reads pass. (4) The redundant len(segments(command) or ()) == 1 clause (guards.py line 208) goes. Each new route is a tests/fixtures/routes.json row naming its source. Acceptance comes from real execution: gh with http_unix_socket pointed at a logging server shows the request each shape sends; merge shapes rest on pflag's parsing because the merge door refuses running them. Starts after guard-allowlist-spike reports, and after free-lines-3 and ascii-digits (guards.py). Rollback: revert the commit. Outside: shell parsing (shell-doors), ready_door comparing the branch by name for fork PRs, repository settings that auto-request reviewers, ?draft=false on a POST (unmeasured: needs GitHub itself). Assumption: no seat route uses gh api graphql --input (none in .wuwei/traces.jsonl's 2,799 rows or routes.json); overturned if the spike or the corpus shows one.",
-  "acceptance": [
-   "given a file q.json holding {\"query\":\"mutation{markPullRequestReadyForReview(input:{pullRequestId:\\\"X\\\"}){clientMutationId}}\"} and gh pointed by http_unix_socket at a logging server, when gh api graphql --input q.json runs, then the server logs POST /graphql with that mutation, and given the same command, when guards.bash reads it, then it is refused naming markPullRequestReadyForReview",
-   "given gh pointed at the logging server, when echo '<a mergePullRequest query>' | gh api graphql --input - runs, then the server logs POST /graphql, and given gh api graphql --input - or -F query=@-, when guards.bash reads it, then it is refused as a query WUWEI cannot read, while gh api graphql -f query=@threads.graphql -F number=5 still passes",
-   "given gh pointed at the logging server, when gh api -X POST repositories/123/pulls/5/requested_reviewers -f reviewers[]=a runs, then the server logs that path, and given it and -X PUT repositories/123/pulls/5/merge and -X PUT repositories/123/contents/x, when guards.bash reads them, then each is refused naming repos/<owner>/<repo>, and gh api repositories/123 (a GET) passes",
-   "given PR 5 with only 'CI running', when gh pr merge 5 -t --auto is read, then it is refused (pflag reads --auto as -t's value), while gh pr merge 5 --auto passes and gh pr merge 5 --auto=false is refused",
-   "given gh pr merge 5 --admin=true or --admin=1, when guards.bash reads it, then it is refused as --admin",
-   "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict and the new rows hold the shapes above"
-  ]
- },
- {
-  "id": "shell-doors",
-  "title": "fix(guards): process substitution, glued separators, $'...' quoting and ledger paths without a trailing slash meet the doors",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "full",
-  "scores": {"value": 13, "time": 5, "risk": 13, "size": 3},
-  "why": "A stub git on PATH shows bash runs git push origin main for cat <(git push origin main), echo >(...), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; guards.bash on main fe5bc0b passes all seven, and passes rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger and rm -rf .wuwei (LEDGER needs a trailing / or .jsonl, guards.py line 30).",
-  "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", "SECURITY.md", ".claude/wuwei/ (re-vendored)"],
-  "runtime_lines": "+3 estimated, budget +5; if headroom at start is below 5 it frees the difference in the same diff",
-  "after": ["gh-doors (guards.py, routes.json)"],
-  "promise": "Allowlist plain shapes. (1) In guards.segments, a token made only of the characters ();<>|& that is not one of the known separators (CONTROL) or redirects makes the command unreadable (segments returns None), so a command naming a door program is refused by the existing multi-line or unreadable rule; a command naming none still passes. (2) $' and $\" quoting in a command naming a door program makes it unreadable the same way. (3) The ledger pattern matches .wuwei/ledger and .wuwei/ledger.jsonl with or without a trailing slash, and .wuwei itself, as a writer argument, redirect target or edit path, so rm, mv, cp, tee, dd and the rest naming them are refused. Each shape is a tests/fixtures/routes.json row or a test case. Acceptance comes from real execution with a stub program on PATH that logs its argv. Starts after gh-doors (guards.py). Rollback: revert the commit. Outside: a ledger write after cd .wuwei (cwd is not tracked), find -delete, git clean, and wrappers beyond those guards.py lists; these stay recorded gaps. Assumption: no seat route puts a door program inside process substitution or $'...'; overturned if the corpus moves a recorded route.",
-  "acceptance": [
-   "given a stub git on PATH that appends its argv to a log, when bash -c runs each of cat <(git push origin main), echo >(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and git push origin $\"main\", then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
-   "given diff <(sort a) <(sort b) and echo $'a\\tb', when guards.bash reads them, then they pass (no door program named)",
-   "given rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger, rm -rf .wuwei and rm -rf /abs/path/.wuwei/ledger, when guards.bash reads them, then each is refused as a ledger write, while cat .wuwei/ledger/x.jsonl and ls .wuwei pass",
-   "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict"
-  ]
- },
- {
-  "id": "close-1074",
-  "title": "chore: close bug #1074, fixed by #1102",
-  "goal": "G-2",
-  "repo": "taoq-ai/wuwei",
-  "tier": "light",
-  "scores": {"value": 3, "time": 5, "risk": 1, "size": 1},
-  "why": "#1074 (a draft gh pr create refused before gates) is still open with the bug label, though #1102 (fe5bc0b, 'a draft PR opens before its gates') fixes it; its PR body named only WUWEI-Item: draft-raise, so GitHub did not close the issue, and it counts against G-2's open-bug measure.",
-  "files": [],
-  "runtime_lines": "0 (touches no files)",
-  "after": [],
-  "promise": "A run, not a change. Comment on #1074 that #1102 (fe5bc0b) fixes it (a draft create passes before its gates; gh pr ready and reviewer requests wait for them), close it with state_reason completed, and record with `wuwei plan run close-1074 --reason \"<the comment link and the closed state>\"`. Outside: any code change.",
-  "acceptance": [
-   "given #1074 open with the bug label and #1102 merged at fe5bc0b, when the run closes it, then gh api repos/taoq-ai/wuwei/issues/1074 shows state closed with state_reason completed and a comment citing #1102",
-   "given the run, when the planner records it, then the item carries run evidence naming the comment link"
-  ]
- }
+  {
+    "id": "free-lines-4",
+    "title": "refactor: free runtime lines with no behaviour change, and make the dense guard lines readable",
+    "goal": "G-2",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 8, "time": 8, "risk": 20, "size": 2},
+    "evidence": {
+      "value": "The runtime is at 2,999 of 3,000 (cat cli/wuwei/*.py | wc -l at 9d6701e); no runtime fix for G-2 can land until lines are freed.",
+      "time": "The queue is dry and the four runtime items below wait on it; G-2 is dated 2026-10-23.",
+      "risk": "Unblocks shell-stdin, records, gh-args and merge-evidence; the scratch prototype already shows 26 lines free, the suite green and 0 differences on 82,944 generated commands.",
+      "size": "A mechanical diff of 44 insertions and 70 deletions over 9 runtime files in the prototype."
+    },
+    "files": ["cli/wuwei/guards.py", "cli/wuwei/sync.py", "cli/wuwei/plan.py", "cli/wuwei/upgrade.py", "cli/wuwei/evidence.py", "cli/wuwei/report.py", "cli/wuwei/hook.py", "cli/wuwei/setup.py", "cli/wuwei/verdict.py", ".claude/wuwei/cli/wuwei/ (vendored copies)"],
+    "runtime_lines": "-26 estimated (prototype: 2,999 to 2,973); must free at least 22; adds none",
+    "after": [],
+    "promise": "Free at least 22 runtime lines with no behaviour change, and make the two dense guard lines the shell-doors quality gate named readable. (1) Each `x = f(...)` followed by `if x:` or `if not x:` becomes `if x := f(...):` where the line stays within 150 characters and reads at least as clearly, in guards, sync, plan, upgrade, evidence, report, hook, setup and verdict; a rewrite that reads worse (for example `if repo := match[1] or repo:`) is skipped. (2) In guards.bash the found-then-return checks for leak, git push and gh take the same form. (3) In guards.segments the $'/$\" check and the glued-redirect check become two named booleans; the `tokens[2:] + ['']` end sentinel stays, with a comment saying why: without it the last pair is skipped, and a generated probe shows 8,400 of 82,944 commands change. (4) The input-redirect line in guards._unwrap becomes an explicit if/else. (5) OPS drops only `\\|\\|` and `;;`, which split the same through the single-character fallback. `&&`, `|&` and `&>` stay: dropping one alone changes how 45, 45 and 630 of 25,200 generated punctuation runs split (`&&>|`, `|&>;`, `&><;`). This overturns the shell-doors quality note that all five were equivalent. (6) The ledger refusal text becomes one constant. Files: cli/wuwei/guards.py, sync.py, plan.py, upgrade.py, evidence.py, report.py, hook.py, setup.py, verdict.py and their vendored copies under .claude/wuwei/cli/wuwei/. Runtime lines: estimate -26 (scratch prototype at 9d6701e: 2,999 to 2,973, 1192 passed, 2 skipped); floor: frees at least 22; adds none. Order: first; every other runtime item in this pass starts after it merges. Proof of no behaviour change: the suite passes unchanged, and a generated differential probe of guards.segments between 9d6701e and the branch (operators x operators x words x four positions) shows 0 differences. Rollback: revert the commit. Outside: any behaviour change, and the readability notes on the DOOR_WORDS and LEDGER regexes (records replaces LEDGER). Assumptions: the walrus form fits this code (guards.py uses it already); overturned if the quality gate finds a rewritten line harder to read, in which case that line is dropped while the item stays above the floor.",
+    "acceptance": [
+      "given the branch head, when `cat cli/wuwei/*.py | wc -l` runs, then it prints 2,977 or less, and the vendored copies under .claude/wuwei/cli/wuwei/ are identical to cli/wuwei/",
+      "given the branch head, when `python3 -m pytest -q` (or `pytest -q`) runs from the repository root, then every test passes and no test file changed except where a test reads a removed name",
+      "given a git archive of 9d6701e and of the branch head in two scratch folders, when a generated probe feeds both guards.segments every command built from 24 operators (empty, ;, &&, ||, |, |&, &, ;;, (, ), >, >>, >|, &>, &>>, <, <>, >&, <&, <<, <<<, 2>, 10>, {fd}>) taken in pairs, 6 words (x, .wuwei/ledger, git push origin main, $'a', \"a b\", <(true)) taken in pairs and 4 positions, then the outputs differ for 0 commands",
+      "given the branch head, when guards.OPS is read, then it still holds `&&`, `|&` and `&>`, and a test splits `x&&>|y` into x, &&, >|, y and `x|&>y` into x, |&, >, y"
+    ],
+    "why": "The 1-line headroom blocks every runtime fix; a prototype in scratch frees 26 lines with no behaviour change and showed that 3 of the 5 OPS alternatives called equivalent are not."
+  },
+  {
+    "id": "seat-rules",
+    "title": "docs(charters): gate verdicts for a head go to the builder together, parser changes carry a generated probe, equivalence needs a differential probe, and repo lessons have a home",
+    "goal": "G-1",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 8, "time": 8, "risk": 8, "size": 2},
+    "evidence": {
+      "value": "shell-doors took three security rounds until a generated pair probe closed the class (findings line 4); quality arrived after the fix commit (line 6); both cost gate rounds under G-1.",
+      "time": "shell-stdin and records are guard-parser builds in this pass; their builders and gates should read the probe rule first.",
+      "risk": "This pass found the shell-doors quality claim that five OPS alternatives were equivalent wrong for three of them; it would have opened a misparse had it been built as stated.",
+      "size": "Six short rules over four charters, then `bin/wuwei agents build`; no runtime lines."
+    },
+    "files": ["charters/planner.md", "charters/_gate.md", "charters/builder.md", "charters/steward.md", "agents/*.md (built)", ".claude/wuwei/charters/ and agents copies (vendored)"],
+    "runtime_lines": "0",
+    "after": [],
+    "promise": "Six charter rules from the findings and this pass. (1) planner.md: the planner forwards every gate verdict for a head to the builder together, once the last gate for that head returns, and the builder starts fixing only then. (2) _gate.md: when a change makes more commands unreadable or rewrites a parser, the gates probe the checks that do not rely on door words (the leak check on network programs, the infra ask) with the new shape. (3) builder.md and _gate.md: a change to guard parsing comes with a generated combinatorial probe run under real bash with a stub program on PATH (operator or spelling classes x positions x targets), and the PR or verdict reports how many commands were generated, how many really ran the door program, and the holes; a gate round on a parser re-runs it and adds a class for each hole it finds. (4) _gate.md: a gate calls code equivalent or deletable only after a generated differential probe between the head and the change shows 0 differences; a surviving mutant alone is reported as untested. (5) steward.md: a lesson about one repository's code goes in that repository's standards lines (.wuwei/standards.md); a lesson about how seats work in any repository is a charter proposal for the retro. (6) builder.md and _gate.md: probe fixtures that hold JSON escapes are written by code (json.dumps or a Python literal), never typed into a shell. Then `bin/wuwei agents build` regenerates agents/ and the vendored copies. Files: charters/planner.md, charters/_gate.md, charters/builder.md, charters/steward.md, agents/ and the vendored charters and agents under .claude/wuwei/. Runtime lines: 0, budget 0. Order: none; it can run beside free-lines-4 (no shared file), and it is best merged before shell-stdin's build starts. Rollback: revert the commit. Outside: the Stop hook wording (with the parent session's #1099) and the #1078 attestation path.",
+    "acceptance": [
+      "given the branch head, when `bin/wuwei agents build` runs, then git status shows no change, and the suite's drift test passes",
+      "given agents/builder.md and agents/sentinel-security.md at the head, when a reader looks for the parser rule, then each names a generated combinatorial probe under real bash with a stub on PATH and the three counts it reports (generated, ran, holes)",
+      "given agents/sentinel-quality.md at the head, when a reader looks for equivalence, then it says code is called equivalent or deletable only after a generated differential probe shows 0 differences, and a surviving mutant alone is untested",
+      "given charters/planner.md at the head, when a reader looks for gate verdicts, then it says the verdicts for one head go to the builder together after the last gate for that head returns",
+      "given charters/steward.md at the head, when a reader looks for a repository-specific lesson, then it names .wuwei/standards.md for lessons about one repository's code and a charter proposal for lessons about seats"
+    ],
+    "why": "Gate rounds on guard parsing are the largest cost under G-1; these rules make the generated probe and the differential probe the standard before the next two parser builds."
+  },
+  {
+    "id": "shell-stdin",
+    "title": "fix(guards): a shell fed its commands on stdin and a named-fd redirect meet the doors",
+    "goal": "G-2",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 13, "time": 5, "risk": 13, "size": 2},
+    "evidence": {
+      "value": "A stub git on PATH shows bash runs git push origin main for {fd}>x git push origin main, bash <<< 'git push origin main' and echo 'git push origin main' | bash; guards.bash at 9d6701e passes all three, and a generated probe finds 586 holes among 803 shapes that really run the push.",
+      "time": "Open on main since before #1109; G-2 is dated 2026-10-23.",
+      "risk": "Closes the push and ledger door bypass class for stdin-fed shells; the spike shows 0 holes of 803 for one line.",
+      "size": "One runtime line and one regex edit in the spike; tests and fixture rows."
+    },
+    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)", "docs/site/concepts/doors.md (if it lists unreadable shapes)"],
+    "runtime_lines": "+1 estimated (spike), budget 2",
+    "after": ["free-lines-4"],
+    "promise": "A shell that reads its commands from stdin or a file, and a redirect on a named fd, meet the doors. (1) In guards._unwrap, sh, bash, zsh or dash with no -c body (fed by a pipe, a here-string, -s or < file, or given a script path) leaves the unread segment beside its own, so the existing multi-line or unreadable rule refuses the command when its raw text names a door program; a command naming none still passes. (2) In guards.segments, a {name} glued before a redirect operator at the start or after a separator ({fd}>x, {a_b}<x) is dropped the way an fd number is, so the program after it is read. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, and docs/site/concepts/doors.md if it lists the unreadable shapes. Runtime lines: estimate +1 (spike on top of the free-lines prototype: 2,973 to 2,974, 1192 passed), budget 2. Order: after free-lines-4. Acceptance comes from real execution with a stub git on PATH. The builder runs a generated combinatorial probe under real bash: fd spellings ({fd}, {a_b}, {A1}, {_}, 3, 10) x redirect operators x targets x positions (start, end, after ;, after &&, after |, inside ( )), and shells (bash, sh, dash, /bin/bash, env bash, command bash) x flags (none, -s, -e, -x) x feeders (<<< glued and spaced, a pipe, |&, 0<<<) x both quotes; holes must be 0. Rollback: revert the commit. Outside: a script file that holds a door command while the command line names none (bash run.sh: the guard is not a sandbox), and heredocs, which the multi-line rule already refuses. Assumptions: no recorded seat route pipes text naming a door program into a shell (the suite's seat-command corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
+    "acceptance": [
+      "given a stub git on PATH that appends its argv to a log, when bash -c runs each of `{fd}>x git push origin main`, `{a_b}<x git push origin main`, `bash <<< 'git push origin main'`, `echo 'git push origin main' | bash`, `printf %s 'git push origin main' |& sh -s` and `env bash -s <<<\"git push origin main\"`, then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
+      "given the generated probe in the builder's scratch copy (fd spellings x redirect operators x targets x positions, and shells x flags x feeders x quotes), when it runs every command under real bash with the stub git and through guards.bash at the head, then it reports the generated count, the count that ran the push, and 0 holes",
+      "given `bash run.sh`, `echo hi | bash`, `bash -c 'echo hi'`, `echo {a,b}>x` and `diff <(sort a) <(sort b)`, when guards.bash reads them, then they pass (no door program named)",
+      "given the suite's seat-command corpus and tests/fixtures/routes.json, when the suite runs at the head, then every recorded route keeps its verdict"
+    ],
+    "why": "The spike in scratch closed 586 real push-door holes with one line; the item is ready to build behind free-lines-4."
+  },
+  {
+    "id": "records",
+    "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
+    "goal": "G-2",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 13, "time": 8, "risk": 13, "size": 3},
+    "evidence": {
+      "value": "Two shell steps open the push door on main: `echo '\"x\"' > .wuwei/cache/default-<repo>.json` passes, and after it `git push origin main` passes (scratch probe with the real _default). A generated probe finds 87 holes among 123 commands that really change the ledger or a cache entry under bash.",
+      "time": "The cache flip is a live two-step bypass of the push door and the merge door's CI gap (ci- entry); findings lines 10 and 17 name it open since ci-not-started.",
+      "risk": "Replaces the LEDGER regex that took three gate rounds with one matcher; the spike reaches 0 holes of 196 generated commands.",
+      "size": "+11 lines in the spike, five shapes (glob and brace paths, cache writes, find, cd, git clean)."
+    },
+    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)", "docs/site/concepts/doors.md", "docs/design.md (the ledger door paragraph)"],
+    "runtime_lines": "+12 estimated (spike +11 before narrowing find and cd), budget 18",
+    "after": ["free-lines-4", "shell-stdin"],
+    "promise": "Writes to the ledger and the cache meet the ledger door in the spellings sh expands. (1) One path matcher replaces the LEDGER regex. It reads //, /./, globs (*, ?, [...], where * and ? do not match a leading dot, as in sh) and brace expansion ({a,b}, {a..z}), and matches .wuwei itself, .wuwei/ledger, .wuwei/ledger.jsonl and anything under them, as a redirect target, a writer argument or an edit path. (2) A write to .wuwei/cache (a redirect target, a writer argument other than rm, a python argument, a Write or Edit path) is refused, with text naming the cache: its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file still passes, because the next read fetches it again. (3) find with -delete, -exec or -execdir whose start path the matcher matches is refused; find without them passes. (4) cd or pushd into .wuwei or below, followed in the same command by a writer program, is refused; `cd .wuwei && cat plan.json` passes. (5) git clean with x or X in any short cluster is refused unless every pathspec it names lies outside .wuwei: .wuwei is git-ignored, so git clean -fdx deletes the ledger; git clean -fd passes. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, docs/site/concepts/doors.md and the ledger door lines in docs/design.md. Runtime lines: estimate +12 (spike +11 on top of shell-stdin, before narrowing find and cd), budget 18. Order: after free-lines-4 and shell-stdin (all three edit guards.segments, _unwrap or bash). Acceptance comes from real execution under bash in a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json. The builder runs a generated combinatorial probe: ledger spellings (.wuwei/ledger, .wuwei//ledger, ./.wuwei/./ledger, .wuwei/*, .wuwei/l*, .w*/ledger, .wuwei/[l]edger, .wuwei/{ledger,x}, .wuwei/{l,}edger, .wuwei/{k..m}edger, .{v..x}uwei/ledger, .wuwei/{{l,x},}edger, .wuwei/led?er, .wuwei, .wu*, .[w]uwei, .wuwei/ledger/../ledger, \"$PWD\"/.wuwei/ledger, ~+/.wuwei/ledger, .wuwei/ledger/*.jsonl, quoted and escaped forms) x writers (rm -rf, mv, find -delete, cd && rm, echo >, chmod -R, truncate), and cache spellings x writers (echo >, cp, tee, dd of=); holes must be 0. Rollback: revert the commit. Outside: deleting from an ancestor without naming .wuwei (find . -delete, rm -rf ..): the ledger is hash-chained and synced to wuwei/state, and the guard is a tripwire, not a sandbox; .wuwei/plan.json and verdicts (verdicts are attested by hash). Assumptions: no recorded seat route writes into .wuwei/cache by shell or runs git clean -x (the suite's corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
+    "acceptance": [
+      "given a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json, when bash -c runs each of `rm -rf .wuwei/*`, `rm -rf .wuwei/{l,}edger`, `rm -rf .w*/ledger`, `find .wuwei -delete`, `cd .wuwei && rm -rf ledger`, `git clean -fdx` (in a git repository whose .wuwei is ignored) and `echo 0 > .wuwei/cache/c.json`, then the ledger row or the cache value is gone or changed each time, and given each command, when guards.bash reads it, then it is refused",
+      "given the generated probe in the builder's scratch copy (ledger spellings x writers, cache spellings x writers), when it runs every command under real bash in a fresh folder and through guards.bash at the head, then it reports the generated count, the count that changed the records, and 0 holes",
+      "given `echo '\"x\"' > .wuwei/cache/default-taoq-ai__wuwei.json`, when guards.bash reads it, then it is refused with text naming the cache, and given a Write tool call on .wuwei/cache/ci-x.json, when guards.pre_tool reads it, then it is refused",
+      "given `rm -rf *`, `rm -rf .wuwei/cache`, `rm .wuwei/cache/x`, `cat .wuwei/ledger/x.jsonl`, `cd .wuwei && cat plan.json`, `find .wuwei -name x`, `git clean -fd`, `rm foo.wuwei` and `rm -rf .wuwei-x`, when guards.bash reads them, then they pass"
+    ],
+    "why": "The cache flip is a live two-step bypass of the push door; the spike closes the class at 0 of 196 generated holes, so it is ready behind shell-stdin."
+  },
+  {
+    "id": "gh-args",
+    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
+    "goal": "G-2",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 5, "time": 3, "risk": 3, "size": 1},
+    "evidence": {
+      "value": "guards.bash at 9d6701e refuses gh pr merge --help, gh pr merge -h, gh pr merge 5 --help, gh pr ready --help, gh pr create --help, git push --help and git push origin main --help; the live door refused `gh pr merge 5 --help` during this pass.",
+      "time": "A false refusal, not a bypass; seats meet it when they read help.",
+      "risk": "Loosens a door, so the parser reading -h and --help must follow pflag exactly (`gh pr merge 5 -t --help` gives --help to -t and merges).",
+      "size": "About three lines in gh_command, _api and the git branch of bash."
+    },
+    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)"],
+    "runtime_lines": "+3 estimated, budget 5",
+    "after": ["free-lines-4", "records"],
+    "promise": "A help request passes the doors, and an --input file's head, base and body are read as JSON. (1) gh pr merge, create, new, ready and edit with -h or --help as pflag reads them through guards._flags (anywhere before --, alone or in a short cluster, --help=true) print help and run nothing, so the guard passes them. A word pflag gives to a valued flag is not help: `gh pr merge 5 -t --help` still meets the merge door, and so does `gh pr merge 5 -- --help`. (2) git push with -h or --help, as git's option parser reads them, passes the push door. (3) For gh api --input, when the file parses as a JSON object, head, base and body are read with json.loads, so \\u and \\n escapes decode as gh sends them; a file that is not valid JSON keeps today's reading. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json and the vendored guards.py. Runtime lines: estimate +3, budget 5. Order: after records, because both edit the git branch of guards.bash. Acceptance comes from real execution: real gh against a fake host through gh's http_unix_socket setting shows which requests a help spelling sends, and real git against a local bare remote shows no ref was pushed. The builder runs a generated probe of help spellings (-h, --help, --help=true, --help=false, -dh, -h=x) x subcommands (merge, create, new, ready, edit) x positions (before and after the number, after each valued flag, after --), compared with what real gh sends to the fake host; mismatches must be 0. Probe fixtures that hold JSON escapes are written by code. Rollback: revert the commit. Outside: gh help subcommands other than gh pr, and `--input` read from stdin (still refused as unreadable for graphql). Assumptions: git push --help and -h after positionals show help and push nothing (parse-options); overturned if the bare-remote test shows a push, in which case (2) covers only the spellings shown to push nothing.",
+    "acceptance": [
+      "given real gh configured with http_unix_socket to a fake host that logs every request, when it runs each of `gh pr merge --help`, `gh pr merge 5 --help`, `gh pr ready -h` and `gh pr create --help`, then the fake host logs no write request, and given each command, when guards.bash reads it, then it passes",
+      "given the same fake host, when real gh runs `gh pr merge 5 -t --help` and `gh pr merge 5 -- --help`, then the guard sends each to the merge door (refused while the PR's evidence has gaps)",
+      "given a local bare remote and a clone with a commit on main, when real git runs `git push origin main --help` and `git push origin main -h` from the suite, then the bare remote has no main ref, and guards.bash passes both; `git push origin main` is still refused",
+      "given an --input file written by json.dumps with head 'feature', base 'ma\\u0069n' and a body whose WUWEI-Item line is escaped, when guards._api reads it, then head, base and body equal the decoded strings"
+    ],
+    "why": "A small false-refusal fix seen live in this pass; it waits behind records only because both edit the same branch of guards.bash."
+  },
+  {
+    "id": "merge-evidence",
+    "title": "fix(evidence): owner review reads only owner review rulings, and the CI-not-started read covers docs-only diffs, an unreadable Actions host and pull_request_target",
+    "goal": "G-2",
+    "repo": "taoq-ai/wuwei",
+    "tier": "full",
+    "scores": {"value": 8, "time": 3, "risk": 8, "size": 2},
+    "evidence": {
+      "value": "evidence.owner_approved (evidence.py:437-442) counts any approved ruling at the head, and hook.py:247 and :253 record breaking and exception rulings beside owner review ones, so an approved breaking or exception answer clears the owner review hold on owned paths.",
+      "time": "taoq-ai/wuwei sets owner_paths = [] (.wuwei/config.toml), so the hold bites in other repositories first; the CI follow-ups come from the ci-not-started arch and security gates.",
+      "risk": "Owner review is a safety gap; a docs-only PR held at CI not started on a path-filtered workflow needs an exception today (principles 4 and 7).",
+      "size": "One condition in owner_approved and about three lines around evidence.py:398-402."
+    },
+    "files": ["cli/wuwei/evidence.py", "cli/wuwei/gh.py (if the pull_request_target read lands there)", "tests/test_evidence.py", ".claude/wuwei/cli/wuwei/ (vendored copies)", "docs/site/concepts/evidence.md (if it describes the CI-not-started gap)"],
+    "runtime_lines": "+4 estimated, budget 6",
+    "after": ["free-lines-4"],
+    "promise": "(1) evidence.owner_approved counts a ledger ruling only when it is an owner review ruling (one with no kind); an approved breaking or exception ruling at the head no longer counts as the owner's review on owned paths. An approving GitHub review by the owner at the head still counts. (2) The CI-not-started gap is not raised when the diff holds only docs or specs (the same DOCS, specs/ and openspec/ reading the no-test gap uses) and the rollup is empty. (3) When the Actions read fails (a 403 or any gh error), the gap still shows and its text says the Actions host was unreadable, with the error. (4) A repository whose CI runs only on pull_request_target is read as having CI. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py if the pull_request_target read lands there, tests/test_evidence.py, the vendored copies, and docs/site/concepts/evidence.md if it describes the gap. Runtime lines: estimate +4, budget 6. Order: after free-lines-4. It shares no file with the guard items; if the headroom at its approval is under 6 lines, it frees its own. Rollback: revert the commit. Outside: reading a workflow's path filters (YAML, not stdlib), and the Codex attestation path (#1078). Assumptions: a docs-only change is safe to merge before docs CI registers, because a rollup with any check still holds the merge on running or failing CI; overturned if the owner wants docs CI to hold merges, in which case (2) reads the workflow's paths instead.",
+    "acceptance": [
+      "given an owned path in the diff, a ledger ruling {kind: breaking, approved: true} and one {kind: exception, approved: true} at the head, and no owner review, when evidence.gaps reads the PR, then the owner review gap shows; and given an owner review ruling {approved: true} at the head, when it reads again, then the gap is gone",
+      "given a diff of only docs/site/x.md and specs/a/spec.md, an empty status rollup and a repository that ran a pull_request workflow, when evidence.gaps reads the PR, then no 'CI not started' gap shows; and given a diff with cli/wuwei/x.py, then it shows",
+      "given gh.run raising GhError('HTTP 403') on the Actions read and an empty rollup, when evidence.gaps reads the PR, then a 'CI not started' gap shows whose text names the unreadable Actions host and the error",
+      "given a repository whose only workflow runs are pull_request_target runs and an empty rollup, when evidence.gaps reads the PR, then the 'CI not started' gap shows"
+    ],
+    "why": "An approved breaking or exception answer clears the owner review hold today; the CI follow-ups from the ci-not-started gates share the same function."
+  }
 ]
