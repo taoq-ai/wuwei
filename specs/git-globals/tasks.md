@@ -18,3 +18,11 @@
 - [x] T011 Route corpus: 10 rows added by code; no older row moves
 - [x] T012 Vendored guards.py byte-identical; SECURITY.md updated
 - [x] T013 Timing at 125 KB: worst 0.173 s at the head, 0.164 s on main
+
+## Phase 3: Fix round 1 (verdicts at 6f40026)
+
+- [x] T014 Tests first: alias after an unknown option, one-word steering then a known option, lone valueless options before main, every option in each form, push routing config without push passes, 125 KB and 500 KB split timing (18 red at 6f40026)
+- [x] T015 Append in place in `segments` and `_unwrap` (the quadratic copies)
+- [x] T016 An alias or include match wins over an earlier odd word; remote, branch, url and push.default refuse only before a push; the refusal names the alias rule on its own
+- [x] T017 design.md section 6 and doors.md History row list the new refusals; SECURITY.md updated
+- [x] T018 Route corpus: 4 rows added; probes, mutants and timing re-run

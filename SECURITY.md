@@ -55,8 +55,10 @@ git's options before the subcommand are read by allowlist, the options git 2.43 
 valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,
 `--attr-source`, `--shallow-file`) takes the next word, so `git --config-env core.abc=Y push origin
 main` meets the push door. Any other option before a push is refused, naming it. A `-c` or
-`--config-env` that sets an alias, `remote.*`, `branch.*`, `url.*`, `include*` or `push.default` is
-refused whatever the subcommand, because it decides where a push goes or what an alias runs.
+`--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default` is refused before a push,
+because it decides where the push goes. One that sets an alias or an include (`include.path`,
+`includeIf.*`) is refused whatever the subcommand and whatever option comes first, because an alias
+runs a command the guard never reads. Set either with `git config` before the call.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 

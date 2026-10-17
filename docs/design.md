@@ -143,7 +143,10 @@ collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges
 mutation that merges, arms auto-merge, opens a PR, marks one ready, requests reviewers, moves a ref, commits to a branch or changes
 branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
 every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
-`create_or_update_file` and `delete_file` tools on the default branch or with no branch; a secret
+`create_or_update_file` and `delete_file` tools on the default branch or with no branch; a git
+command naming `push` after an option before the subcommand that git 2.43 does not take, or after a
+`-c` or `--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default`; a git command
+after a `-c` or `--config-env` that sets an alias or an include, whatever the subcommand; a secret
 or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
 sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
 `-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;

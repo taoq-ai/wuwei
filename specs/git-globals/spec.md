@@ -20,8 +20,9 @@ a local bare remote and the guard on main passed it.
    `-C <dir>` still refuses it.
 
 Addition to the promise (named in the PR): a `-c` or `--config-env` before the subcommand that sets
-`alias.*`, `remote.*`, `branch.*`, `url.*`, `include*` or `push.default` (section names in any case)
-is refused whatever the subcommand. The item's aim is that a push to the default branch meets the
+`remote.*`, `branch.*`, `url.*` or `push.default` (section names in any case) is refused when a later
+word is `push`; one that sets `alias.*` or `include*` is refused whatever the subcommand and whatever
+option comes before it (fix round 1: an alias match wins over an earlier unknown option). The item's aim is that a push to the default branch meets the
 push door whatever global options come first. Under real git 2.43, `git -c alias.p=push p origin main`,
 `git -c remote.origin.push=HEAD:main push origin`, `git -c remote.origin.mirror=true push origin`,
 `git -c include.path=<file> push origin` and `git -c push.default=upstream -c branch.feature.merge=refs/heads/main
@@ -73,7 +74,11 @@ the cd stand-in class, git config written before the call, and `GIT_CONFIG_*` en
 2. A seat on a newer git uses an option git 2.43 does not have (`--no-advice`, `--no-lazy-fetch`)
    before a push and is refused. The failure is over-refusal, never a hole; the text names the
    option.
-3. A valued option read as one word would hide the subcommand again. Guarded by reading git 2.43
+3. A line in the shell split turns quadratic and a long command times the hook out, which lets
+   the tool run (fix round 1: the 6f40026 tightening copied the list at each `;` and redirect, 50 s
+   at 500 KB). Guarded by in-place appends and a 125 KB and 500 KB timing test for segments and
+   redirects.
+4. A valued option read as one word would hide the subcommand again. Guarded by reading git 2.43
    for each option and by the probe: 0 holes over 6,478 commands, and a future valued option
    is unknown, so it is refused before a push. Holes that stay: git config written before the
    call, and `GIT_CONFIG_*` in the environment (listed in SECURITY.md).
@@ -82,11 +87,12 @@ the cd stand-in class, git config written before the call, and `GIT_CONFIG_*` en
 
 - FR-001: `GIT_OPTS` holds git 2.43's options; the git branch takes two words for a valued option.
 - FR-002: an unknown option before a push is refused, naming it and the route.
-- FR-003: a steering `-c` or `--config-env` is refused whatever the subcommand.
+- FR-003: an alias or include `-c` or `--config-env` is refused whatever the subcommand and whatever
+  option comes before it; a `remote.*`, `branch.*`, `url.*` or `push.default` one is refused before a push.
 - FR-004: the `git clean` allowlist keeps its verdicts (its tests and corpus rows hold).
 - FR-005: routes.json gets the acceptance rows; every older row keeps its verdict.
-- FR-006: runtime within +2 lines; measured 2,996 (net 0) by tightening existing lines.
-- FR-007: the option loop stays linear: 125 KB of options reads in under 0.2 s.
+- FR-006: runtime within +2 lines; measured 2,997 (net +1, the two-line refusal text).
+- FR-007: the option loop, the shell split and the redirect step stay linear at 125 KB and 500 KB.
 
 ## Breaking
 
@@ -94,13 +100,15 @@ Commands that passed on main are now refused:
 
 - a push after a valued git option (`--config-env`, `--namespace`, `--attr-source`, `--shallow-file`)
   to the default branch (the bypass);
-- any git command after a `-c` or `--config-env` that sets `alias.*`, `remote.*`, `branch.*`,
-  `url.*`, `include*` or `push.default` (`git -c alias.st=status st`);
+- any git command after a `-c` or `--config-env` that sets `alias.*` or `include*`
+  (`git -c alias.st=status st`);
+- a command naming `push` after a `-c` or `--config-env` that sets `remote.*`, `branch.*`, `url.*` or
+  `push.default` (`git -c push.default=current push`);
 - a command naming `push` after an option git 2.43 does not take (`git --no-advice push origin x`,
   `git --super-prefix x push`).
 
-Migration: run git push without the option; set aliases and push configuration in git config
-(outside an agent session) rather than on the command line. The PR title carries `!` and the
+Migration: run git push without the option; set aliases and push configuration with git config
+before the call (git config is not refused) rather than on the command line. The PR title carries `!` and the
 commit a `BREAKING CHANGE:` line.
 
 ## Assumptions
@@ -116,7 +124,13 @@ commit a `BREAKING CHANGE:` line.
   keeps every verdict. Overturned if a corpus row moves.
 - `push.recurseSubmodules` and `submodule.recurse` push submodule commits to the submodules'
   remotes, other repositories; left outside.
-- The steering refusal is told apart from the unknown one by its two words (the option and its
-  value); an unknown option word holding a space is refused as steering, which only refuses more.
+- `remote.*`, `branch.*`, `url.*` and `push.default` only steer a push, which already carries the
+  word `push`, so they refuse only before one (`git -c url.X.insteadOf=Y clone`, `git -c
+  remote.origin.url=x fetch` pass). An alias or include can run any command, so it refuses always.
+  Overturned if a subcommand other than an alias pushes with no `push` word and reads these keys
+  (a `rebase -x` or `submodule foreach` body is a command the guard does not read on main either).
+- The alias refusal is told apart by matching the odd text against `GIT_OPTS` again; an unknown
+  word such as `-c=alias.p=x` reads as an alias and is refused always, which only refuses more (git
+  rejects it).
 
 Rollback: revert the commit; no data or config migrates.

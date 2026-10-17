@@ -247,6 +247,10 @@
     {"command": "git -C sub push origin i-1-change", "source": "item git-globals acceptance (a known valued option before a feature push)", "verdict": "pass"},
     {"command": "git -c user.name=x push origin i-1-change", "source": "item git-globals acceptance (a -c that steers nothing)", "verdict": "pass"},
     {"command": "git --no-pager log", "source": "item git-globals acceptance (a known option, no push)", "verdict": "pass"},
-    {"command": "git --version", "source": "item git-globals acceptance (git reads --version as the version command)", "verdict": "pass"}
+    {"command": "git --version", "source": "item git-globals acceptance (git reads --version as the version command)", "verdict": "pass"},
+    {"command": "git --no-pager push origin main", "source": "item git-globals fix round 1 at 6f40026 (quality: a lone valueless option before a push to main)", "verdict": "push"},
+    {"command": "PUSHVAL=push git --config-env=alias.p=PUSHVAL -p p origin main", "source": "item git-globals fix round 1 at 6f40026 (security: a one-word steering option, then a known one)", "verdict": "refusal"},
+    {"command": "git --no-lazy-fetch -c alias.p=push p origin main", "source": "item git-globals fix round 1 at 6f40026 (arch: an option newer git takes, then an alias)", "verdict": "refusal"},
+    {"command": "git -c remote.origin.url=x fetch", "source": "item git-globals fix round 1 at 6f40026 (arch: push routing config with no push passes)", "verdict": "pass"}
   ]
 }

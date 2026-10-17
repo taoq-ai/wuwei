@@ -21,8 +21,8 @@ No open finding at CRITICAL or HIGH.
 |-------------|------|------------------|
 | FR-001 | T007 | test_a_push_to_main_after_any_git_global_option_meets_the_push_door |
 | FR-002 | T007 | test_an_unknown_git_option_before_a_push_is_refused_naming_it |
-| FR-003 | T007 | test_a_command_line_alias_or_push_routing_config_is_refused |
+| FR-003 | T007, T016 | test_a_command_line_alias_or_include_is_refused_whatever_the_subcommand, test_a_command_line_push_routing_config_before_a_push_is_refused |
 | FR-004 | T009 | the records git clean tests and corpus rows |
 | FR-005 | T011 | test_every_route_reads_as_recorded |
-| FR-006 | T008 | test_setup runtime budget; wc -l 2,996 |
-| FR-007 | T013 | test_the_git_option_loop_stays_linear_at_125_kb |
+| FR-006 | T008, T016 | test_setup runtime budget; wc -l 2,997 |
+| FR-007 | T013, T015 | test_the_git_option_loop_stays_linear_at_125_kb, test_segments_and_redirects_stay_linear_at_125_and_500_kb |
