@@ -1,0 +1,27 @@
+Verdict: PASS
+Gate: goal
+Item: charter-review
+PR: taoq-ai/wuwei#1124
+Head: 7f67ab2479c16c529ee54bf19a172ba495ab0c61
+Confidence: high
+
+## Findings
+- [low] charters/builder.md:32 blocks: no. Carried from 7021905, unchanged by the delta: the 400-line batch is restated in builder.md:32 and skills/wuwei-rules/SKILL.md:28, the three-day staleness in shepherd.md:37 and skills/wuwei-watch/SKILL.md:21. Acceptance 3 holds (each threshold once in `_common.md`); the promise's "each rule once" leaves these four restatements for a later item.
+- [low] charters/_common-authoring.md:13 blocks: no. The drift beyond the five acceptance scenarios (humanizer checks cut, SOLID lines folded, WIP cap, supply-chain and test-quality rules) is now recorded as an Assumptions bullet in spec.md:168 and the PR body, with `scope:` as what overturns it. Two-way and visible to the owner; the owner should read that bullet before merge.
+- [low] blocks: no. PR body Tests says of `tests/test_setup.py` "two tests moved from the agents to `AGENTS.md`, one added"; `git diff 9c637ab 7f67ab2 -- tests/test_setup.py` removes two functions and adds two (the two old ones merged into one `AGENTS.md` test, one generic-charter test added); `grep -c '^def test_'` gives 31 on main and 31 at the head. Wording, not a wrong count.
+
+## Probes
+- `git archive 7f67ab2479c16c529ee54bf19a172ba495ab0c61 | tar -x` into the scratch copy; `pytest -q -W error`: 1682 passed, 2 skipped. `bin/wuwei agents check`: agents match the charters. `diff -r charters .claude/wuwei/charters` and `diff -r skills .claude/skills`: no differences. PR API head.sha is 7f67ab2, draft true.
+- Every count in the PR body, spec.md, tasks.md and analysis.md re-derived at the head and matched: `git diff --name-only 9c637ab 7f67ab2 | wc -l` 65 (PR API changed_files 65); outside `agents/` and `.claude/` 30; `wc -w agents/*.md` sentinel-arch 2230 (largest), lead 1658 (smallest), total 15294; on main (`git show 9c637ab:agents/*.md | wc -w`) 13785, largest sentinel-arch 1896; `grep -c '^def test_' tests/test_charters.py` 14, `pytest --collect-only` 79; `cat cli/wuwei/*.py | wc -l` 2976; `git diff --stat 9c637ab 7f67ab2 -- cli/ hooks/ agents/allowlist.json` empty.
+- Red-first reproduced: `git archive 9c637ab` into a new scratch dir with the head's `tests/test_charters.py`, `tests/test_setup.py` and `tests/fixtures/skill-triggers.json` copied in; `pytest -q tests/test_charters.py tests/test_setup.py`: 32 failed, 85 passed (26 in test_charters, 6 in test_setup); `test_no_sentence_is_over_35_words` on 11 of 19 files, the ceiling test on 0 of 8, the average test on 0. Matches spec US1, tasks T008 and the PR body exactly.
+- Acceptance 1: suite green at the head; every agent under 2,250; `tests/test_charters.py:51` now asserts the average under 20, matching `_common-authoring.md:24`.
+- Acceptance 2: `grep -n -E 'guards\.py|hook\.py|routes\.json|design\.md|evidence\.py|#[0-9]{2,}' charters/*.md skills/*/SKILL.md` exits 1; `AGENTS.md:19` has `## Testing the guards`. sentinel-arch.md no longer names `docs/design.md`; `docs/adr/` remains as a convention path (the directory exists here and the sentence is generic).
+- Acceptance 3: `_common.md:40-50` state 200 lines or 10 code files, 20 lines, 15 percent (over at least five merges), 400 lines, three days, each once; `evidence.py:46` `MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200`, `:221` `merged >= 5`, `:259` `len(code) > 10`; the test reads these constants. `_way.md:8,12`, `planner.md:29,67`, `wuwei-rules:14` point to `_common.md`; the Decisions table appears only in `_common.md`.
+- Acceptance 4: sentinel-arch.md rules 1 to 7 read Conformance, Dependencies and coupling, Contracts, Quality attributes, Fitness functions, Decisions, Breaking; the closing paragraph leaves trust probes to security and makes a trust defect the arch gate sees block under gate rule 5 (`_gate.md:26` "A trust-boundary security finding always blocks"). Closes my previous finding 3; spec How this fails 3 now states the `evidence.needed` result honestly.
+- Acceptance 5: all five descriptions carry Use (or Renamed) and Not for; fixture per skill should/should_not: run 10/9, watch 10/9, close 10/9, rules 10/9, plan 8/9; the fixture is unchanged since 7021905.
+- Previous findings: 1 (seven copied counts) closed, every number reproduced; 2 (`docs/design.md` here) closed; 3 (How this fails 3) closed; 4 (drift) recorded as an Assumption, kept as a note; 5 (restatements) unchanged, note; 6 (average 30) closed; 7 (growth unmentioned) closed, Review notes name 13,785 to 15,294; 8 (wuwei-rules "does not restate") closed, now "gives only the short form".
+- Explain-back: spec "The promise in my words" and the five restated scenarios match `wuwei plan show charter-review`; the Assumptions bullet names what goes beyond them. tasks.md and checklists: 0 unchecked boxes; analysis.md A5 and A6 record the two gate fixes, no open CRITICAL or HIGH. docs/site/concepts/team.md in mkdocs nav (mkdocs.yml:61), its link resolves to evidence.md:111.
+- Confidence high: every number in the delivered evidence was reproduced by the named command in a fresh copy, and the five acceptance scenarios verified from the live tree.
+
+## Residual risk
+Four thresholds are still restated outside `_common.md` (note 1), so a future edit to one of them can drift again until those lines point at Done. The arXiv paper informed only by its headline; frameworks are named, not linked.
