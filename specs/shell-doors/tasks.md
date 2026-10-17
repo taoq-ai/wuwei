@@ -33,3 +33,4 @@
 - [x] T020 `true;>|x git push origin main` row kills the `>|` mutant (security medium)
 - [x] T021 SECURITY.md: the "now read" text leaves the gap list; `//` and `/./` covered (arch medium)
 - [x] T022 Spec: How this fails 3, Assumptions for the OPS split, copy-out migration (notes)
+- [x] T023 Quality at 67b367a: `dd of=.wuwei/ledger/x`, `rm foo.wuwei`, `ls .wuwei-old` (multi-line) and an escaped `\$'main'` pin the `=` children prefix, the start anchor, the lookahead `-` and the backslash alternative, each shown failing under its mutant

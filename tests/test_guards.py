@@ -394,7 +394,8 @@ def test_a_door_command_glued_to_punctuation_or_quoting_a_dollar_reaches_its_doo
 
 @pytest.mark.parametrize('command', ['rm -rf .wuwei/ledger', 'mv .wuwei/ledger x', 'cp x .wuwei/ledger', 'rm -rf .wuwei',
                                      'rm -rf /abs/path/.wuwei/ledger', 'rm -rf .wuwei/', 'rm .wuwei/ledger.jsonl/',
-                                     'tee .wuwei/ledger', 'dd if=/dev/zero of=.wuwei/ledger.jsonl', 'echo x > .wuwei/ledger'])
+                                     'tee .wuwei/ledger', 'dd if=/dev/zero of=.wuwei/ledger.jsonl', 'echo x > .wuwei/ledger',
+                                     'dd if=/dev/zero of=.wuwei/ledger/x', 'git push origin i-1-change &>>.wuwei/ledger'])
 def test_a_ledger_path_without_a_trailing_slash_is_a_ledger_write(root, repo, command):
     assert 'the ledger is written only' in guards.pre_tool(root, bash(command))['reason'], command
 
@@ -423,7 +424,8 @@ def test_a_ledger_write_through_any_redirect_or_doubled_slash_is_refused(root, r
 
 
 @pytest.mark.parametrize('command', ['gh pr view 5 2>&1 | tail -3', 'echo 2 > x', 'git log -n 5 2>/dev/null', 'rm .wuwei/cache/x',
-                                     'rm -rf .wuwei/.cache', 'cat < in.txt 2>&1', 'sort 2>err.txt <in.txt'])
+                                     'rm -rf .wuwei/.cache', 'cat < in.txt 2>&1', 'sort 2>err.txt <in.txt',
+                                     'rm foo.wuwei', "git push origin \\$'main'"])
 def test_redirects_and_workspace_paths_that_reach_no_door_pass(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command
 
@@ -453,6 +455,7 @@ def test_dollar_quoting_keeps_the_leak_infra_and_ledger_checks(root, repo, comma
     'echo legit push\nls',
     'echo git pushed\nls',
     'echo gh prs\nls',
+    'ls .wuwei-old\nls',
 ])
 def test_ordinary_multi_line_work_passes(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command

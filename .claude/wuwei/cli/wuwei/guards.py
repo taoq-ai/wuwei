@@ -14,7 +14,7 @@ from wuwei import evidence, gh, ws
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}
-OPS = r'&>>|<<<|&&|\|\||;;|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # the operators sh reads in a run of punctuation
+OPS = r'&>>|<<<|&&|\|\||;;|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
