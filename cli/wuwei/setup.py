@@ -138,8 +138,7 @@ def doctor(root):
                  or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r)]
         rows.append(('codex roles', 'warn' if stale else 'ok',
                      f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
-    gone = ws.retired(root)
-    if gone:
+    if gone := ws.retired(root):
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
