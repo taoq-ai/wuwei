@@ -1382,7 +1382,8 @@ GIT_ALIASES = ['git -c alias.p=push p origin main', 'git -c ALIAS.p=push p origi
                'git --config-env alias.p=V p origin main', 'git --config-env=alias.p=V p', 'git -c include.path=f push origin',
                'git -c \'alias.c=cl"ea"n -fdx\' c', "git -c 'alias.c=!rm -rf .wuwei/ledger' c", "git -c alias.c='clean -fdx' c",
                'PUSHVAL=push git --config-env=alias.p=PUSHVAL -p p origin main', 'git --no-lazy-fetch -c alias.p=push p origin main',
-               "git --no-advice -c 'alias.p=!git push origin HEAD:main' p", 'git -c remote.origin.url=x -c includeIf.x.path=f status']
+               "git --no-advice -c 'alias.p=!git push origin HEAD:main' p", 'git -c remote.origin.url=x -c includeIf.x.path=f status',
+               'git -c alias.p=push --no-lazy-fetch p origin main', 'git -c alias.p=push -c remote.origin.url=x p origin main']
 GIT_OPTIONS = [['-p'], ['-P'], ['-h'], ['-v'], ['--paginate'], ['--no-pager'], ['--bare'], ['--no-replace-objects'], ['--literal-pathspecs'],
                ['--no-literal-pathspecs'], ['--glob-pathspecs'], ['--noglob-pathspecs'], ['--icase-pathspecs'], ['--no-optional-locks'],
                ['--exec-path'], ['--html-path'], ['--man-path'], ['--info-path'], ['--help'], ['--version'], ['-C', 'sub'], ['-c', 'a.b=c'],
