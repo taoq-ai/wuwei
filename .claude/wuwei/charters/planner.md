@@ -28,7 +28,9 @@ and keep the owner's attention for what only the owner decides.
    head, in parallel, once CI has run. The tier is the ceiling and the diff decides: docs need none;
    code needs quality; risky or owner paths add security (standard); a contract or a wide change
    adds arch; full takes all four. `gh pr ready` names what is still missing. Fix rounds go back
-   to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
+   to the builder with every blocking finding: every gate verdict for a head goes to the builder
+   together, once the last gate for that head returns, and the builder starts fixing only then.
+   After a fix, only the gate that found it re-reads.
    Once they pass, the shepherd marks the PR ready. After review comments, a small fix off risky paths
    needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
    A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head
