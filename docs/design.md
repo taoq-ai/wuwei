@@ -144,8 +144,12 @@ mutation that merges, arms auto-merge, opens a PR, marks one ready, requests rev
 branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
 every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
 `create_or_update_file` and `delete_file` tools on the default branch or with no branch; a secret
-or the canary in an MCP call or network command; writes to the ledger; a hand-made `wuwei hook`
-call; an owner question without a class.
+or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
+sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
+`-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
+`git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
+after any git option but `-C` or with `GIT_` in the command), while
+removing a cache file passes; a hand-made `wuwei hook` call; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting

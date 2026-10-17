@@ -31,9 +31,25 @@ after it is the command. A redirect whose next token is another operator or noth
 `git push origin main >`) is a shape they do not read, and so is a command with `$'...'` or
 `$"..."` quoting outside other quotes: either is refused when it names a door program, and its
 segments still meet the leak, infrastructure and ledger checks. An input redirect (`<`, `<&`,
-`<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
-trailing slash, and `.wuwei` itself, also spelled with `//` or `/./`, as a writer argument (`of=`
-too), a redirect target or an edit path.
+`<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write.
+
+The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under
+them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
+match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a bracket holding a POSIX class,
+`[=x=]` or `[.x.]` reads as `*`, and a path whose braces expand to more than 512 words is refused
+unexpanded), as a writer argument (`of=` too, and each path inside a `python -c` body), a redirect
+target or an edit path. A write to `.wuwei/cache` is refused the same way, because its entries
+feed gate inputs; removing a cache file passes. `find` with
+`-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` and an argument naming the records
+is refused. After `cd` or `pushd` into `.wuwei` or below, or in a session whose directory is inside
+it, a writer or a redirect to a file is refused. So is any writer or file redirect in a command
+where a `-C`, `--chdir` or `-D` value names `.wuwei` (`env -C .wuwei rm -rf ledger`,
+`sudo -D .wuwei ...`, `tar -C .wuwei -xf x.tar > log`), or expands past 64 words. `git clean` is read by allowlist. After any git
+option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refused. With `x` or
+`X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
+passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
+pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
+exemption, because a later `--no-dry-run` cancels `-n`.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 
@@ -46,10 +62,20 @@ Known shapes they do not read on one line, reported and not yet fixed:
   unquoted backticks.
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
-- A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
-  as `rm -rf .wuwei/*`, a path through a symlink, a quote glued before the path
-  (`python3 -c "open('.wuwei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
-  (`install`), `find -delete` and `git clean`.
+- A records write through a path the guards do not see: a symlink, a path a program builds at
+  run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
+  (`install`), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
+  globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
+- Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
+  hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
+- Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
+- A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and a git alias
+  set in config before the call. An alias set on the command line is refused only when the word
+  `clean` appears in it as written (`git -c alias.c='clean -fdx' c`); a quoted or escaped name
+  (`git -c 'alias.c=cl"ea"n -fdx' c`, `git -c 'alias.c=!git cl\ean -fdx' c`) or a `!` shell body
+  (`git -c 'alias.c=!rm -rf .wuwei/ledger' c`) passes.
+- `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
+  removes it from the tree; `git stash pop` brings it back.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only

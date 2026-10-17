@@ -2,7 +2,9 @@
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
 read a command lets it through unless it names a door program (the audit still sees it)."""
 
+from fnmatch import fnmatchcase
 import json
+from os.path import join, normpath
 from pathlib import Path
 import re
 import shlex
@@ -19,7 +21,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
-WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
+WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
 READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
@@ -28,7 +30,7 @@ DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merg
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER = re.compile(r'(^|[/=])\.wuwei(/(\.?/)*ledger(\.jsonl)?)?(/\.?)*$|(^|[/=])\.wuwei/(\.?/)*ledger/')  # // and /./ too
+LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -51,8 +53,19 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
-LEDGER_DENIED = "the ledger is written only by WUWEI's hooks; it is the audit record."
+LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
+                 'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
+
+
+def records(path, below=LEDGER, cap=512):  # .wuwei, or what lies below it (None: anything), as sh expands the path (cap: words left)
+    if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
+        alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2)) for a in alts)
+    path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
+    parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
+    return any(p[:1] == '.' and fnmatchcase('.wuwei', p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        fnmatchcase(name, parts[i + 1]) for name in below)) for i, p in enumerate(parts))
 
 
 def deny(reason):
@@ -309,25 +322,28 @@ def bash(root, command, cwd, session):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
+    inside = records(cwd, None) or any(records(w, None, 64) for w in {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)})  # or env -C
     for argv, targets in parts or ():
-        if any(LEDGER.search(t) for t in targets):
+        program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
+        writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
+        if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
+                inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
-        if not argv:
-            continue
-        program = Path(argv[0]).name
+        inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         if program == 'wuwei' and argv[1:2] == ['hook']:
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
-        if any(LEDGER.search(a) for a in argv[1:]) and (program in WRITERS or program == 'sed' and '-i' in argv
-                                                        or program.startswith('python')):
-            return deny(LEDGER_DENIED)
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
-        if program == 'git':
-            rest, i, here = argv[1:], 0, cwd
+        if program in ('git', 'git-clean'):
+            rest, i, here, plain = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd, lambda w: re.fullmatch(r'[\w./-]+', w or '')
             while i < len(rest) and rest[i].startswith('-'):
-                if rest[i] == '-C' and i + 1 < len(rest):
-                    here = rest[i + 1]
+                here = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
+            flags, dirs, top = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], normpath(join('.', *rest[1:i:2]))
+            if 'clean' in str(rest) and ((other := {*rest[:i:2]} - {'-C'}) or rest[i:i + 1] == ['clean']) and ('GIT_' in command or other or any(  # only -C
+                    n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
+                    not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
+                return deny(LEDGER_DENIED)
             if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found
         elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
@@ -344,7 +360,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny(LEDGER_DENIED) if any(LEDGER.search(path) for path in paths) else None
+        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
