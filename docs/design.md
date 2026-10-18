@@ -114,7 +114,11 @@ confirmation at the head. Both are safety gaps.
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
 the diff. Verdicts count only when attested at
-the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). Gaps are
+the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A gate's
+verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for that
+PR (for its repository before the PR is read); a finding holds from any PR of the item and displaces
+a pass. A pass clears a finding only from a strict descendant of its head, so a pass at the same or
+an older head clears nothing. Gaps are
 actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass. A PR read
 after it merged lists what it lacked as `post-merge:` gaps, and the report counts a finding attested
 after the merge as an escape.

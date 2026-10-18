@@ -792,7 +792,7 @@ def not_started(root, fake, runs=(('1', '.github/workflows/ci.yml', 'pull_reques
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
     fake.runs = {i: (p, e) for i, p, e in runs}
     fake.prs['5'] = make_pr(number=5, checks=None)
-    attest(root, 'quality', head, verdict)
+    attest(root, 'quality', head, verdict, pr='o/r#5')
 
 
 def test_a_head_with_no_checks_in_a_repo_with_pull_request_ci_reads_ci_not_started(root, fake, monkeypatch, capsys):
@@ -971,3 +971,59 @@ def test_an_edited_arch_verdict_that_kept_no_breaking_field_leaves_the_last_one_
 def test_a_no_on_a_dropped_descendant_of_the_yes_clears_nothing(root, fake):
     fake.ancestors.add((OLD, OTHER))  # OTHER grew from OLD but was force-pushed away: not under the PR head
     assert breaking(root, fake, (OLD, 'yes: drops --format', 'FIX'), (OTHER, 'no', 'PASS')) == ANNOUNCE
+
+
+def gated(root, fake, *said):
+    """Gate gaps once quality verdicts are attested in the order given, as (head, verdict[, PR]) rows; the change
+    needs quality alone."""
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.update({(OLD, HEAD), (OLD, OTHER)})  # OTHER grew from OLD off this PR's line
+    for n, (head, verdict, *pr) in enumerate(said):
+        attest(root, 'quality', head, verdict, name=f'quality-{n}.md', pr=(pr or ['acme/app#42'])[0])
+    return [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate passed'))]
+
+
+OWED = ['gates missing at head aaaaaaa: quality']
+
+
+@pytest.mark.parametrize('said, found', [
+    ([(HEAD, 'FIX'), (OLD, 'PASS')], OWED),  # an older ancestor's pass attested after a finding at the head
+    ([(OTHER, 'PASS')], OWED),  # a head off this PR's line
+    ([(HEAD, 'PASS', 'acme/app#7')], OWED),  # another PR of the item
+    ([(HEAD, 'PASS', 'acme/other#42')], OWED),  # another repository
+    ([(HEAD, 'FIX'), (HEAD, 'PASS')], OWED),  # a relaunch at one head clears nothing
+    ([(HEAD, 'FIX'), (OLD, 'FIX'), (HEAD, 'PASS')], OWED),  # an older finding does not move the newer one back
+    ([(HEAD, 'FIX'), (OLD, 'PASS', 'acme/app#7'), (HEAD, 'PASS', 'acme/app#7')], OWED),
+    ([(OLD, 'FIX'), (HEAD, 'PASS')], []),  # a pass at a descendant clears it
+    ([(OLD, 'FIX'), (HEAD, 'PASS', 'acme/app')], []),  # written before the draft PR existed
+    ([(OLD, 'FIX'), (HEAD, 'PASS', 'Acme/App#42')], []),
+    ([(HEAD, 'PASS'), (OLD, 'PASS')], []),  # an older pass attested later leaves the newer one
+    ([(HEAD, 'PASS'), (HEAD, 'FIX')], OWED),  # a finding replaces a pass at one head
+    ([(HEAD, 'PASS'), (OLD, 'FIX')], OWED),  # and at an older head, so the gate reads again
+    ([(HEAD, 'PASS'), (OLD, 'FIX', 'acme/app#7')], OWED),  # a finding on the PR's line holds from another PR
+    ([(OLD, 'FIX', 'acme/app#7'), (HEAD, 'PASS')], []),  # and a pass here at a descendant clears it
+])
+def test_a_gate_is_read_from_its_verdict_at_the_newest_head_on_this_pr(root, fake, said, found):
+    assert gated(root, fake, *said) == found
+
+
+@pytest.mark.parametrize('edited', [False, True])
+def test_a_finding_for_another_pr_of_the_item_still_holds(root, fake, edited):
+    standard(root)
+    attest(root, 'quality')
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-fix.md'
+    path.write_text(verdict_text(verdict='FIX', pr='acme/app#7'))
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                               'gate': 'quality', 'item': 'I-1', 'head': HEAD, 'pr': 'acme/app#7', 'verdict': 'FIX'})
+    if edited:
+        path.write_text(path.read_text() + '\nedited\n')  # the FIX holds as recorded
+    found = texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+    assert [t for t in found if t.startswith('gates missing')] == OWED
+
+
+@pytest.mark.parametrize('pr, found', [('acme/app#42', []), ('acme/app', []), ('acme/other#42', OWED)])
+def test_before_its_pr_is_read_a_verdict_counts_on_its_repository(root, fake, pr, found):
+    standard(root)
+    attest(root, 'quality', pr=pr)
+    assert texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD)) == found
