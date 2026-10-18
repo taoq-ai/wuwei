@@ -2,7 +2,9 @@
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
 read a command lets it through unless it names a door program (the audit still sees it)."""
 
+from fnmatch import fnmatchcase
 import json
+from os.path import join, normpath
 from pathlib import Path
 import re
 import shlex
@@ -13,21 +15,22 @@ from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
-CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')'}
+CONTROL, REDIRECTS = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}, {'>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<', '<<<'}
+OPS = r'&>>|<<<|&&|\|\||>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first (;; splits the same)
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
-WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
+WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
 READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
+LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -45,12 +48,28 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
+GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
+                      r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
+                      r'((no-)?literal|(no)?glob|icase)-pathspecs|no-optional-locks|(exec|html|man|info)-path|help|version|(git-dir|work-tree|namespace|'
+                      r'config-env|attr-source|exec-path|list-cmds)=[^\0]*))\0')  # git 2.43's options (git.c) on word\0next\0: a -c that steers, a pair, a word
 OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:', 'breaking:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
+LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
+                 'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
+
+
+def records(path, below=LEDGER, cap=512):  # .wuwei, or what lies below it (None: anything), as sh expands the path (cap: words left)
+    if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
+        alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2)) for a in alts)
+    path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
+    parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
+    return any(p[:1] == '.' and fnmatchcase('.wuwei', p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        fnmatchcase(name, parts[i + 1]) for name in below)) for i, p in enumerate(parts))
 
 
 def deny(reason):
@@ -64,8 +83,7 @@ def _git(cwd, *args):
         return ''
 
 
-def origin(cwd):
-    """owner/repo of the origin remote at cwd, or ''."""
+def origin(cwd):  # owner/repo of the origin remote at cwd, or ''
     match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', _git(cwd, 'remote', 'get-url', 'origin'))
     return match[1] if match else ''
 
@@ -77,16 +95,19 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n", lambda m: {'\n': ' ; ', '\\\n': ''}.get(
-            m[0], m[0]), command), posix=True, punctuation_chars=True)  # sh's lines: an unquoted newline ends a command
-        lexer.whitespace_split = True
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])(?<![<>]&)([0-9]+|\{[A-Za-z_]\w*\})(?=[<>])",
+            lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0][0] in '{0123456789' else m[0]), command), posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 and {fd} of {fd}>x are a redirect, not a word
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        out, current = [], []
-        for token in list(lexer) + [';']:
-            if token in CONTROL:
-                if current:
-                    out.extend(_unwrap(current))
-                current = []
+        tokens, current = [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';'], []
+        dollar = any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command))
+        # '' keeps the last pair: zip stops at its shortest list, so without it `x >` reads as clean (8,400 of 82,944 probes change)
+        glued = any(a in REDIRECTS and (b in REDIRECTS and c != '(' or b in CONTROL - {'('})
+                    for a, b, c in zip(tokens, tokens[1:], tokens[2:] + ['']))
+        out = [UNREAD] if dollar or glued else []
+        for token in tokens:  # $'..', $".." or a redirect with no word after it (<(x) is one) is unread; its segments are still read
+            if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
+                out[len(out):], current = _unwrap(current) if current else [], []  # in place: a copy per token is quadratic
             else:
                 current.append(token)
         return out
@@ -97,9 +118,11 @@ def segments(command):
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        redirect = tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens)
-        (targets if redirect else argv).append(tokens[i + redirect])
-        i += 1 + redirect
+        if tokens[i] in REDIRECTS and i + 1 < len(tokens):
+            targets[len(targets):], i = [tokens[i + 1]] * (not re.fullmatch(r'<[<&]*', tokens[i])), i + 1  # an input redirect's word is only read
+        else:
+            argv.append(tokens[i])
+        i += 1
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
     if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
@@ -108,7 +131,7 @@ def _unwrap(tokens):
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
         return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
-    return [(argv, targets)]
+    return [(argv, targets)] + ([UNREAD] if argv and Path(argv[0]).name in SHELLS else [])  # its commands come from stdin or a file
 
 
 def _default(root, repo):
@@ -133,8 +156,7 @@ def git_push(root, args, cwd):
         targets.append(destination.removeprefix('refs/heads/'))
         deleting = deleting or ref.startswith(':')
     protected = _default(root, origin(cwd))
-    hit = [t for t in targets if t in protected]
-    if hit:
+    if hit := [t for t in targets if t in protected]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
@@ -261,8 +283,7 @@ def ready_door(root, repo, number):
 
 
 def merge_door(root, repo, number, auto=False):
-    """Every merge route (gh pr merge, gh api PUT .../merge, a GitHub MCP merge tool) meets the same
-    evidence: only safety gaps hold it; the process fit it flows past is recorded."""
+    """Every merge route (gh pr merge, gh api PUT .../merge, an MCP merge tool) meets one evidence: safety gaps hold it, process fit is recorded."""
     if not repo or number is None:
         return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
                     'its evidence before the merge.')
@@ -288,8 +309,7 @@ def leak(root, text):
     canary = canary_file.read_text(encoding='utf-8').strip() if canary_file.is_file() else ''
     if canary and canary in text:
         return deny('the workspace canary is in this outward call: workspace content would leave the machine.')
-    found = SECRETS.search(text)
-    if found:
+    if found := SECRETS.search(text):
         return deny(f'a secret ({found[0][:6]}...) is in this outward call; remove it before sending.')
     return None
 
@@ -298,37 +318,37 @@ def bash(root, command, cwd, session):
     parts = segments(command)
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
-                    '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
+                    '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
+    inside = records(cwd, None) or any(records(w, None, 64) for w in {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)})  # or env -C
     for argv, targets in parts or ():
-        if any(LEDGER.search(t) for t in targets):
-            return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
-        if not argv:
-            continue
-        program = Path(argv[0]).name
+        program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
+        writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
+        if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
+                inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
+            return deny(LEDGER_DENIED)
+        inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         if program == 'wuwei' and argv[1:2] == ['hook']:
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
-        if any(LEDGER.search(a) for a in argv[1:]) and (program in WRITERS or program == 'sed' and '-i' in argv
-                                                        or program.startswith('python')):
-            return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
-        if program in NETWORK:
-            found = leak(root, ' '.join(argv))
-            if found:
+        if program in NETWORK and (found := leak(root, ' '.join(argv))):
+            return found
+        if program in ('git', 'git-clean'):
+            rest, i, here, plain, odd = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd, lambda w: re.fullmatch(r'[\w./-]+', w or ''), ''
+            while i < len(rest) and rest[i].startswith('-'):  # git 2.43's options (git.c): the first steering -c or other word is odd, an alias -c wins
+                here, m = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here, GIT_OPTS.match('\0'.join(rest[i:i + 2]) + '\0')
+                i, odd = (j := i + 1 + bool(m and m['pair'])), (m and m['run'] or not odd and (not m or m['steer'])) and ' '.join(rest[i:j]) or odd
+            if odd and ((run := (m := GIT_OPTS.match(odd.replace(' ', '\0', 1) + '\0')) and m['run']) or 'push' in rest):  # alias or include: anywhere
+                return deny(f'git {odd}: ' + ('an alias or include can run a command the guard cannot read: set it with git config first.' if run else
+                            'an unknown option, or -c remote, branch, url or push.default, hides a push: run git push without it, or use git config.'))
+            flags, dirs, top = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], normpath(join('.', *rest[1:i:2]))
+            if 'clean' in str(rest) and ((other := {*rest[:i:2]} - {'-C'}) or rest[i:i + 1] == ['clean']) and ('GIT_' in command or other or any(  # only -C
+                    n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
+                    not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
+                return deny(LEDGER_DENIED)
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found
-        if program == 'git':
-            rest, i, here = argv[1:], 0, cwd
-            while i < len(rest) and rest[i].startswith('-'):
-                if rest[i] == '-C' and i + 1 < len(rest):
-                    here = rest[i + 1]
-                i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            if rest[i:i + 1] == ['push']:
-                found = git_push(root, rest[i + 1:], here)
-                if found:
-                    return found
-        elif program == 'gh':
-            found = gh_command(root, argv[1:], cwd, session, command)
-            if found:
-                return found
+        elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
+            return found
         elif program in INFRA and INFRA[program] & set(argv[1:]):
             return {'decision': 'ask', 'reason': f'{program} {" ".join(a for a in argv[1:] if a in INFRA[program])} '
                     'changes infrastructure: a one-way door the owner decides.'}
@@ -341,8 +361,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
-            LEDGER.search(path) for path in paths) else None
+        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
@@ -358,8 +377,7 @@ def pre_tool(root, payload):
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
-        unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
-        if not unclassed:
+        if not (unclassed := [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]):
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''

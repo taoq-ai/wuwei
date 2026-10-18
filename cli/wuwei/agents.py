@@ -46,9 +46,6 @@ def build(plugin):
 
 
 def stale(plugin):
-    out = []
-    for role, tools in _grants(plugin).items():
-        path = Path(plugin) / 'agents' / f'{role}.md'
-        if not path.is_file() or path.read_text(encoding='utf-8') != render(plugin, role, tools):
-            out.append(role)
-    return out
+    base = Path(plugin) / 'agents'
+    return [role for role, tools in _grants(plugin).items() if not (base / f'{role}.md').is_file()
+            or (base / f'{role}.md').read_text(encoding='utf-8') != render(plugin, role, tools)]

@@ -131,15 +131,13 @@ def doctor(root):
              ('repos', 'ok' if config['repos'] else 'warn', ', '.join(config['repos']) or 'none configured'),
              ('ledger', 'ok' if not broken else 'fail', 'intact' if not broken else f'broken at {", ".join(broken)}'),
              ('canary', 'ok' if (Path(root) / ws.DIR / 'canary').is_file() else 'warn', '.wuwei/canary')]
-    roles = Path(root) / '.codex' / 'agents'
-    if roles.is_dir():
+    if (roles := Path(root) / '.codex' / 'agents').is_dir():
         from wuwei import agents
         stale = [r for r in agents.DESCRIPTIONS if not (roles / f'{r}.toml').is_file()
                  or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r)]
         rows.append(('codex roles', 'warn' if stale else 'ok',
                      f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
-    gone = ws.retired(root)
-    if gone:
+    if gone := ws.retired(root):
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}

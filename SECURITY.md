@@ -22,21 +22,76 @@ kept out of seat environments.
 
 The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
 brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
-wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
+wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
+`);`) is split into the operators sh reads, so process substitution and glued separators reach
+their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
+`&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), or with a named fd glued before it
+(`{fd}>x`, `{a_b}<x`), is read as a redirect, so the program
+after it is the command. A redirect whose next token is another operator or nothing (`>&>x`,
+`git push origin main >`) is a shape they do not read, and so is a command with `$'...'` or
+`$"..."` quoting outside other quotes: either is refused when it names a door program, and its
+segments still meet the leak, infrastructure and ledger checks. An input redirect (`<`, `<&`,
+`<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write.
 
-- `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
-- `$(...)` inside double quotes, process substitution (`<(...)`), and ANSI-C quoting (`$'...'`).
-- A separator glued to a redirect or a pipe (`>;`, `|&`), and quote splicing inside a word.
+The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under
+them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
+match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a bracket holding a POSIX class,
+`[=x=]` or `[.x.]` reads as `*`, and a path whose braces expand to more than 512 words is refused
+unexpanded), as a writer argument (`of=` too, and each path inside a `python -c` body), a redirect
+target or an edit path. A write to `.wuwei/cache` is refused the same way, because its entries
+feed gate inputs; removing a cache file passes. `find` with
+`-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` and an argument naming the records
+is refused. After `cd` or `pushd` into `.wuwei` or below, or in a session whose directory is inside
+it, a writer or a redirect to a file is refused. So is any writer or file redirect in a command
+where a `-C`, `--chdir` or `-D` value names `.wuwei` (`env -C .wuwei rm -rf ledger`,
+`sudo -D .wuwei ...`, `tar -C .wuwei -xf x.tar > log`), or expands past 64 words. `git clean` is read by allowlist. After any git
+option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refused. With `x` or
+`X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
+passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
+pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
+exemption, because a later `--no-dry-run` cancels `-n`.
+
+git's options before the subcommand are read by allowlist, the options git 2.43 takes (git.c): a
+valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,
+`--attr-source`, `--shallow-file`) takes the next word, so `git --config-env core.abc=Y push origin
+main` meets the push door. Any other option before a push is refused, naming it. A `-c` or
+`--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default` is refused before a push,
+because it decides where the push goes. One that sets an alias or an include (`include.path`,
+`includeIf.*`) is refused whatever the subcommand and whatever option comes first, because an alias
+runs a command the guard never reads. Set either with `git config` before the call.
+
+Known shapes they do not read on one line, reported and not yet fixed:
+
+- `eval`, `source` or `.` on `/dev/stdin` or `<(...)`, and a variable as the program name.
+- A `-c` body that is a variable or a substitution (`bash -c "$C"`, `xargs -I{} bash -c {}`).
+- `env -S 'bash -s'` fed on stdin (the quoted string hides the shell), and shells outside the
+  guards' list (`ksh`, `busybox sh`).
+- `$(...)` inside double quotes, and quote splicing inside a word.
 - A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
   unquoted backticks.
-- A shell option before `-c` that takes an argument or is not a single-dash cluster
-  (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
+- A records write through a path the guards do not see: a symlink, a path a program builds at
+  run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
+  (`install`), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
+  globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
+- Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
+  hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
+- Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
+- A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and git config
+  set before the call (`git config alias.p push`, `git config remote.origin.push HEAD:main`, then
+  `git p` or `git push`), or passed through `GIT_CONFIG_*` environment variables.
+- `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
+  removes it from the tree; `git stash pop` brings it back.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
-that door-word rule; the leak scan does not read it.
+that door-word rule; the leak scan does not read it. A shell (`sh`, `bash`, `zsh`, `dash`) with no
+readable `-c` body reads text the guards never see: input piped or fed to it (`| sh`, a
+here-string, `-s`, `< file`), a script path, or a `-c` after an option they do not read
+(`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`, `bash --command`). Such a
+command is refused when its text names a door program; the fed text still meets no leak or
+infrastructure check.
 
 When a guard raises on a call, the hook refuses the call if it could pass a door: an edit (the tools
 in `guards.DOORS`, or a Codex `apply_patch`), any MCP tool, or a Bash command naming a door program

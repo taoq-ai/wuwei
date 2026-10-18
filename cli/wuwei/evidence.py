@@ -15,6 +15,8 @@ REQUIRED = {'light': ('quality',), 'standard': ('arch', 'quality', 'security'),
             'full': ('arch', 'quality', 'security', 'goal')}
 TEST = re.compile(r'(^|/)(tests?|spec|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$')
 DOCS = re.compile(r'\.(md|rst|txt|adoc)$|(^|/)docs/|^LICENSE|^NOTICE')
+# What a diff may hold and still skip CI not started: prose, a license, specs; never a .txt, code under docs/ or a file seats load.
+PROSE = re.compile(r'^(?!(.*/)?(AGENTS\.md|CLAUDE\.md|(charters|agents)/[^/]+\.md|skills/[^/]+/SKILL\.md)$)(.+\.(md|rst|adoc)|LICENSE|NOTICE|(open)?specs/.+)$')
 GENERATED = re.compile(r'(^|/)([\w.-]+\.lock|package-lock\.json|pnpm-lock\.yaml|go\.sum)$|\.min\.(js|css)$'
                        r'|(^|/)(dist|vendor|__snapshots__)/')
 TEMPLATES = ('.github/pull_request_template.md', '.github/PULL_REQUEST_TEMPLATE.md', 'PULL_REQUEST_TEMPLATE.md',
@@ -151,8 +153,7 @@ def _counted(text):
         heading = re.match(r'^(#+)\s', line)
         if heading and level is not None and len(heading[1]) <= level:
             level = None
-        deferred = DEFERRED.match(line)
-        if deferred:
+        if deferred := DEFERRED.match(line):
             level = len(deferred[1])
             continue
         if level is not None and BOX.match(line) and REASON.search(line):
@@ -162,8 +163,7 @@ def _counted(text):
 
 
 def _unchecked(path, text):
-    boxes = BOX.findall(_counted(text))
-    if not boxes:
+    if not (boxes := BOX.findall(_counted(text))):
         return f'{path} has no checklist items'
     return f'{path} has {boxes.count(" ")} unchecked item{"s" if boxes.count(" ") > 1 else ""}' if ' ' in boxes else None
 
@@ -171,8 +171,7 @@ def _unchecked(path, text):
 def _rule(repo, path, rule, head):
     """None when the artifact at the head meets its rule, else the gap text."""
     if path.endswith('/'):
-        entries = gh.listing(repo, path.rstrip('/'), head)
-        if not entries:
+        if not (entries := gh.listing(repo, path.rstrip('/'), head)):
             return f'{path} missing: run the spec engine step that writes it'
         return next((problem for e in entries if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')
                      if (problem := _unchecked(e['path'], gh.file(repo, e['path'], head)))), None)
@@ -200,8 +199,7 @@ def spec_gaps(repo, engine, tier, files, head):
     if not engine:
         return []
     pattern, rules = SPEC_RULES[engine]
-    features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
-    if not features:
+    if not (features := sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})):
         return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
             gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
@@ -234,9 +232,8 @@ def verdicts(root, item_id, ref=''):
         data = row['data']
         if str(data.get('item', '')).lower() != str(item_id).lower() and not (ref and data.get('pr', '').lower() == ref.lower()):
             continue
-        path = Path(root) / data.get('path', '')
         try:
-            body = path.read_bytes()
+            body = (Path(root) / data.get('path', '')).read_bytes()
         except OSError:
             continue
         changed = hashlib.sha256(body).hexdigest() != data.get('sha256')
@@ -395,11 +392,13 @@ def gaps(root, repo, number):
         found += breaking_gaps(root, ref, pr, item_id)
         rollup = pr.get('statusCheckRollup')
         found += ci_gaps(rollup, review_contexts(root, repo, rollup))
-        try:  # no check run and no status at the head of a repository that ran a pull_request workflow (#1085)
-            ci = not rollup and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo, '?event=pull_request&per_page=1'))
-        except (gh.GhError, AttributeError, TypeError):
-            ci = True  # an unreadable Actions host counts as CI, so the gap shows rather than a pass
-        found += [gap(f'CI not started at {head[:7]}', actionable=False)] if ci else []
+        try:  # no check run and no status at a code head of a repository that ran a pull_request(_target) workflow (#1085)
+            held = not files or any(not PROSE.match(p) for f in pr['files'] for p in (f['path'], f.get('renamed')) if p)
+            ci, why = not rollup and held and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(
+                repo, '?event=pull_request&per_page=1') or gh.workflow_paths(repo, '?event=pull_request_target&per_page=1')), ''
+        except (gh.GhError, AttributeError, TypeError) as exc:  # an unreadable Actions host shows the gap, never a pass
+            ci, why = True, f' (Actions host unreadable: {exc})'
+        found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
         if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
@@ -438,5 +437,5 @@ def owner_approved(root, repo, pr):
     login, head, ref = owner_login(root), pr['headRefOid'], f'{repo}#{pr["number"]}'  # a review or ruling at the head only (#886)
     return any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED'
                and head.startswith(r.get('commit') or '-') for r in pr.get('reviews') or ()) or \
-        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head', '-')) and row['data'].get('approved')
-            for row in ws.rows(root, 'ruling'))
+        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-') and row['data'].get('approved')
+            and 'kind' not in row['data'] for row in ws.rows(root, 'ruling'))  # an owner review ruling has no kind

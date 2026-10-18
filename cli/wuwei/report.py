@@ -2,10 +2,9 @@
 
 from collections import Counter
 import datetime
+import hashlib
 import statistics
 from pathlib import Path
-
-import hashlib
 
 from wuwei import board, evidence, gh, plan, ws
 
@@ -79,8 +78,7 @@ def day(root, date=None):
 def since_checkpoint(root, date):
     """What changed since the day's last checkpoint, so a second close reads as a diff."""
     rows = ws.ledger(root)
-    marks = [i for i, row in enumerate(rows) if row.get('kind') == 'day.closed' and row.get('ts', '').startswith(date)]
-    if not marks:
+    if not (marks := [i for i, row in enumerate(rows) if row.get('kind') == 'day.closed' and row.get('ts', '').startswith(date)]):
         return []
     after = Counter(row['kind'] for row in rows[marks[-1] + 1:])
     return ['', f'## Since the last checkpoint ({rows[marks[-1]]["ts"][11:16]} UTC)',
@@ -105,8 +103,7 @@ def learning(root):
             out += [f'- escaped (post-merge): {repo}#{pr["number"]} merged before {", ".join(late)}'] if late else []
         titles = {pr['title']: pr for pr in merged}
         for revert in (pr for pr in merged if pr['title'].startswith('Revert "')):
-            original = titles.get(revert['title'][8:].rstrip('"'))
-            if original:
+            if original := titles.get(revert['title'][8:].rstrip('"')):
                 ref = f'{repo}#{original["number"]}'
                 passed = [f'{r["data"]["gate"]} ({r["data"].get("confidence") or "?"})' for r in attests
                           if r['data'].get('pr') == ref and r['data'].get('verdict') == 'PASS']
@@ -116,8 +113,7 @@ def learning(root):
             out.append(f'- {repo}: change failure rate {spent["cfr"]:.0%} over 28 days ({spent["merged"]} merges; '
                        + ('tiers raised one step)' if spent['raised'] else 'tiers as planned)'))
         out += [f'- Unplanned: {repo}#{pr["number"]} {pr["title"]}' for pr in unplanned[:10]]
-        recent = sorted((pr for pr in merged if pr['mergedAt'] >= week), key=lambda pr: pr['number'])
-        if recent:
+        if recent := sorted((pr for pr in merged if pr['mergedAt'] >= week), key=lambda pr: pr['number']):
             pick = int(hashlib.sha256(f'{ws.now().isocalendar()[:2]}{repo}'.encode()).hexdigest(), 16) % len(recent)
             out.append(f'- Sample for you this week: {repo}#{recent[pick]["number"]} (read its evidence comment)')
     for gate in sorted({r['data'].get('gate') for r in attests if r['data'].get('gate')}):
@@ -128,10 +124,8 @@ def learning(root):
     for row in ws.rows(root, 'seat.stopped'):
         spent[row['data'].get('role')] += row['data'].get('tokens') or 0
     out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
-    for row in ws.rows(root, 'ruling'):
-        if row['data'].get('kind') == 'exception' and row['data'].get('approved'):
-            d = row['data']
-            out.append(f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}')
+    out += [f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}' for d in (row['data'] for row in ws.rows(root, 'ruling'))
+            if d.get('kind') == 'exception' and d.get('approved')]
     return out
 
 

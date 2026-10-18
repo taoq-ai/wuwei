@@ -38,8 +38,7 @@ def review_channel(root):
 
 
 def config(root):
-    gone = ws.retired(root)
-    if not gone:
+    if not (gone := ws.retired(root)):
         return []
     backup = Path(root) / ws.DIR / 'config.0x.toml'
     if not backup.exists():
@@ -88,7 +87,7 @@ def _add(root, item_id, title, row, framework, why, prs=(), approved=False):
 
 def items(root):
     framework, known = ws.config(root)['prioritisation'], {i['id'].lower() for i in plan.items(root)}
-    moved = 0
+    before = len(known)  # each import adds one new id
     state = next((_json(d / 'state.json') for d in _days(root) if (d / 'state.json').is_file()), None) or {}
     for name, row in (state.get('items') or {}).items():
         if not isinstance(row, dict) or row.get('phase') in ('merged', 'parked') or row.get('status') == 'done':
@@ -98,7 +97,6 @@ def items(root):
             _add(root, name, title, row, framework, 'imported from 0.34; rescore at the next pass',
                  [row['pr']] if isinstance(row.get('pr'), str) else (), approved=True)
             known.add(name.lower())
-            moved += 1
     lead = next((_json(p) for d in _days(root) for p in sorted(d.glob('lead*.json'), reverse=True)), None)
     candidates = lead.get('candidates', []) if isinstance(lead, dict) else lead if isinstance(lead, list) else []
     for row in candidates:
@@ -106,8 +104,7 @@ def items(root):
             _add(root, row['id'], row.get('title') or row.get('scope') or row['id'], row, framework,
                  'imported from the 0.34 proposal')
             known.add(row['id'].lower())
-            moved += 1
-    return [f'plan: imported {moved} open items from 0.34'] if moved else []
+    return [f'plan: imported {len(known) - before} open items from 0.34'] if len(known) > before else []
 
 
 def verdicts(root):

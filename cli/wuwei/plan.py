@@ -27,12 +27,10 @@ def find(root, item_id):
 
 def score(framework, scores):
     if framework == 'wsjf':
-        bad = [k for k in FIELDS['wsjf'] if scores.get(k) not in FIB]
-        if bad:
+        if bad := [k for k in FIELDS['wsjf'] if scores.get(k) not in FIB]:
             raise ValueError(f'WSJF scores use 1, 2, 3, 5, 8, 13, 20: check {", ".join(bad)}')
         return round((scores['value'] + scores['time'] + scores['risk']) / scores['size'], 2)
-    missing = [k for k in FIELDS['rice'] if not isinstance(scores.get(k), (int, float)) or scores[k] <= 0]
-    if missing:
+    if missing := [k for k in FIELDS['rice'] if not isinstance(scores.get(k), (int, float)) or scores[k] <= 0]:
         raise ValueError(f'RICE needs positive {", ".join(missing)}')
     return round(scores['reach'] * scores['impact'] * scores['confidence'] / scores['effort'], 2)
 
@@ -93,8 +91,7 @@ def restore(root, item_id):
 
 def mark(root, item_id, status, reason='', **fields):
     rows = items(root)
-    item = next((row for row in rows if row['id'].lower() == item_id.lower()), None)
-    if item is None:
+    if (item := next((row for row in rows if row['id'].lower() == item_id.lower()), None)) is None:
         raise ValueError(f'{item_id} is not in the plan')
     item.update(fields, status=status, reason=reason)
     save(root, rows)
@@ -132,8 +129,7 @@ def owe(root, where, what, who, within='4h', due=None):
     One open reply per place; a send into that place closes it (hook.post_tool)."""
     import datetime
     rows = items(root)
-    found = next((r for r in rows if r.get('kind') == 'reply' and r.get('status') == 'open' and r['where'] == where), None)
-    if found:
+    if found := next((r for r in rows if r.get('kind') == 'reply' and r.get('status') == 'open' and r['where'] == where), None):
         return found
     if due is None:
         unit = {'m': 'minutes', 'h': 'hours', 'd': 'days'}[within[-1]]

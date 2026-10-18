@@ -11,44 +11,42 @@ and keep the owner's attention for what only the owner decides.
 2. A close (`/wuwei-close`) is a checkpoint: the report and the steward's retro for the day so
    far. Closing does not lock anything; a later plan pass reopens the day.
 3. Goals in `.wuwei/goals.md` are the direction. Each plan pass ends with the plan as a view
-   (`wuwei plan view`) and one question, `plan: approve this plan? ...`, Approve or Change. New items
-   wait for that answer; everything already approved keeps running. In a repository whose own
-   process states a runtime line budget (its constitution or AGENTS.md), check before you ask
-   each item's line budget against the headroom (that stated budget minus the measured lines);
-   when it does not fit, order a free-lines item first.
+   (`wuwei plan view`) and one question, `plan: approve this plan? ...`, Approve or Change. New
+   items wait for that answer; everything already approved keeps running. In a repository whose
+   own process states a runtime line budget (its constitution or `AGENTS.md`), check each item's
+   line budget against the headroom (that stated budget minus the measured lines) before you ask.
+   When it does not fit, order a free-lines item first.
 
 ## Running the work
 
 1. Work the queue highest score first, without waiting to be asked: an approved item with no pull
    request and no running seat is yours to start. Launch a builder per item in the background, in
-   parallel up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
-   promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never names a
-   verdict path: the gate charter states the one path.
-2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at that
-   head, in parallel, once CI has run. The tier is the ceiling and the diff decides: docs need none;
-   code needs quality; risky or owner paths add security (standard); a contract or a wide change
-   adds arch; full takes all four. `gh pr ready` names what is still missing. Fix rounds go back
-   to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
-   Once they pass, the shepherd marks the PR ready. After review comments, a small fix off risky paths
-   needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
-   A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head
-   differential: every route in `tests/fixtures/routes.json` read through the guards at main and at
-   the head, naming each route whose verdict moves.
-   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A
-   `codex-companion` task job is not a seat: nothing attests what it writes, so its verdict never
-   counts. A gate runs on Codex only as a Codex-native seat (`spawn_agent` with `agent_type`
-   `sentinel-<gate>`), and only once codex-attest-probe has recorded that such a seat is attested
-   (#1078); until then gates run as Claude seats.
+   parallel up to what the machine and the owner's usage allow. Give each the item id; the seat
+   reads the promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never
+   names a verdict path: the gate charter states the one path.
+2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
+   that head, in parallel, once CI has run. The tier is the ceiling and the diff decides
+   (`_common.md`, Done); `gh pr ready` names what is still missing. Fix rounds carry every
+   blocking finding; every gate verdict for a head goes to the builder together, once the last
+   gate for that head returns, and the builder starts fixing only then. After a fix,
+   only the gate that found it re-reads. Once they pass, the shepherd marks the PR ready. After
+   review comments, a small fix off risky paths needs no gate; a larger one is re-read by the one
+   gate `wuwei evidence` names.
+   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A task
+   job that nothing attests is not a seat, so its verdict never counts. On Codex a gate runs only
+   as a Codex-native seat (`spawn_agent` with `agent_type` `sentinel-<gate>`), and only once the
+   workspace has recorded that such a seat is attested; until then gates run as Claude seats.
 3. When the code is judged correct and only test findings remain after the second round, the
    builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
-   rounds without a pass is a design problem, not a third round: park the item with the
-   reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
-   the next pass.
-   An item that waits on a date, a predecessor or an owner step is parked with that reason
-   (`--reason "until 2026-10-20"`) and restored when it holds, so the board and the Stop reminder list
-   only work that can move now.
-4. Every seat brief carries the lines of `.wuwei/standards.md` for that role (the defects this
-   workspace has seen escape, the rules the retro promoted): seats do not see the session context.
+   rounds without a pass is a design problem, not a third round: park the item with the reason
+   (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into the next
+   pass. An item that waits on a date, a predecessor or an owner step is parked with that reason
+   (`--reason "until 2026-10-20"`) and restored when it holds. The board and the Stop reminder then
+   list only work that can move now.
+4. Every seat brief carries the lines of `.wuwei/standards.md` for that role: the defects this
+   workspace has seen escape, the rules the retro promoted. It also carries the test rules the
+   repository's own process states for the paths the item touches (its `AGENTS.md` or
+   `CLAUDE.md`). Seats do not see the session context.
 5. A repository under andon (`wuwei status` shows `ANDON`) gets no new builders until the cause is
    fixed and the cord cleared (`wuwei andon <repo> --clear`); work elsewhere goes on.
 6. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
@@ -58,11 +56,11 @@ and keep the owner's attention for what only the owner decides.
    and a check-in). When a seat hands back, take the next step at once. When the queue runs dry,
    run a plan pass from the goals. Record every ask someone is waiting on with `wuwei owe`; a send
    into its thread closes it.
-10. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
+8. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
    its run shows and still lacks with `wuwei plan run <id> --reason "..."`, and `wuwei plan done
    <id> --reason "<final evidence>"` when it is through.
-8. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
-9. Never resume or interrupt a seat to answer the owner; answer from the board.
+9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+10. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner
 
