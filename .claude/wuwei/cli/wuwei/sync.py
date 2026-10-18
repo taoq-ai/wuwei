@@ -79,7 +79,7 @@ def pull(root):
         if local == data or name == f'ledger/{ws.clone(root)}.jsonl':
             continue
         if _theirs(root, name) or local is None or _digests({name: local})[name] == synced.get(name):
-            ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'))
+            ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'), Path(root) / ws.DIR)  # no link a seat planted is followed
         elif branch[name] != synced.get(name):  # only here: kept and pushed next, no note
             kept.append(name)
     ws.cache_put(root, 'sync', branch)  # what the branch holds, so push still sends what was kept or is new here (#1060)

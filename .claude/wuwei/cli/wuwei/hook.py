@@ -143,22 +143,26 @@ def _verdict_problem(root, payload, role):
     if (match := re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)) is None:
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
-    verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
-    free = lambda p: next(n for i in range(2, 999) if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md')  # noqa: E731
-                          not in {q.name for q in p.parent.iterdir()})  # the next <stem>-N.md beside p that no file or link holds
+    verdicts = Path(root) / ws.DIR / 'verdicts'
+    def free(p):  # the next <stem>-N.md beside p that no file or link holds, the folder listed once
+        try:
+            return next(n for held in [{q.name for q in p.parent.iterdir()}] for i in range(2, 999)
+                        if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md') not in held)
+        except (OSError, StopIteration):
+            return f'a new name of your own (no -2 to -998 beside it is free, or {p.parent} cannot be listed)'
     try:
-        path = path.resolve()
+        verdicts, path = verdicts.resolve(), path.resolve()  # a loop raises RuntimeError on 3.11 and 3.12
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
             copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
                 return f'{copy} already holds another verdict: write yours beside it as {free(copy)}.'
-            ws.atomic_write(copy, body)
+            ws.atomic_write(copy, body, Path(root).resolve())  # no folder swapped for a link after the check is followed
             path = copy
         path.relative_to(verdicts)
         body = path.read_bytes()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
     rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]

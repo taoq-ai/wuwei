@@ -115,3 +115,17 @@ def test_a_kept_local_copy_is_pushed(remote, tmp_path):
     assert 'kept local plan.json' in sync.pull(b)
     assert sync.push(b).startswith('pushed')
     assert git(b, 'show', 'origin/wuwei/state:plan.json') == 'mine'
+
+
+def test_a_pull_never_writes_through_a_link_planted_under_the_workspace(remote, tmp_path):
+    a = workspace(clone(remote, tmp_path / 'a'))
+    (a / ws.DIR / 'verdicts' / 'x').mkdir(parents=True)
+    (a / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md').write_text('verdict\n')
+    sync.push(a)
+    b = workspace(clone(remote, tmp_path / 'b'))
+    ws.record(b, 'from-b', {})
+    (b / ws.DIR / 'verdicts').mkdir()
+    (b / ws.DIR / 'verdicts' / 'x').symlink_to(b / ws.DIR / 'ledger')
+    with pytest.raises(OSError):
+        sync.pull(b)
+    assert sorted(p.name for p in (b / ws.DIR / 'ledger').iterdir()) == [f'{ws.clone(b)}.jsonl']
