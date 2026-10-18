@@ -126,6 +126,30 @@
    "approved": true
   },
   {
+   "id": "announcement-url",
+   "title": "fix(evidence): an Announcement: line counts only when it names a URL, so a placeholder never clears a breaking-change gap",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 19.0,
+   "why": "arch gate on #1142 at 4b535bd: breaking_gaps (evidence.py:338) accepts any non-space text after Announcement:, so 'Announcement: CHANGELOG.md (placeholder ...)' clears a safety gap before any announcement exists",
+   "promise": "breaking_gaps counts an Announcement: line only when it carries an http(s) URL; any other text leaves the gap, with a reason naming the expected shape. The shepherd charter says the announcement must exist at the head (a PR or issue comment, or a release note already published), not after release. Files: cli/wuwei/evidence.py, tests/test_evidence.py, charters/shepherd.md, agents rebuilt, the vendored copy. Runtime lines: estimate +1, budget 2. Order: after breaking-latest merges (same function). Rollback: revert the commit.",
+   "acceptance": [
+    "given a breaking PR whose body says 'Announcement: CHANGELOG.md (placeholder)', when evidence reads it, then the announcement gap shows and names the URL shape",
+    "given 'Announcement: https://github.com/o/r/issues/1#issuecomment-1', when evidence reads it, then the announcement gap clears and only the owner's breaking: confirmation remains"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "breaking-latest",
    "title": "fix(evidence): a breaking change is read from the latest arch verdict, not any verdict ever",
    "goal": "G-2",
