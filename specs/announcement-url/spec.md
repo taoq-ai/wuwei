@@ -105,13 +105,15 @@ Test in tests/test_charters.py.
 
 ## Requirements
 
-- FR-001: `breaking_gaps` counts a line matching `^Announcement:[ \t]*https?://[^\s/?#]+\S*[ \t\r]*$`
-  (multiline), and no other.
+- FR-001: `breaking_gaps` counts a line matching `^Announcement:[ \t]*https?://[^\s/?#]\S*[ \t\r]*$`
+  (multiline), and no other, in time linear in the body: a 65,536-character body reads in under 1 s.
 - FR-002: Any other body leaves the gap with the text that names the shape.
 - FR-003: The break detection and the confirmation are unchanged (#1135 tests pass unedited but for
   the gap text).
 - FR-004: charters/shepherd.md states the shape and that the announcement exists at the head;
   agents rebuilt; `.claude/` re-vendored; runtime within the item's budget of 2 lines.
+- FR-005: docs/design.md, docs/site/reference.md, docs/site/concepts/evidence.md and
+  charters/_common.md name the same shape, without brackets, and the gap text says so.
 
 ## Success criteria
 

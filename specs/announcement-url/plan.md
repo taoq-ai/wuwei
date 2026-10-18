@@ -14,11 +14,12 @@
 
 ## Design
 
-1. The pattern becomes `^Announcement:[ \t]*https?://[^\s/?#]+\S*[ \t\r]*$` under `re.M`: a
-   lowercase http(s) scheme, a host of at least one character, the rest of the URL with no
-   whitespace, then only spaces, tabs or a CR to the end of the line.
+1. The pattern becomes `^Announcement:[ \t]*https?://[^\s/?#]\S*[ \t\r]*$` under `re.M`: a
+   lowercase http(s) scheme, a first host character, the rest of the URL with no whitespace, then
+   only spaces, tabs or a CR to the end of the line. One host character, not `[^\s/?#]+\S*`: the
+   two runs overlap and backtrack with the square of the line length (security gate, round 1).
 2. The gap text names the shape: `add "Announcement: <http(s) URL of the published client
-   communication, release note or migration guide>", the URL alone on its line`.
+   communication, release note or migration guide>", the URL alone on its line, without brackets`.
 3. charters/shepherd.md Merge section states the shape and that the announcement exists at the
    head; `bin/wuwei agents build`; `setup.vendor('.')`.
 4. No change to the break detection or the confirmation.

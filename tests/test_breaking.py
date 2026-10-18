@@ -37,7 +37,7 @@ def test_a_declared_breaking_change_needs_an_announcement_then_the_owner(root, f
     gates(root)
     assert texts(root) == ['breaking change without an announcement: add "Announcement: <http(s) URL of the '
                            'published client communication, release note or migration guide>", the URL alone on '
-                           'its line']
+                           'its line, without brackets']
     pr['body'] = 'WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/2026-10-15-export-v1-retired'
     assert texts(root) == ['breaking change needs the owner\'s confirmation: ask "breaking: acme/app#42 at aaaaaaa: '
                            '<what breaks>. Announced at <link>. Proceed?"']

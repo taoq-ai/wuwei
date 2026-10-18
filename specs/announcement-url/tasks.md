@@ -14,3 +14,10 @@
 - [x] T007 `bin/wuwei agents build`, `setup.vendor('.')`
 - [x] T008 `specs/announcement-url/probe.py` in a `git archive` copy: no hole, no mutant survives
 - [x] T009 Full suite green; runtime 2,992 lines, unchanged
+
+## Phase 3: Gate round 1
+
+- [x] T010 Timing row `test_a_body_at_the_github_limit_is_read_in_linear_time`: red at 46d4737 (77.9 s)
+- [x] T011 One host character in the pattern; the gap text says "without brackets"
+- [x] T012 docs/design.md, docs/site/reference.md, docs/site/concepts/evidence.md, charters/_common.md name the shape
+- [x] T013 Probe mutants written to both copies; a slow-pattern mutant added: 9 mutants, 0 survived

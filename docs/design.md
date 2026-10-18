@@ -108,8 +108,10 @@ exception. An unreadable Actions host shows the gap with `(Actions host unreadab
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
 by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
-gate at any tier) needs an `Announcement: <link>` line and then the owner's `breaking:`
-confirmation at the head. Both are safety gaps.
+gate at any tier) needs an `Announcement: <url>` line and then the owner's `breaking:`
+confirmation at the head. Both are safety gaps. The line holds one http(s) URL alone, without
+brackets, of a communication that already exists: a PR or issue comment, or a published release
+note or migration guide. A changelog entry written at release does not count.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by

@@ -119,6 +119,8 @@ def test_the_shepherd_asks_for_an_announcement_url_that_exists_at_the_head():
     text = ' '.join((PLUGIN / 'charters' / 'shepherd.md').read_text(encoding='utf-8').split())
     assert '`Announcement: <url>`' in text and 'one http(s) URL and nothing else' in text
     assert 'must exist at the head' in text and 'the release will write later does not count' in text
+    common = ' '.join((PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8').split())
+    assert '`Announcement: <url>`' in common and 'an existing http(s) URL alone, unbracketed' in common
 
 
 def test_the_steward_may_propose_charter_deletions():

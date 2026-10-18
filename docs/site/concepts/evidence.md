@@ -74,8 +74,9 @@ file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier s
 
 Before such a change merges it needs evidence, in order:
 
-1. An `Announcement: <link>` line: the client communication, release note, migration guide or press
-   release.
+1. An `Announcement: <url>` line: one http(s) URL alone on the line, without brackets. It points at
+   a client communication that already exists: a PR or issue comment, or a published release note
+   or migration guide. A changelog entry written at release does not count.
 2. Your confirmation, asked once the announcement exists:
    `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. It binds to that
    head; a change after it asks again.

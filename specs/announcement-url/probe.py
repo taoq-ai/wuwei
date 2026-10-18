@@ -6,7 +6,8 @@ Part 1 generates Announcement: lines (prefix x value x suffix x line end x posit
 each through breaking_gaps at <tree> (and at <main tree> when given), and compares with an oracle built on
 urllib.parse: the line counts when its text after the colon, less spaces and tabs around it, is one
 http:// or https:// URL with a host and no whitespace. Part 2 applies mutants to the regex in <tree> and
-runs the focused test, which must kill each one."""
+runs the focused tests (the rows and the timing row), which must kill each one. Each mutant is written to
+cli/wuwei/ and to the vendored .claude/wuwei/cli/wuwei/ alike."""
 
 import itertools
 import re
@@ -62,25 +63,29 @@ def part1(tree, main):
     return holes
 
 
-MUTANTS = [(r'https?://', r'\w+://'), (r'https?://', r'https?:'), (r'[^\s/?#]+', r'[^\s/?#]*'),
-           (r'[ \t\r]*$', r'[ \t\r]*'), (r'[ \t\r]*$', r'[ \t]*$'), (r'\S*[ \t\r]*$', r'.*$'),
-           (r'^Announcement:', r'Announcement:'), (r':[ \t]*h', r':\s*h')]
+MUTANTS = [(r'https?://', r'\w+://'), (r'https?://', r'https?:'), (r'[^\s/?#]\S*', r'\S*'),
+           (r'[^\s/?#]\S*', r'[^\s/?#]+\S*'), (r'[ \t\r]*$', r'[ \t\r]*'), (r'[ \t\r]*$', r'[ \t]*$'),
+           (r'\S*[ \t\r]*$', r'.*$'), (r'^Announcement:', r'Announcement:'), (r':[ \t]*h', r':\s*h')]
 
 
 def part2(tree):
     path = Path(tree) / 'cli' / 'wuwei' / 'evidence.py'
+    copies = [p for p in (path, Path(tree) / '.claude' / 'wuwei' / 'cli' / 'wuwei' / 'evidence.py') if p.is_file()]
     source, survived = path.read_text(), 0
-    test = 'tests/test_evidence.py::test_an_announcement_counts_only_as_one_http_url_alone_on_its_line'
+    tests = ['tests/test_evidence.py::test_an_announcement_counts_only_as_one_http_url_alone_on_its_line',
+             'tests/test_evidence.py::test_a_body_at_the_github_limit_is_read_in_linear_time']
     for old, new in MUTANTS:
         line = re.search(r".*if not re\.search\(r'\^Announcement:.*", source)[0]
         assert old in line, old
-        path.write_text(source.replace(line, line.replace(old, new, 1)))
-        run = subprocess.run([shutil.which('pytest') or 'pytest', '-q', '-x', '-p', 'no:cacheprovider', test],
+        for copy in copies:
+            copy.write_text(source.replace(line, line.replace(old, new, 1)))
+        run = subprocess.run([shutil.which('pytest') or 'pytest', '-q', '-x', '-p', 'no:cacheprovider', *tests],
                              cwd=tree, capture_output=True, text=True)
         killed = run.returncode != 0
         survived += not killed
         print('killed' if killed else 'SURVIVED', repr(old), '->', repr(new))
-    path.write_text(source)
+    for copy in copies:
+        copy.write_text(source)
     print(f'part 2: {len(MUTANTS)} mutants, {survived} survived')
     return survived
 
