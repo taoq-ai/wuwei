@@ -50,6 +50,30 @@
    "approved": true
   },
   {
+   "id": "changelog-all-types",
+   "title": "chore(release): every conventional commit type on main has a visible changelog section, so the release notes list all of main",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 2,
+    "size": 1
+   },
+   "score": 15.0,
+   "why": "the owner wants all of main in the 3.0.0 release notes; release-please hides docs, refactor, chore, test, ci, build and style by default, so #1123 and #1124 are missing from the release PR",
+   "promise": "release-please-config.json lists a changelog section for every conventional commit type the repository uses (feat, fix, perf, revert, docs, refactor, test, build, ci, chore, style), none hidden, so the release PR body and CHANGELOG.md list every commit on main since the last release. Outside: the release workflow, versions, the tag.",
+   "acceptance": [
+    "given the config at the head, when the test reads changelog-sections, then every type feat, fix, perf, revert, docs, refactor, test, build, ci, chore and style has a section and none is hidden",
+    "given the change merged to main, when release-please runs on the push, then the release PR for 3.0.0 lists #1123 and #1124 and this change"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "gh-args",
    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
    "goal": "G-2",
