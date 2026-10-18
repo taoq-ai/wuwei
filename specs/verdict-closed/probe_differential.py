@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 import re
 
-from conftest import HEAD, make_pr, verdict_text
+from conftest import fake, make_pr, root, verdict_text  # noqa: F401 (fixtures)
 from wuwei import guards, hook, ws
 
 TREE = Path(guards.__file__).resolve().parents[2]
@@ -27,7 +27,8 @@ CLOSED = 'Previous findings at e418c1d: all closed.'
 BODIES = {'good': verdict_text(), 'closed-in-probes': verdict_text() + f'\n## Probes\n{CLOSED}\n',
           'closed-in-findings': verdict_text(findings=CLOSED), 'short-head': verdict_text(head='abc1234')}
 HELD = {'none': {}, 'file-2': {'-2': 'file'}, 'dangling-2': {'-2': 'dangling'}, 'link-2': {'-2': 'link'},
-        'file-2-3': {'-2': 'file', '-3': 'file'}, 'other-base': {'': 'other'}}
+        'file-2-3': {'-2': 'file', '-3': 'file'}, 'other-base': {'': 'other'},
+        'other-base-file-2': {'': 'other', '-2': 'file'}, 'other-base-link-2': {'': 'other', '-2': 'link'}}
 NAMED = ('', '-2')
 STEM = 'quality-abc1234'
 
@@ -68,7 +69,7 @@ def test_payloads(tmp_path_factory):
         (root / ws.DIR).mkdir()
         payload = json.loads(path.read_text(encoding='utf-8'))
         out = hook.handle(root, payload['hook_event_name'], payload)
-        rows[path.name] = {'out': decision(out), 'kinds': sorted({r['kind'] for r in ws.rows(root)})}
+        rows[path.name] = {'out': decision(out), 'kinds': sorted({r['kind'] for r in ws.ledger(root)})}
     save('payloads', rows)
 
 
@@ -97,7 +98,7 @@ def test_handbacks(tmp_path_factory):
             else:
                 target.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: x')
                                   if kind == 'other' else verdict_text(verdict='FIX', findings='- [low] blocks: no. kept'))
-        if held == 'other-base':  # another seat's attested verdict at the base name
+        if held.startswith('other-base'):  # another seat's attested verdict at the base name
             handback(root, 'SubagentStop', f'Verdict file: {folder / (STEM + ".md")}', agent='rev0')
         wt = tmp_path_factory.mktemp('wt')
         mine = (folder if where == 'root' else wt / ws.DIR / 'verdicts' / 'I-1')
