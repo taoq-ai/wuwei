@@ -11,6 +11,7 @@
 - [x] T004 AGENTS.md and CONTRIBUTING.md: 3,400 lines
 - [x] T005 design.md principle 8 and section 11: six keys with `models`, 3,400 lines
 - [x] T006 philosophy.md: 3,400 lines and six keys
+- [x] T006a SECURITY.md:135: 3,400 lines, the last budget statement a repo-wide grep finds
 
 ## Phase 3: Checks
 

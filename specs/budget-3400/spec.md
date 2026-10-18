@@ -26,7 +26,7 @@ The acceptance scenarios, restated:
 ## Requirements
 
 - FR-001: `test_the_runtime_holds_its_size_budget` asserts at most 3400 lines and names 3400.
-- FR-002: The constitution, AGENTS.md, CONTRIBUTING.md, design section 11 and philosophy.md state
+- FR-002: The constitution, AGENTS.md, CONTRIBUTING.md, SECURITY.md, design section 11 and philosophy.md state
   a runtime budget of 3,400 lines.
 - FR-003: Constitution VI and design section 11 name six config keys, the sixth `models`.
 - FR-004: Constitution VI adds the more-than-10-lines rule and keeps the delete-first rule.

@@ -27,3 +27,4 @@ of the six files is vendored under `.claude/wuwei/` (it holds `bin`, `charters` 
 - AGENTS.md, CONTRIBUTING.md: 3,000 to 3,400.
 - design.md: principle 8 and section 11 say six keys, section 11 names `models` and 3,400.
 - philosophy.md: 3,400 lines and six keys.
+- SECURITY.md:135: 3,400 lines (added at the planner's request after a repo-wide grep).
