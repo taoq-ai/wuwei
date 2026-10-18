@@ -225,10 +225,28 @@ def test_a_codex_spawn_is_recorded_as_unmeasured(root):
     assert (data['model'], data['asked'], data['effort']) == ('unmeasured', 'unrecorded', 'unrecorded')
 
 
-def test_the_transcript_launch_with_model_and_effort_records_both():
+def test_the_transcript_launch_with_model_and_effort_records_both(root):
     payload = json.loads((PLUGIN / 'tests' / 'fixtures' / 'payloads' / 'claude-agent-post-model-effort.json').read_text())
-    assert (payload['tool_input']['model'], payload['tool_input']['effort']) == ('sonnet', 'high')
-    assert payload['tool_response']['resolvedModel'] == 'claude-sonnet-5-5'
+    assert hook.handle(root, payload['hook_event_name'], payload) is None
+    data = ws.rows(root, 'seat.started')[0]['data']
+    assert (data['model'], data['asked'], data['effort'], data['item'], data['role']) == (
+        'claude-sonnet-5-5', 'sonnet', 'high', 'X-1', 'sentinel-goal')
+    pre = {**payload, 'hook_event_name': 'PreToolUse'}
+    del pre['tool_response']
+    assert hook.handle(root, 'PreToolUse', pre) is None  # the table's own setting for a goal gate
+
+
+@pytest.mark.parametrize('data', [{'subagent_type': ['builder'], 'prompt': 'Item: I-1'},
+                                  {'subagent_type': 'builder', 'model': ['opus'], 'effort': {'x': 1}, 'prompt': ['Item: I-1']},
+                                  {'subagent_type': 'builder', 'model': '', 'effort': '', 'prompt': 'Item: \nModel: \nModel reason: '},
+                                  {'subagent_type': 'sentinel-goal', 'model': 'opus', 'prompt': 'Item: NOPE'}])
+def test_a_malformed_launch_is_never_refused_and_never_a_hook_error(root, data):
+    plan_item(root, 'bogus-tier')
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': data})
+    assert out is None or set(out['hookSpecificOutput']) == {'hookEventName', 'additionalContext'}
+    hook.handle(root, 'PostToolUse', {'tool_name': 'Agent', 'cwd': str(root), 'tool_input': data,
+                                      'tool_response': {'agentId': 'a1', 'resolvedModel': ['x']}})
+    assert ws.rows(root, 'hook.error') == [] and len(ws.rows(root, 'seat.started')) == 1
 
 
 # US4: the sixth key
@@ -241,6 +259,11 @@ def test_the_models_key_is_set_kept_and_written_as_toml(root):
     text = (root / ws.DIR / 'config.toml').read_text()
     assert tomllib.loads(text)['models'] == data['models'] == ws.config(root)['models']
     assert ws.retired(root) == [] and len(ws.DEFAULTS) == 6
+
+
+def test_a_blank_or_repeated_models_value_sets_what_it_can(root):
+    assert ws.set_config(root, 'models', '')['models'] == {}
+    assert ws.set_config(root, 'models', 'lead=opus high, lead=opus xhigh, =opus low')['models'] == {'lead': 'opus xhigh'}
 
 
 def test_a_malformed_models_value_is_dropped(root):
