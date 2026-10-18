@@ -42,9 +42,9 @@ warns while the role files differ from the charters.
 
 On Claude Code each seat's model and effort come from the [model table](models.md). On Codex the
 role files name no model: Codex chooses its own, and a Claude model name would not resolve there.
-The models page maps each step of the table to a Codex model, read from Codex's own model catalog
-rather than OpenAI guidance on seats. That mapping is unmeasured, and writing it into the role files
-is later work.
+The models page maps each step of the table to a Codex model. That column is the planner's reading
+of the Codex catalog, not OpenAI guidance on seats. It is unmeasured, and writing it into the role
+files is later work.
 
 ## Gates on Codex
 

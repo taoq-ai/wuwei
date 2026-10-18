@@ -14,7 +14,7 @@ Charter, skill, test and docs text only. Runtime lines: 0 (2,976 before and afte
 
 1. `charters/planner.md` gains "Model and effort": a table with one row per seat in
    `agents/allowlist.json` plus lookups, from signals WUWEI already computes (tier after the change
-   failure rate raise, risky and owner paths, contract files).
+   failure rate raise, and risky, owner or contract paths).
 2. The same section states the escalation ladder (Haiku 5.5 up to Fable 5.1, Opus 5.5 max where
    Fable is unavailable), when to step up and down, the diversity rule, the effort notes, the
    precedence Claude Code documents, the owner's override, and how the brief records the choice
@@ -24,8 +24,9 @@ Charter, skill, test and docs text only. Runtime lines: 0 (2,976 before and afte
    `MODELS`; `MODELS` itself stays for models-record.
 4. `steward.md` reads outcomes by seat, model and effort and proposes row changes as advice.
    `/wuwei-watch` offers Sonnet 5.5 medium as an option, not a default.
-5. Codex: a step-by-step mapping to Codex models, marked unmeasured and named as a reading of
-   Codex's catalog, not OpenAI guidance. Role-file rendering stays for models-record.
+5. Codex: a step-by-step mapping to Codex models on the models page, marked unmeasured and named as
+   the planner's reading of the Codex catalog, not OpenAI guidance. Role-file rendering stays for
+   models-record.
 
 Outside: frontmatter generation, hook advice, recording and the report (models-record); any refusal
 on a model; `cli/wuwei/agents.py`.
@@ -47,15 +48,19 @@ The acceptance scenarios, restated:
 1. The table never reaches the planner. `hook.session_start` injects `_way.md`, `_common.md` and
    `planner.md` as one `additionalContext` string, and Claude Code caps that at 10,000 characters:
    over it, the session gets a file path and a 2,000-character preview (code.claude.com hooks,
-   read 2026-10-18). Measured with an empty workspace: 12,695 characters at main and 16,168 at the
-   head (`ss_len.py` over `hook.session_start`). Not held here: the whole planner charter already
-   sits past the preview on main, the fix is runtime in `hook.py`, and it is raised as a
-   candidate item. This item adds 3,473 characters to an already truncated string.
+   read 2026-10-18). Measured at the fix-round head with `hook.session_start(<empty workspace>,
+   {})`, leaving out the first line, which names the CLI path and so varies by checkout: 12,522
+   characters at main and 15,834 at the head, with "## Model and effort" at offset 12,583. The
+   gates' figures at 901cd72 (12,696 to 12,700 and 16,249 to 16,253) include longer scratch paths.
+   Not held here: the whole planner charter already sits past the preview on main, the fix is
+   runtime in `hook.py`, and it is the session-context-cap item. This item adds 3,312 characters
+   to an already truncated string.
 2. Effort is silently not applied: the per-call `effort` parameter needs Claude Code v2.1.292 or
    later, and `CLAUDE_CODE_EFFORT_LEVEL` beats it, so a seat runs at Opus 5.5's medium default
-   while the brief says high. Held in part: the charter and page name both cases; hooks cannot see
-   effort (the Agent input has no `effort` field), so the brief's `Model:` line is the record, and
-   models-record measures the resolved model.
+   while the brief says high. Held in part: the charter and page name both cases. The Agent
+   `tool_input` has no `effort` field, so the brief's `Model:` line records what was asked; what
+   ran shows in `resolvedModel` (PostToolUse) and `effort.level` (PreToolUse, PostToolUse, Stop and
+   SubagentStop inputs), which models-record can read.
 3. Diversity silently fails through aliases: `sonnet` resolves to Sonnet 4.5 on Bedrock, and a
    family alias resolves to the session's own model when it shares the family. Held: rule 1 asks
    for full model IDs, and the page says why.
@@ -64,15 +69,20 @@ The acceptance scenarios, restated:
 
 ### Session 2026-10-18
 
-- Q: Are contract files trust paths? A: Yes for this table. The promise lists contract files among
-  the inputs and the charters already give them arch at any tier; the table names one term, "trust
+- Q: Do contract files belong with risky and owner paths? A: Yes for this table. The promise lists
+  contract files among the inputs and the charters already give them arch at any tier. The table
+  says "risky, owner or contract paths" (renamed at the fix round: "trust path" already names the
+  TRUST pattern that raises a light item to standard). The earlier draft used one term, "trust
   paths", for risky paths, owner paths and contract files. Recorded under Assumptions.
 - Q: The table puts every gate on the builder's model at light (Sonnet builder, Sonnet quality) and
-  at standard on a trust path (all Opus). How does the diversity rule resolve it? A: The quality
-  gate takes the other of Opus 5.5 and Sonnet 5.5, at high. The page names both cases.
+  at standard on risky, owner or contract paths (all Opus). How does the diversity rule resolve
+  it? A: The quality gate takes the other of Opus 5.5 and Sonnet 5.5, at high. The page names both
+  cases. At a delta re-read by one gate, the carried passes count, so the gate keeps its model; the
+  page states the limit when the fix changed what the other-model gate read.
 - Q: "The weakest tier never sits on the terminal gate for a trust path." Which gate is terminal?
-  A: Any gate can be the last to pass, so the charter says Haiku 5.5 never runs a gate on a trust
-  path. Stricter, and testable.
+  A: Any gate can be the last to pass, so the charter says Haiku 5.5 never runs a gate on risky,
+  owner or contract paths. It is a floor, not a departure: breaking it is an `exception:` for the
+  owner. Stricter, and testable.
 - Q: Which model names does the Agent call take? A: Full IDs (`claude-opus-5-5`,
   `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`), read from Anthropic's models
   overview. Aliases are accepted too, but resolve to the session's model or an older version in the
@@ -93,9 +103,11 @@ The acceptance scenarios, restated:
 ## User Scenarios & Testing
 
 Red first, reproduced on `git archive origin/main` (efcd9e7) with the head's
-`tests/test_charters.py` copied in, `pytest -q tests/test_charters.py`: `6 failed, 79 passed`
+`tests/test_charters.py` copied in, `pytest -q tests/test_charters.py`: `8 failed, 79 passed`
 (five tests written first, then the Codex test after the planner's message, each run red before
-the text). Green at the head: `pytest -q` gives `1690 passed, 2 skipped`.
+the text; the fix round's table tests were run red against the old page and skill too). Green at
+the head: `pytest -q` gives `1692 passed, 2 skipped`. Mutants: 12 charter and page edits, each in a
+fresh copy, all killed by `tests/test_charters.py`.
 
 - US1 (P1), acceptance 1 and 2: `test_the_planner_table_names_a_model_and_effort_for_every_seat`,
   `test_the_planner_states_the_ladder_the_diversity_rule_and_the_precedence`.
@@ -119,7 +131,7 @@ the text). Green at the head: `pytest -q` gives `1690 passed, 2 skipped`.
 
 ## Assumptions
 
-- Trust paths include contract files. Two-way: one word in the charter. Overturned if the owner
+- Risky, owner or contract paths include contract files. Two-way: a few words in the charter. Overturned if the owner
   wants a contract-only change on Sonnet gates.
 - Full model IDs and the effort values `low` to `max` are what the Agent tool accepts, as the
   sub-agents page documents. Overturned if a launch with them is rejected; the page then names the

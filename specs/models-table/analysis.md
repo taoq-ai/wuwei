@@ -7,10 +7,12 @@ and acceptance and the constitution.
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 |----|----------|----------|-------------|---------|----------------|
-| A1 | Reach | MEDIUM | cli/wuwei/hook.py session_start, charters/planner.md | The session context is over Claude Code's 10,000-character hook cap at main (12,695) and at the head (16,168), so the session sees a file path and a 2,000-character preview | Pre-existing at main and runtime; out of this item's 0-line scope. Raised as a candidate item in the hand-back and the PR body |
+| A1 | Reach | MEDIUM | cli/wuwei/hook.py session_start, charters/planner.md | The session context is over Claude Code's 10,000-character hook cap at main (12,522 without the CLI path line) and at the head (15,834), so the session sees a file path and a 2,000-character preview | Pre-existing at main and runtime; out of this item's 0-line scope. Carried by the session-context-cap item |
 | A2 | Scope | MEDIUM | charters/planner.md rule 7, models.md | The Codex mapping was added mid-build at the planner's request, while the promise said the page marks Codex unmeasured | Kept unmeasured and named as a reading of the catalog; every fact re-read at openai/codex 8c07694; role-file rendering left to models-record |
 | A3 | Forward reference | LOW | charters/planner.md rule 6 | The owner's `models` rows do not exist until models-record | Recorded under Assumptions |
-| A4 | Interpretation | LOW | charters/planner.md rule 3 | "Terminal gate" read as any gate on a trust path | Stricter than the promise and testable; recorded in Clarifications |
+| A4 | Interpretation | LOW | charters/planner.md rule 3 | "Terminal gate" read as any gate on risky, owner or contract paths | Stricter than the promise and testable; recorded in Clarifications |
+| A6 | Vocabulary | MEDIUM | charters/planner.md, models.md | "Trust paths" clashed with the TRUST pattern in evidence.py (arch, 901cd72) | Fixed at the delta: renamed to "risky, owner or contract paths" everywhere in the PR |
+| A7 | Test strength | MEDIUM | tests/test_charters.py | The diversity test grepped words; three clause mutants survived (quality, 901cd72) | Fixed at the delta: the test parses the table and computes rule 3 and the floor over every tier and path; 12 of 12 mutants killed |
 | A5 | Drift | LOW | docs/site/concepts/models.md | The page restates the table's settings with reasons | The charter is the source; the page says so in its first paragraph |
 
 No open finding at CRITICAL or HIGH.

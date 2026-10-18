@@ -17,8 +17,9 @@
 ## Design
 
 1. `planner.md` "Model and effort": a two-column table (seat, model and effort) and seven numbered
-   rules: the call and brief lines, the ladder, diversity, effort, precedence, the owner's override,
-   Codex with its mapping table.
+   rules: the call and brief lines, the ladder, diversity, the Haiku floor, effort, precedence, and
+   the owner's override with a one-line Codex pointer. The Codex table and the precedence cases
+   live on the models page, so the session text stays short.
 2. `models.md`: inputs, reasons per row, ladder and diversity, effort, how Claude Code applies it,
    Codex, the steward's loop, and dated sources. Nav and concepts index entries.
 3. `team.md`, `codex.md`, `design.md` section 3: replace the `MODELS` sentences with a link to the

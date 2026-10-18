@@ -8,7 +8,7 @@
 - [x] T004 [US3] `team.md`, `codex.md` and `design.md` section 3 link the table and name no `MODELS`; `codex.md` says unmeasured
 - [x] T005 [US4] Steward reads by seat, model and effort; the watch skill offers Sonnet 5.5 medium, not a default
 - [x] T006 [US3] Codex mapping per step, unmeasured, not OpenAI guidance, `ultra` named
-- [x] T007 Red run: `6 failed, 79 passed` on `git archive origin/main` with the head's test file
+- [x] T007 Red run: `8 failed, 79 passed` on `git archive origin/main` with the head's test file
 
 ## Phase 2: Text
 
@@ -21,4 +21,13 @@
 ## Phase 3: Build
 
 - [x] T013 `bin/wuwei agents build`; `setup.vendor('.')`
-- [x] T014 Full suite: `pytest -q` gives `1690 passed, 2 skipped`; runtime 2,976 lines
+- [x] T014 Full suite: `pytest -q` gives `1692 passed, 2 skipped`; runtime 2,976 lines
+
+## Phase 4: Gate fixes at 901cd72
+
+- [x] T015 Rename "trust paths" to "risky, owner or contract paths" in charter, page, tests and spec (arch)
+- [x] T016 SessionStart figures re-measured at the fix head with the command named (goal)
+- [x] T017 Hooks see effort through `effort.level` and `$CLAUDE_EFFORT`; precedence cases on the page (security)
+- [x] T018 The Haiku floor is an `exception:`, not a departure; diversity at a delta; provider ID remedy (security, arch)
+- [x] T019 Table-parsing diversity test and assertions for the brief line, step-down, effort direction and sources; 12 mutants killed (quality)
+- [x] T020 Codex table and long precedence moved to the page; "the planner's reading of the Codex catalog"; internal wording removed; watch wording fixed (quality, goal, security)
