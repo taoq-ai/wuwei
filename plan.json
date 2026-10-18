@@ -248,6 +248,30 @@
    "approved": true
   },
   {
+   "id": "models-departure",
+   "title": "feat(report): a seat launch records whether it departed from the model table, and the report prints departures with and without a reason, and tokens per merged item",
+   "goal": "G-3",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "goal gate on #1146 at e0351a1: G-3 measures 'departures with a recorded reason, over all departures' and 'tokens per merged item', but the ledger records only the reason, not whether the launch departed, and the report prints tokens per seat x model x effort, not per merged item; fix rounds are also split across model groups for one item",
+   "promise": "seat.started records departure yes/no (the hook already computes the advice), the report's Learning section prints departures with and without a Model reason line, tokens per merged item, and fix rounds per item across all of its gates' models. Files: cli/wuwei/hook.py, cli/wuwei/report.py, tests, the vendored copy, docs/site/concepts/models.md. Runtime lines: estimate +6, budget 9. Order: after models-record merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given one launch that matches the table and one that departs with a Model reason line and one without, when the report runs, then it prints 1 departure with a reason and 1 without",
+    "given an item whose gates ran on two models across two rounds, when the report runs, then its fix rounds count 1 for the item, not 0.0 per group"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "merge-ref",
    "title": "feat(gates): gates run the item's checks on the merge with the base, and evidence says when the base moved since the gates",
    "goal": "G-2",
@@ -393,6 +417,30 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "timing-tests",
+   "title": "test: the wall-clock tests bound work done, not seconds, so a loaded runner does not fail them",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 2,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 8.0,
+   "why": "two timing tests failed once and passed on re-run on 2026-10-18 under parallel gate load: test_git_clean_joins_its_directories_once (2 s limit) and test_segments_and_redirects_stay_linear; flakes cost gate rounds and mask real regressions",
+   "promise": "The timing tests in tests/test_guards.py (and any other wall-clock bound in the suite) assert on a count of operations or a ratio against a measured baseline in the same run, not an absolute seconds limit, so they hold on a loaded machine and still fail on a quadratic regression. Files: tests only. Runtime lines: 0. Order: none. Rollback: revert the commit.",
+   "acceptance": [
+    "given the suite run under 8 parallel CPU-bound processes, when the timing tests run, then they pass",
+    "given a mutant that makes guards.segments quadratic, when the timing tests run, then they fail"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
   },
   {
    "id": "models-record",
