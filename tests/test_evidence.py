@@ -5,10 +5,10 @@ from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
 
 
-def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None):
+def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breaking='no', pr='acme/app#42'):
     path = root / ws.DIR / 'verdicts' / item / (name or f'{gate}-{head[:7]}.md')
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item))
+    path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item, pr=pr, breaking=breaking))
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
@@ -857,3 +857,67 @@ def test_evidence_names_the_shape_for_a_pr_not_in_ascii_digits_and_calls_no_gh(r
     with pytest.raises(SystemExit, match='owner/repo#number'):
         cli.main(['evidence', ref])
     assert fake.calls == []
+
+
+def breaking(root, fake, *said, title='feat: change 42'):
+    """Breaking gaps once arch verdicts are attested in the order given, as (head, Breaking, verdict[, PR]) rows."""
+    standard(root)
+    fake.prs['42'] = {**make_pr(), 'title': title}
+    fake.ancestors.add((OLD, HEAD))
+    for n, (head, says, verdict, *pr) in enumerate(said):
+        attest(root, 'arch', head, verdict, name=f'arch-{n}.md', breaking=says, pr=(pr or ['acme/app#42'])[0])
+    attest(root, 'quality')
+    attest(root, 'security')
+    return [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith('breaking change')]
+
+
+OTHER = 'c' * 40  # a head that is no ancestor of the PR head
+ANNOUNCE = ['breaking change without an announcement: add "Announcement: <link to the client communication, '
+            'release note or migration guide>"']
+
+
+@pytest.mark.parametrize('said, found', [
+    ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a later re-read clears it
+    ([(OLD, 'no', 'PASS'), (HEAD, 'yes: drops --format', 'FIX')], ANNOUNCE),  # a later re-read finds it
+    ([(HEAD, 'yes: drops --format', 'PASS'), (HEAD, 'no', 'PASS')], ANNOUNCE),  # relaunching at one head clears nothing
+    ([(HEAD, 'no', 'PASS'), (HEAD, 'yes: drops --format', 'PASS')], ANNOUNCE),
+    ([(HEAD, 'no', 'PASS'), (OLD, 'yes: drops --format', 'PASS')], ANNOUNCE),  # a yes holds at any head
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OLD, 'no', 'PASS')], ANNOUNCE),  # F1: a stale seat at an ancestor
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS')], ANNOUNCE),  # F2: a head off this PR's line
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/app#7')], ANNOUNCE),  # F3: another PR
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/other#1')], ANNOUNCE),  # F3: another repo
+    ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
+])
+def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
+    assert breaking(root, fake, *said) == found
+
+
+@pytest.mark.parametrize('title', ['fix(x)!: drop the v1 export', 'feat!: drop the v1 export'])
+def test_a_declared_break_holds_though_every_arch_verdict_says_no(root, fake, title):
+    assert breaking(root, fake, (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS'), title=title) == ANNOUNCE
+
+
+def test_ledger_order_decides_not_file_names(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'arch', OLD, name='arch-z.md', breaking='yes: drops --format')  # sorts last, attested first
+    attest(root, 'arch', name='arch-a.md', breaking='no')
+    attest(root, 'quality')
+    attest(root, 'security')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_an_edited_arch_verdict_that_kept_no_breaking_field_leaves_the_last_one_that_did(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'arch', OLD, name='arch-0.md', breaking='yes: drops --format')
+    edited = attest(root, 'arch', HEAD, 'FIX', name='arch-1.md')
+    edited.write_text(edited.read_text() + '\nedited\n')  # the FIX holds as recorded, without its Breaking line
+    assert ANNOUNCE[0] in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+def test_a_no_on_a_dropped_descendant_of_the_yes_clears_nothing(root, fake):
+    fake.ancestors.add((OLD, OTHER))  # OTHER grew from OLD but was force-pushed away: not under the PR head
+    assert breaking(root, fake, (OLD, 'yes: drops --format', 'FIX'), (OTHER, 'no', 'PASS')) == ANNOUNCE
