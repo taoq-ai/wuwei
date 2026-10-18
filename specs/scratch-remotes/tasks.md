@@ -26,3 +26,15 @@
 - [x] T016 Full suite green at the head
 - [x] T017 12 mutants, each failing the item's tests
 - [x] T018 `cat cli/wuwei/*.py | wc -l` at 2,992
+
+## Phase 4: Fix round 1 (gates at 6a5d00d)
+
+- [x] T019 Tests first: a work tree outside the shell (10 cases: `--work-tree`, `--git-dir` with `--work-tree`, `-C`, `-c core.worktree`, `core.worktree` in config, from a subfolder), a remote in global config (2), `--exec` and `--receive-pack` in four spellings (5), `+` refspecs that pass and land (2), remote `pct` whose url decodes `%2e%2e`; 18 red at the merged head before the change
+- [x] T020 `rev-parse --is-inside-work-tree` must print `true`; a typed word with a `remote.<word>.` key in any scope and no get-url answer is refused; `--exec` and `--receive-pack` prefixes are refused; `+` joins the word class; `TEMP` reads the temporary folders only for a scratch push
+- [x] T021 design.md and doors.md name the scratch exception; SECURITY.md's path-base and config lines corrected; routes.json gets 2 rows
+- [x] T022 The probe is committed as `specs/scratch-remotes/probe.py`, extended with the work-tree, core.worktree, global-config, pct, exec and receive-pack classes, `+` and `:` refspecs, and a subfolder and a non-repository session directory
+- [x] T023 Merged origin/main 3d2eb29 (#1134 and others); full suite 1859 passed, 2 skipped
+- [x] T024 Probe at the head: 42,768 generated, 40,824 ran git push, 0 holes (1,128 passes; 10,981 commands moved a protected main, none passed). The same probe at 6a5d00d over three of the six session directories (c, w, wcore): 274 holes
+- [x] T025 Gate probes at the head: security worktree_base.py 13 generated, 13 ran, 0 holes; quality probe.py 2,366 generated, 2,366 ran, 0 holes; quality wt.py, cwt.py, glob.py and pct.py refuse every case
+- [x] T026 18 mutants, each failing the item's tests; route corpus: 257 routes on main and the head, 0 move
+- [x] T027 Runtime 3,004 against 2,986 on main

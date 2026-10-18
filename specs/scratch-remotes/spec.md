@@ -38,14 +38,24 @@ Outside (the item's Outside): any network remote.
 - Q: How does git read a relative remote path? A: from the top of the worktree, not the shell's
   directory. Real git 2.43 run from `c/sub` with `git push ../r.git g` wrote `<scratch>/r.git`, with
   a bare `c/r.git` beside it left empty; a remote whose url is `../r.git` reads the same. The rule
-  joins a relative path to `git rev-parse --show-toplevel`.
+  joins a relative path to `git rev-parse --show-toplevel`. Fix round 1 (gates at 6a5d00d): that
+  holds only when the shell's directory lies inside the work tree, because git then moves to the
+  top. With the shell outside it (`--work-tree`, `core.worktree`, `--git-dir` with a work tree
+  elsewhere), git reads the path from the shell's directory and `--show-toplevel` names the work
+  tree, so `git --work-tree=<scratch>/x push .git :main` deleted main in the working repository.
+  The rule now requires `rev-parse --is-inside-work-tree` to print `true`.
+- Q: Which remotes does `git remote get-url` miss? A (fix round 1): one set in global or system
+  config, which git push still uses. A typed word that get-url does not name is refused when any
+  config scope holds a `remote.<word>.` key.
 - Q: Which url does a named remote push to? A: `git remote get-url --push --all <name>`: the
   `pushurl` values when set, else the url with `pushInsteadOf` and `insteadOf` applied, one line
   per URL git pushes to. Each must pass. The item's assumption read only `remote.<name>.url`; that
   misses a scratch url with a GitHub `pushurl` (a hole the probe shows: `pushurl` and `both` rows).
 - Q: Can the guard trust the words it reads for the remote and the directory? A: only when the
   Bash command is one plain git call: the first word is `git` and every word is letters, digits
-  and `./=@:-`, as the gh `--input` rule reads a plain gh call. A `cd`, `pushd`, `env -C`,
+  and `./=@:+-` (`+` for force refspecs, fix round 1; `(` stays out, so no extglob forms), as the
+  gh `--input` rule reads a plain gh call. No word is `--exec` or `--receive-pack`, or a prefix git
+  reads as one (fix round 1): git runs the program it names for the push. A `cd`, `pushd`, `env -C`,
   `sudo -D`, a subshell, an env assignment (`GIT_DIR=`, `GIT_CONFIG_*`), `~`, `$`, a quote, an
   operator or a second command keeps the door: git would run in another directory or read another
   remote than the guard reads. git's own options before `push` (`-C`, `--git-dir`, `--work-tree`)
@@ -75,8 +85,9 @@ Outside (the item's Outside): any network remote.
    or `pushInsteadOf` whose value starts the path, `remote.<name>.vcs` (a remote helper) or
    `remote.<name>.receivepack` (the command git runs for the push). Guarded by refusing the rule
    when `git config --get-regexp` shows a rewrite that starts any push URL, or any helper or
-   receive-pack key. Holes that stay: an exec path or receive hook that runs another push (a
-   program the guard never reads, like any script).
+   receive-pack key, and (fix round 1) when a typed word that get-url does not name has a
+   `remote.<word>.` key in any scope. Holes that stay: `--exec-path` or a receive hook that runs
+   another push (a program the guard never reads, like any script).
 3. A path spelling resolves to one repository for the guard and another for git: `%xx` in a
    `file://` URL, `file://localhost/`, `//`, `/./`, `/../`, a symlink, a worktree path, or a plain
    folder next to a `<path>.git` link (git's `enter_repo` tries `<path>/.git`, `<path>`,
@@ -112,13 +123,15 @@ None. The change only passes commands that were refused (pushes to scratch git d
 - Writing a local repository's refs is not a code host boundary: the agent can run `git update-ref`
   in any local repository. The working-repository and `.wuwei` exclusions are kept because the
   promise names them, and they stop a push into the workspace clone's hooks.
-- Runtime lines: measured 2,992, +16 over efcd9e7, against an estimate of +2 and a budget of +3. The
-  budget did not price the plain-call rule, the push URLs, the top-relative path, the git
-  directory read or the config check. Each check removed on its own (12 mutants) fails the item's
-  tests, and the tests that fail plant or spell a push real git sends past the check (How this
-  fails 1 to 3). The cap leaves 8 lines for push-refspecs (budget 6) and gh-args (budget 5), 3 short
-  of their budgets, unless #1134 (a 3,400 line budget) merges. Overturned if the owner prefers
-  fewer checks to the budget: the config check (3 lines) is the cheapest to drop, since config
-  written before the call is a hole SECURITY.md already lists.
+- Runtime lines: after fix round 1, 3,004 at the head against 2,986 at main 3d2eb29, so +18,
+  against an estimate of +2 and a budget of +3. The cap is 3,400 since #1134. The budget did not
+  price the plain-call rule, the push URLs, the work-tree check, the git directory read or the
+  config check. Each check removed on its own (18 mutants) fails the item's tests, and the tests
+  that fail plant or spell a push real git sends past the check. A line that could go: none
+  without a check; the `TEMP` constant (1 line) could become an inline tuple if probes patched
+  `gettempdir` instead.
+- `TEMP` is `()` at import and reads `gettempdir()` and `/tmp` only for a scratch push (fix round
+  1, arch): no temporary file is made on every hook call, and a missing temporary folder raises
+  inside the guard, where the hook refuses a door-naming command.
 
 Rollback: revert the commit; no data or config migrates.

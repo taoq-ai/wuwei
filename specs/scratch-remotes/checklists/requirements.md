@@ -11,4 +11,6 @@
 - [x] Each check is held by a test (a mutant without it fails)
 - [x] Vendored copy rewritten; drift test passes
 - [x] Runtime over the item's budget is recorded under Assumptions with the numbers
+- [x] Fix round 1: a work tree outside the shell, a remote in global config, `--exec` and `--receive-pack` keep the door; `+` refspecs pass; the gates' probes report 0 holes at the head
+- [x] Fix round 1: the probe is committed (`specs/scratch-remotes/probe.py`) and design.md and doors.md name the exception
 - [x] No emojis, no em dashes
