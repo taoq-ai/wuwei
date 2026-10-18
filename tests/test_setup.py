@@ -193,6 +193,20 @@ def test_init_cloud_vendors_the_plugin_into_the_repository(tmp_path, monkeypatch
     assert 'WUWEI' in run({**env, 'CLAUDE_CODE_REMOTE': 'true'})
 
 
+COMMIT_TYPES = ('feat', 'fix', 'perf', 'revert', 'docs', 'refactor', 'test', 'build', 'ci', 'chore', 'style')
+
+
+def test_every_commit_type_on_main_has_a_visible_changelog_section():
+    """release-please hides docs, refactor, chore, test, ci, build and style by default, so a release
+    PR silently drops those commits from its notes. The owner wants every commit on main listed."""
+    config = json.loads((PLUGIN / 'release-please-config.json').read_text())
+    sections = {s['type']: s for s in config['packages']['.'].get('changelog-sections', [])}
+    for kind in COMMIT_TYPES:
+        assert kind in sections, f'{kind} has no changelog section: its commits vanish from the release notes'
+        assert not sections[kind].get('hidden'), f'{kind} is hidden from the release notes'
+        assert sections[kind].get('section'), kind
+
+
 def test_release_please_is_not_pinned_to_a_version_already_released():
     config = json.loads((PLUGIN / 'release-please-config.json').read_text())
     released = json.loads((PLUGIN / '.release-please-manifest.json').read_text())
