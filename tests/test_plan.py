@@ -169,11 +169,13 @@ def test_a_plan_pass_offers_each_goal_whose_date_passed_once(root, monkeypatch, 
     monkeypatch.chdir(root)
     day = lambda n: (ws.now() + datetime.timedelta(days=n)).date().isoformat()  # noqa: E731
     goals_md(root, {'G-1': day(-1), 'G-2': day(1), 'G-3': day(0), 'G-4': '', 'G-5': 'end of Q4', 'G-6': day(-9),
-                    'G-7': day(-1), 'Release': day(-1)})
+                    'G-7': day(-1), 'Release': day(-1), 'G-8': '1 October 2026', 'G-9': day(-3)})
     answer_goal(root, 'goal: G-6 met? 100 percent at 2026-10-01.', 'Yes')
     real = ws.now()
     monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(days=5))  # met early, before its date
     answer_goal(root, 'goal: G-7 met? shipped early.', 'Yes')
+    monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(days=3))  # a no on the goal's own date
+    answer_goal(root, 'goal: G-9 met? not yet.', 'No')
     monkeypatch.setattr(ws, 'now', lambda: real)
     out = plan_pass(capsys)
     assert out.count(f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'") == 1
@@ -188,7 +190,7 @@ def test_a_no_keeps_the_goal_quiet_until_its_date_moves(root, monkeypatch, capsy
     day = lambda n: (ws.now() + datetime.timedelta(days=n)).date().isoformat()  # noqa: E731
     goals_md(root, {'G-2': day(-1)})
     out = answer_goal(root, 'goal: G-2 met? 80 percent against 100.', 'No, keep it open')
-    assert 'G-2' in out['hookSpecificOutput']['additionalContext']
+    assert 'goal G-2 recorded as open' in out['hookSpecificOutput']['additionalContext']
     assert [r['data']['approved'] for r in ws.rows(root, 'ruling')] == [False]
     assert 'goal G-2' not in plan_pass(capsys)
     assert 'goal G-2' not in plan_pass(capsys)
@@ -198,5 +200,7 @@ def test_a_no_keeps_the_goal_quiet_until_its_date_moves(root, monkeypatch, capsy
     monkeypatch.setattr(ws, 'now', lambda: real)
     goals_md(root, {'G-2': day(-1), 'G-3': day(-6)})
     assert 'goal G-3' not in plan_pass(capsys)
-    goals_md(root, {'G-2': day(-1), 'G-3': day(-2)})  # the owner moved the date; it passed after the no
+    goals_md(root, {'G-2': day(-1), 'G-3': day(-5)})  # moved to the day of the no: still held
+    assert 'goal G-3' not in plan_pass(capsys)
+    goals_md(root, {'G-2': day(-1), 'G-3': day(-2)})  # the owner moved the date past the day of the no
     assert f"goal G-3 dated {day(-2)}: ask the owner 'goal: G-3 met? <evidence>'" in plan_pass(capsys)
