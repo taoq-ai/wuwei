@@ -30,7 +30,7 @@ the work was done, only whether its evidence exists.
 6. The harness owns permissions; WUWEI adds deny and ask rules and checks what a static rule
    cannot: content, evidence and completion.
 7. Be water: read each repository's own process and fill only the gaps.
-8. Configuration holds facts, not behaviour: five keys.
+8. Configuration holds facts, not behaviour: six keys.
 
 ## 3. The team
 
@@ -209,8 +209,9 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 
 ## 11. Configuration and budgets
 
-Five keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`. Runtime at most 3,000
-lines of stdlib Python (a test holds it). A change that breaks a budget deletes something first.
+Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
+most 3,400 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 `hooks/hooks.json`, with the same hook events and outputs). The hook entry maps Codex's tool shapes
