@@ -251,6 +251,10 @@
     {"command": "git --no-pager push origin main", "source": "item git-globals fix round 1 at 6f40026 (quality: a lone valueless option before a push to main)", "verdict": "push"},
     {"command": "PUSHVAL=push git --config-env=alias.p=PUSHVAL -p p origin main", "source": "item git-globals fix round 1 at 6f40026 (security: a one-word steering option, then a known one)", "verdict": "refusal"},
     {"command": "git --no-lazy-fetch -c alias.p=push p origin main", "source": "item git-globals fix round 1 at 6f40026 (arch: an option newer git takes, then an alias)", "verdict": "refusal"},
-    {"command": "git -c remote.origin.url=x fetch", "source": "item git-globals fix round 1 at 6f40026 (arch: push routing config with no push passes)", "verdict": "pass"}
+    {"command": "git -c remote.origin.url=x fetch", "source": "item git-globals fix round 1 at 6f40026 (arch: push routing config with no push passes)", "verdict": "pass"},
+    {"command": "git push ../r.git main", "source": "item scratch-remotes acceptance 1 (the corpus cwd /repo lies in no scratch folder, so the door holds)", "verdict": "push"},
+    {"command": "git push file:///repo/.git main", "source": "item scratch-remotes acceptance 2 (a local path outside any scratch folder)", "verdict": "push"},
+    {"command": "cd ../g && git push origin main", "source": "item scratch-remotes (a cd before the push: the scratch rule reads one plain git call only)", "verdict": "push"},
+    {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"}
   ]
 }

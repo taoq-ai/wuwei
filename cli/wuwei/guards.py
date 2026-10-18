@@ -4,11 +4,12 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
-from os.path import join, normpath
+from os.path import join, normpath, realpath
 from pathlib import Path
 import re
 import shlex
 import subprocess
+from tempfile import gettempdir
 from urllib.parse import unquote
 
 from wuwei import evidence, gh, ws
@@ -48,6 +49,7 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
+TEMP = (gettempdir(), '/tmp')  # a session's scratch folder and a fresh temporary folder lie below one: their local remotes take any push
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
                       r'((no-)?literal|(no)?glob|icase)-pathspecs|no-optional-locks|(exec|html|man|info)-path|help|version|(git-dir|work-tree|namespace|'
@@ -159,6 +161,20 @@ def git_push(root, args, cwd):
     if hit := [t for t in targets if t in protected]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
+
+
+def scratch(cwd, opts, args, command):  # one plain git call pushing to git directories below TEMP: not the working one nor one holding .wuwei
+    if not (args and args[0][:1] != '-' and re.fullmatch(r'[ \t]*git([ \t]+[\w./=@:-]+)+[ \t]*', command)):  # the remote first; no cd, wrapper, $ or ~
+        return False
+    top, own = (_git(cwd, *opts, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir') + '\n').split('\n')[:2]
+    urls = [u for u in _git(cwd, *opts, 'remote', 'get-url', '--push', '--all', args[0]).split('\n') if u] or args[:1]  # a remote's push urls
+    moved = [e.split('\n', 1) for e in _git(cwd, *opts, 'config', '-z', '--get-regexp', r'^url\..*insteadof$|^remote\..*\.(vcs|receivepack)$')
+             .split('\0') if '\n' in e]  # config that sends a push elsewhere: a rewrite of a typed path, a remote helper or receive-pack
+    homes = [_git(top, '--git-dir=' + join(top, m[2]), 'rev-parse', '--path-format=absolute', '--git-common-dir') if top and (  # from the top,
+        m := re.fullmatch(r'(file://(?=/))?([\w./-]+)', u)) and not Path(top, m[2], '.git').exists() else '' for u in urls]  # as git enters it
+    return not any(k[:4] != 'url.' or any(u.startswith(v) for u in urls) for k, v in moved) and all(
+        h and own and (c := Path(realpath(h))) != Path(realpath(own)) and any(c.is_relative_to(realpath(t)) for t in TEMP)
+        and not any((p / ws.DIR).exists() for p in (c, *c.parents)) for h in homes)
 
 
 def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
@@ -345,7 +361,7 @@ def bash(root, command, cwd, session):
                     n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
                     not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
                 return deny(LEDGER_DENIED)
-            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)) and not scratch(cwd, rest[:i], rest[i + 1:], command):
                 return found
         elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
             return found

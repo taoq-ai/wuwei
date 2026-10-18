@@ -60,6 +60,21 @@ because it decides where the push goes. One that sets an alias or an include (`i
 `includeIf.*`) is refused whatever the subcommand and whatever option comes first, because an alias
 runs a command the guard never reads. Set either with `git config` before the call.
 
+The push door passes any push, force and delete included, to a git directory in a scratch folder,
+so real-git evidence needs no route around it. The command must be one plain git call: `git`, its
+options, `push`, then the remote as the first word, with every word plain (letters, digits and
+`./=@:-`). Each URL git pushes to (`git remote get-url --push --all` for a remote name, so a
+`pushurl` or `pushInsteadOf` counts) must be a path or a `file:///` URL. A relative path is read
+from the top of the worktree, as git reads it, and git's own options (`-C`, `--git-dir`,
+`--work-tree`) are passed to the guard's git calls. The path must be a git directory (bare, or a
+`.git` path) with no `.git` entry inside it. Its common directory, symlinks resolved, must lie
+below `tempfile.gettempdir()` or `/tmp`. It must not be the common directory of the repository git
+runs in, and neither it nor any folder above it may hold `.wuwei`. Config that sends the push
+elsewhere keeps the door: a `url.<base>.insteadOf` or `pushInsteadOf` whose value starts a push
+URL, and any `remote.<name>.vcs` or `remote.<name>.receivepack`. So do a `cd`, `pushd`, wrapper,
+subshell, env assignment, `~`, `$`, quote or second command, an option before the remote, a `%`
+escape or a host in a `file://` URL, a worktree or non-bare path, and a network URL.
+
 Known shapes they do not read on one line, reported and not yet fixed:
 
 - `eval`, `source` or `.` on `/dev/stdin` or `<(...)`, and a variable as the program name.
@@ -81,6 +96,9 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and git config
   set before the call (`git config alias.p push`, `git config remote.origin.push HEAD:main`, then
   `git p` or `git push`), or passed through `GIT_CONFIG_*` environment variables.
+- A scratch push that git sends elsewhere through state the guard does not read: a `.git` entry
+  another process plants inside the remote between the guard's read and the push (git enters
+  `<path>/.git` first), or an exec path or receive hook that runs another push.
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 
