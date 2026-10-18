@@ -94,7 +94,7 @@ def advise(root, data):
                                    (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed):
         return None
     return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
-                   f"brief (asked: {model} {effort}" + ''.join(f'; {s} {when}' for s, when in allowed[1:]) + ').' + (
+                   f"brief (asked: {model} {effort}" + ''.join(f'; the row also allows {s} {when}' for s, when in allowed[1:]) + ').' + (
                        " Haiku 5.5 never runs a gate on risky, owner or contract paths, and a reason does not cover that: it is "
                        "an exception: for the owner, or the owner's models row." if floor else ''))
 
@@ -151,10 +151,10 @@ def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
     _, tokens, ended = transcript(payload)
+    effort = payload['effort'] if isinstance(payload.get('effort'), dict) else {}  # effort.level: the level in effect at the stop
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
-                                     'session': payload.get('session_id'),  # effort: the level in effect the stop's input names
-                                     'effort': str(payload['effort'].get('level') or 'unmeasured') if isinstance(payload.get('effort'), dict) else 'unmeasured'})
+                                     'session': payload.get('session_id'), 'effort': str(effort.get('level') or 'unmeasured')})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
             return None

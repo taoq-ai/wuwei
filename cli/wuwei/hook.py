@@ -94,7 +94,7 @@ def advise(root, data):
                                    (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed):
         return None
     return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
-                   f"brief (asked: {model} {effort}" + ''.join(f'; {s} {when}' for s, when in allowed[1:]) + ').' + (
+                   f"brief (asked: {model} {effort}" + ''.join(f'; the row also allows {s} {when}' for s, when in allowed[1:]) + ').' + (
                        " Haiku 5.5 never runs a gate on risky, owner or contract paths, and a reason does not cover that: it is "
                        "an exception: for the owner, or the owner's models row." if floor else ''))
 

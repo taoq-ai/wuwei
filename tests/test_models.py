@@ -108,7 +108,7 @@ def test_a_launch_outside_the_table_is_advised(root, role, tier, model, effort, 
 
 def test_the_advice_names_the_paths_setting_too(root):
     plan_item(root, 'standard')
-    assert 'Opus 5.5 high on risky, owner or contract paths' in advice(launch(root, 'builder', 'sonnet', 'low'))
+    assert '(asked: sonnet low; the row also allows Opus 5.5 high on risky, owner or contract paths).' in advice(launch(root, 'builder', 'sonnet', 'low'))
 
 
 def test_the_briefs_model_line_gives_the_effort_when_the_call_has_none(root):

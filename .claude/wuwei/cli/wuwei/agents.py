@@ -14,8 +14,7 @@ DESCRIPTIONS = {
     'sentinel-goal': 'Independent WUWEI goal gate for one item at one head.',
 }
 AUTHORING = {'lead', 'builder', 'shepherd', 'steward'}
-# The planner's table (charters/planner.md, "Model and effort"): each role's default (''), its setting at a tier, and
-# its setting on risky, owner or contract paths or for a logic conflict. The hook advises from it and never refuses.
+# charters/planner.md "Model and effort": per role the default (''), the setting at a tier, on those paths, or for a conflict.
 PATHS, CONFLICT = 'on risky, owner or contract paths', 'for a conflict where both sides changed logic'
 TABLE = {'lead': {'': 'Opus 5.5 xhigh'}, 'sentinel-arch': {'': 'Opus 5.5 high'}, 'sentinel-goal': {'': 'Sonnet 5.5 high'},
          'steward': {'': 'Opus 5.5 high'}, 'shepherd': {'': 'Sonnet 5.5 medium', CONFLICT: 'Opus 5.5 high'},

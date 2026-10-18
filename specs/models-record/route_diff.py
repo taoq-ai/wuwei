@@ -6,8 +6,10 @@ code host stubbed as tests/test_guards.py stubs it (repository o/r, branch i-1-c
 gap, PR 7 a draft). It prints one JSON object: the corpus sha256 and, per case, the hook's output and the
 ledger rows it wrote (kind and sorted data keys).
 
-Run it once per tree, with the same corpus for both, and diff the two outputs:
-    python3 -I specs/models-record/route_diff.py <tree> <corpus dir> > <out>.json
+Run it once per tree, with the same corpus for both, under a Python that has pytest (conftest imports it),
+then compare the two outputs:
+    python -I specs/models-record/route_diff.py <tree> <corpus dir> > <out>.json
+    python -I specs/models-record/route_diff.py compare <main>.json <head>.json
 """
 
 import hashlib
@@ -16,6 +18,21 @@ import sys
 import tempfile
 from pathlib import Path
 
+if sys.argv[1] == 'compare':
+    main, head = (json.loads(Path(name).read_text(encoding='utf-8')) for name in sys.argv[2:4])
+    moved = sorted(key for key in main['cases'] if main['cases'][key] != head['cases'].get(key))
+    print(f"corpus sha256 {main['corpus_sha256']} (main) {head['corpus_sha256']} (head); {main['routes']} routes; "
+          f"{len(main['cases'])} cases; {len(moved)} moved")
+    for kind in ('bash', 'payload', 'agent'):
+        print(f"{kind}: {sum(1 for key in main['cases'] if key.startswith(kind + ' '))} cases, "
+              f"{sum(1 for key in moved if key.startswith(kind + ' '))} moved")
+    decisions = [key for key in head['cases'] if key.startswith('agent ') and 'permissionDecision' in json.dumps(head['cases'][key])]
+    print(f"agent launches given a permission decision or updatedInput at the head: "
+          f"{len(decisions) + sum(1 for c in head['cases'].values() if 'updatedInput' in json.dumps(c))}")
+    for key in moved:
+        if not key.startswith('agent '):
+            print(f"- {key}\n  main: {json.dumps(main['cases'][key])}\n  head: {json.dumps(head['cases'][key])}")
+    sys.exit(0)
 tree, corpus = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
 sys.path[:0] = [str(tree / 'cli'), str(tree / 'tests')]
 
