@@ -8,5 +8,6 @@
 - [x] Runtime grows by 2 lines or fewer
 - [x] .claude/ copy matches cli/wuwei/
 - [x] Route corpus read at main and at the head, sha256 recorded
+- [x] Gate round 1 findings answered: prefix refs, newline tails, cost, colon, invisible gap
 - [x] Rollback line in the spec
 - [x] No emojis, no em dashes

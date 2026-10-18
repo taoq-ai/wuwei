@@ -24,14 +24,15 @@ efcd9e7; this item may add 2.
 The `exception:` branch becomes, in order:
 
 - `(?i:exception:)` at the start, with no leading whitespace, as the hook's `startswith` reads it;
-- `[\s\S]*?` prose before the refs, as before;
-- one `owner/repo#n at <sha7>` ref, then any ` and [owner/repo]#m at <sha7>` refs;
-- `\s*:\s*`, then a lookahead that no `#n at <sha>` follows, then one character that is not
-  whitespace, `.`, `?` or `:`.
+- `[^#]*?` prose before the refs, with no `#` in it (gate round 1);
+- one `owner/repo#n at <sha7>` ref whose repo starts at a word start, then any
+  ` and [owner/repo]#m at <sha7>` refs;
+- ` *: *+` (spaces only, possessive after the colon), then a lookahead that no `#n at <sha>` follows,
+  then a letter or digit (`[^\W_]`).
 
 `owner review:` and `breaking:` keep `\s*<class>\s*owner/repo#n at <sha7>`. The deny text is
 unchanged; it already names the shape.
 
 ## Lines
 
-guards.py grows by 1 line: runtime 2,976 to 2,977.
+guards.py grows by 1 line: runtime 2,976 to 2,977. Gate round 1 adds no line.
