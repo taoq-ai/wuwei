@@ -10,7 +10,7 @@ and acceptance and the constitution.
 | A1 | Coverage | MEDIUM (closed) | spec.md Clarifications | The promise keeps "the board"; goals and standards were also inlined and are now left out | Resolved: the run skill reads both at its step 2, the pointer names their folder; recorded as an assumption |
 | A2 | Inconsistency | LOW | spec.md How this fails 2 | The final cut can drop the left-out count when the board ends in a line that is not an item | Recorded as residual risk; the cap holds, and a test holds it with 30 andon lines |
 | A3 | Ambiguity | LOW | spec.md Clarifications | "Lowest items" first holds per repository only; the board lists repositories in name order | Resolved: spec says which lines go; a board-wide score order would change board.py, outside the item's files |
-| A4 | Coverage | LOW | plan.md Measurements | The 200-item main figure is unmeasured | The head figure is measured; main's grows with the board and is over the cap at 0 items already |
+| A4 | Coverage | LOW | plan.md Measurements | Measured with stub host data, not a live board | The gap lines of a live board are longer; the trim reads the real lengths, so only the shown count changes |
 | A5 | Inconsistency | LOW | docs | design.md and hooks.md listed goals and standards as inlined | Resolved: both rows and the first-day line updated |
 
 No open finding above LOW. A1 was MEDIUM and is closed in the spec.

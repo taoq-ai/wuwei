@@ -11,14 +11,14 @@
 ## Technical Context
 
 Python 3.11 stdlib. Tests in tests/test_charters.py (the charter fitness tests). Runtime budget
-3,400 lines; main is at 2,986, and this item may add 6 (estimate 3).
+3,400 lines; main is at 2,992, and this item may add 6 (estimate 3).
 
 ## Constitution Check
 
 - I. Stdlib only: yes, `re` and `pathlib`, already imported.
 - III. An auditor: no new door; only the orientation text changes.
 - V. Test first: the three new tests ran red on a copy of main (16,092, 28,638 and 29,162 characters).
-- VI. Budgets: no config key; runtime at 2,989 (+3).
+- VI. Budgets: no config key; runtime at 2,995 (+3).
 
 ## Design
 
@@ -40,25 +40,25 @@ Python 3.11 stdlib. Tests in tests/test_charters.py (the charter fitness tests).
 
 ## Lines
 
-hook.py +3 (18 lines for `session_start` with its docstring, from 14 plus the removed
-goals and standards loop): runtime 2,986 to 2,989.
+hook.py +3 (`session_start` is 17 lines with its docstring, from 14; the goals and standards
+loop is gone): runtime 2,992 to 2,995, read with `cat cli/wuwei/*.py | wc -l` on each tree.
 
 ## Measurements
 
-Measured with `python -I measure.py <tree> <items> [<goals and standards chars>]` (a scratch
-script that runs `hook.handle(root, 'SessionStart', ...)` with the code host stubbed and prints the
-length of `additionalContext`), from the scratch folder, on a `git archive` copy of main and on the
-head worktree:
+Measured with `TMPDIR=<scratch>/tmp python -I specs/session-context-cap/measure.py <tree> <items>
+[<goals and standards chars>]`. It runs `hook.handle(root, 'SessionStart', ...)` with the code host
+stubbed and prints the length of `additionalContext`. Trees: a `git archive` copy of main at
+b28a3dc and the head worktree.
 
 | Workspace | main | head | items shown, left out (head) |
 | --- | --- | --- | --- |
 | empty | 16,092 | 5,298 | none |
 | 40 items | 22,610 | 9,915 | 28, 12 |
 | 40 items, 3,000-character goals and standards | 28,638 | 9,915 | 28, 12 |
-| 200 items, 3,000-character goals and standards | unmeasured | 9,916 | 28, 172 |
+| 200 items, 3,000-character goals and standards | 54,918 | 9,916 | 28, 172 |
 
-The figures include the scratch folder's tree path (about 110 characters, four times). An
-installed plugin path is a similar length.
+The figures include the scratch tree and workspace paths (about 110 characters each, five
+times). An installed plugin path is a similar length; a shorter one leaves the board more room.
 
 ## Guard testing (AGENTS.md)
 

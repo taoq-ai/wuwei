@@ -13,7 +13,7 @@
 - [x] T006 The board drops its last item lines until the whole fits, and counts them (cli/wuwei/hook.py)
 - [x] T007 The final cut at 10,000 (cli/wuwei/hook.py)
 - [x] T008 Docs: the SessionStart rows in docs/design.md and docs/site/concepts/hooks.md, the first-day line in docs/site/getting-started.md
-- [x] T009 Run the full suite green, runtime at 2,989
+- [x] T009 Run the full suite green, runtime at 2,995
 
 ## Phase 3: Checks
 
