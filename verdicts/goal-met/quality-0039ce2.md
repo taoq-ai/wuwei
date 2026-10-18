@@ -1,0 +1,29 @@
+Verdict: PASS
+Gate: quality
+Item: goal-met
+PR: taoq-ai/wuwei#1145
+Head: 0039ce218d7c4fccf73850e5602eec6eda001012
+Confidence: high
+
+## Findings
+- [low] cli/wuwei/view.py:43 blocks: no. Untested case normalisation (mutation-survivor). Two mutants survive, each confirmed again in a fresh copy: `ruled.get(name.upper(), ...)` changed to `ruled.get(name, ...)`, and `re.I` dropped from the name fullmatch. No test uses a lowercase heading (`## g-2`). Under the first mutant, a lowercase goal the owner already ruled on is offered again on every pass; under the second it is never offered. The head handles both correctly: my agreement probe ran `g-2` through pass, hook and pass with 0 holes. Missing test: one lowercase heading in `test_a_plan_pass_offers_each_goal_whose_date_passed_once`, for example a `g-10` ruled met.
+- [low] cli/wuwei/report.py:29 blocks: no. Mutant `view.goal_status(root)[1][:1]` (the report lists only the first met goal) survives, because `test_the_report_lists_the_goals_the_owner_ruled_met` ends with exactly one met goal (G-2). Missing test: a second yes so the expected line is `Met goals: G-2, G-5.`.
+- [low] cli/wuwei/view.py:43 blocks: no. Readability: the walrus inside the comprehension, with a `(False, '')` default tuple indexed `[0]` and `[1]`, packs three rules into one 150-character line: the met check, the hold after a no, and the date having passed. A small loop with named `met, ruled_on` would read better. This is not a defect: a 90-case date grid matches the promise.
+- [low] blocks: no. A `Date:` that is not ISO (`1 October 2026`, `2026/10/01`, `2026-10-1`, `20261001`) is never offered, and nothing says so. The builder's pre-mortem item 3 already names this limit. `report.day(root, date)` for a past day prints today's met goals, not the goals met as of that day. "A met goal gets no new candidates" is a rule in the lead charter only, and `plan add` does not enforce it, as the promise states.
+
+## Probes
+- Suite at head (git archive copy): `pytest -q` gave 1780 passed, 2 skipped. Both skips are tests/test_release.py:36/57 (ssh-keygen absent), unrelated to the change. Main (3d2eb29) gave 1774 passed, 2 skipped, so the diff adds 6 tests.
+- Test-first check: I put the head's tests on main's runtime (`pytest -q tests/test_plan.py tests/test_hook.py tests/test_report.py tests/test_codex.py`). All 6 new tests failed (6 failed, 177 passed). The tests reach the real consumers: `cli.main(['plan','pass'])` stdout, `hook.handle` PostToolUse for AskUserQuestion and for Codex request_user_input, and `report.day` text, with the rows read from the real ledger.
+- Mutants: 26 of my own, each in a fresh `git archive` copy, run against the four test files. 23 were killed. They cover the name-shape check, the ISO check, `<` vs `<=` on the day of a no, the hold after a no dropped, today counted as passed, the met check dropped, the first ruling counting instead of the latest, the met filter, the kind filter, the ts prefix, the empty-answer guard, `re.I`, the leading `\s*`, ` *` vs `\s*`, the dropped `\?`, `\d` vs `[0-9]`, match vs search, `.upper()` in the record, approved always true, the note always "met", the pass printing nothing, the printed shape, `or "none"`. 3 survived (Findings 1 and 2), and a second fresh-copy run confirmed all 3. All four survivors the builder reported at f4407fd are killed at this head.
+- Committed probe (`goal_met_probe`, through `specs/goal-met/differential.py`): head 20,736 generated, 0 refused by the guard, 810 recorded, 0 holes. Main 20,736 generated, 810 holes (nothing recorded). These match the PR's numbers.
+- Route-corpus differential (AGENTS.md): routes.json sha256 12725ace6adab6f965422e9a2a010d13b93e0897f177fd00bda53b080bfe1cb1 at main and at head. 251 routes went through guards.bash and the PreToolUse hook at both trees: 0 moved, 0 differ from the recorded verdict. guards.py is unchanged.
+- Agreement probe (mine): headings G-1, g-2, G-10, G-007 dated yesterday, each answered Yes and No (8 cases). I took the question `wuwei plan pass` prints, filled in the evidence, answered it through hook.handle, then ran the pass again. 0 holes: a Yes leaves the goal out of the next pass and puts it in the met list, and a No leaves it out of the next pass.
+- Date grid (mine): a ruling at days -4..0 (Yes, No or none) crossed with goal dates -4..+1, 90 cases. The expectation is that a goal is offered only when its date is before today, it has no Yes, and any No came before its date. 0 holes, so a no before, on or after the goal's date behaves as the promise says. 8 Yes/No sequences of length 3: the met status and `Met goals:` follow the latest ruling, 0 holes.
+- Non-ISO dates: `2026-10-1`, `1 October 2026`, `2026/10/01`, `2026-10-01T00:00`, `20261001`, `2026-13-45` and an empty date are not offered. `2026-10-01 ` (trailing space, stripped) and `0000-00-00` are offered, which is harmless.
+- Other ruling consumers (`grep -n "'ruling'" cli/wuwei/*.py`): evidence.py:345, 435 and 447 and report.py:128 select by kind breaking/exception, or by `pr` with no kind. A goal.met row has neither field, so they skip it.
+- Runtime lines (`wc -l cli/wuwei/*.py`): 2986 at main, 2999 at head, so +13, within the 13 budget and under the 3,400 cap. The vendored `.claude/wuwei/cli` matches cli/ (`diff -r`).
+- Simplicity: none. Each of the +13 lines carries part of the promise. The `G-[0-9]+` name filter in goal_status keeps the printed question inside the shape the hook parses, so it must stay.
+- Confidence high: the suite is green, every mutant on a guard is killed, and the probes, the agreement loop and the date grid are clean. The only survivors are case and cardinality cases that no current goals.md uses.
+
+## Residual risk
+A goal heading in lowercase, or two met goals in the report, works at this head but has no test, so a later edit could break it unnoticed. Goals with a `Date:` that is not ISO are skipped silently.
