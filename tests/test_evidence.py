@@ -550,12 +550,49 @@ def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
     (('requirements.txt',), 1, 'quality, security'),
     (('src/geometry/diameter.py',), 3, 'quality'),
     (('docs/auth.md',), 30, None),
-    (('docs/guide.md',), 30, None)])
+    (('docs/guide.md',), 30, None),
+    (('README.md', 'docs/site/index.md'), 150, None),
+    (('specs/004-voice/spec.md', 'specs/004-voice/plan.md'), 890, 'arch')])
 def test_the_diff_decides_which_gates_a_standard_item_needs(root, fake, files, lines, gates):
     standard(root)
     fake.prs['42'] = make_pr(files=files, lines=lines, body='WUWEI-Item: I-1\nNo test: config')
     found = [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if 'gate' in t]
     assert found == ([f'gates missing at head aaaaaaa: {gates}'] if gates else [])
+
+
+@pytest.mark.parametrize('tier,files,gates', [
+    ('standard', {'specs/004-voice/spec.md': 900, 'specs/004-voice/plan.md': 879, 'specs/001-x/spec.md': 1}, ('arch',)),
+    ('standard', {'README.md': 100, 'docs/site/index.md': 100, 'docs/site/concepts/evidence.md': 100}, ()),
+    ('standard', {'README.md': 5000, 'LICENSE': 300, 'docs/guide.md': 900}, ()),
+    ('standard', {'specs/004-voice/spec.md': 200}, ()),
+    ('standard', {'openspec/changes/x/proposal.md': 201}, ('arch',)),
+    ('standard', {'src/a.py': 150, 'specs/004-voice/spec.md': 51}, ('arch', 'quality')),
+    ('standard', {'src/a.py': 150, 'specs/004-voice/spec.md': 50}, ('quality',)),
+    ('standard', {'src/a.py': 150, 'README.md': 300, 'LICENSE': 300}, ('quality',)),
+    ('light', {'specs/001-x/contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'openspec/changes/x/specs/contracts/events.md': 3}, ('arch',)),
+    ('standard', {'specs/contracts/api.yaml': 3}, ('arch',)),
+    ('full', {'specs/001-x/contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'specs/001-x/spec.md': 3, 'docs/contracts/api.md': 3, 'specs/contracts.md': 3}, ()),
+])
+def test_the_wide_trigger_counts_code_and_spec_lines_and_a_spec_contract_takes_arch(root, tier, files, gates):
+    files = [{'path': path, 'additions': n, 'deletions': 0} for path, n in files.items()]
+    assert evidence.needed(root, tier, files) == gates
+
+
+def test_a_long_docs_delta_carries_the_passes_and_a_long_spec_delta_is_read_by_arch(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    for gate in ('arch', 'quality'):
+        attest(root, gate, OLD)
+    fake.deltas[(OLD, HEAD)] = [{'path': 'README.md', 'additions': 300, 'deletions': 0}]
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.deltas[(OLD, HEAD)] = [{'path': 'specs/004-voice/spec.md', 'additions': 200, 'deletions': 0}]
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    for path, n in (('specs/004-voice/spec.md', 201), ('specs/004-voice/contracts/api.yaml', 2)):
+        fake.deltas[(OLD, HEAD)] = [{'path': path, 'additions': n, 'deletions': 0}]
+        assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by arch)']
 
 
 def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(root, fake):

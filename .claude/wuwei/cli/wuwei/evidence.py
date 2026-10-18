@@ -37,7 +37,8 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
                      r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
-CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
+CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$'
+                      r'|^(specs|openspec)/(.+/)?contracts/', re.I)  # a contract file, or a spec's contract
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
 RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
@@ -249,14 +250,15 @@ def verdicts(root, item_id, ref=''):
 
 def needed(root, tier, files):
     """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
-    security comes for risky or owner paths, arch for a contract or a wide change; full takes all four."""
+    security comes for risky or owner paths, arch for a contract or a wide change of code and specs; full all four."""
     code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
             or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
+    wide = [f for f in files if f['path'] in code or f['path'].startswith(('specs/', 'openspec/'))]  # never prose
     risky = owned(root, code) or any(RISKY.search(p) for p in code)
     if tier == 'full' and code:
         return REQUIRED['full']
-    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(p) for p in code)
-             or tier == 'standard' and (lines(files) > WIDE or len(code) > 10)}
+    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in wide)
+             or tier == 'standard' and (lines(wide) > WIDE or len(code) > 10)}
     return tuple(g for g in REQUIRED['standard'] if wants[g])
 
 
