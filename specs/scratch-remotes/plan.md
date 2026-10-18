@@ -48,7 +48,7 @@
 
 - Stdlib only (`tempfile`, `os.path.realpath`): pass.
 - Test first: the first test set ran 13 red on efcd9e7 before the change; the final set runs 14
-  red there (12 passes, the worktree pass, the moved `TEMP`) and 46 green (refusals main already
-  gives), and all 60 green at the head.
+  red there (12 passes, the worktree pass, the moved `TEMP`) and 45 green (refusals main already
+  gives), and all 59 green at the head.
 - Simplest: one helper, no new module, git itself reads urls, tops and common directories.
 - Runtime: 2,992, over the item's budget by 13 (spec Assumptions).
