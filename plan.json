@@ -250,6 +250,31 @@
    "approved": true
   },
   {
+   "id": "verdict-at-head",
+   "title": "fix(evidence): gate_gaps reads a verdict at the PR head above one attested later at an older or unrelated head",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "Gates on #1135 at 21d9ce3: gate_gaps on main takes the last verdict per gate in ledger order (evidence.py:296), so an older-head PASS attested after a FIX at the PR head clears the gate; the security gate showed the same class (older head, non-ancestor head, another PR) for breaking_gaps, which breaking-latest now fixes with an ancestry walk",
+   "promise": "gate_gaps reads each gate's verdicts the way breaking-latest's fixed breaking_gaps does: a verdict counts only at an ancestor of the PR head and on this PR, and a later verdict at the same or an older head never clears a FIX at a newer head. Reuses the ancestry walk breaking-latest adds. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs/design.md:108. Runtime lines: estimate +3, budget 5. Order: after breaking-latest merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given an arch FIX at the PR head and an arch PASS at an older ancestor head attested after it, when evidence.gaps reads the PR, then arch is still owed at the head",
+    "given a PASS whose head is not an ancestor of the PR head, or one recorded for another PR of the same item, when evidence.gaps reads the PR, then that PASS does not count",
+    "given a FIX at the PR head and a later PASS at the same head, when evidence.gaps reads the PR, then the gate is still owed"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "gh-args",
    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
    "goal": "G-2",
@@ -423,31 +448,6 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
-  },
-  {
-   "id": "verdict-at-head",
-   "title": "fix(evidence): a verdict at the PR head outranks one attested later at an older head, in gate_gaps and breaking_gaps",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 8.0,
-   "why": "arch gate on #1135 at 21d9ce3 probed it: an arch Breaking: yes at the head followed by a later-attested arch PASS Breaking: no at an older ancestor head shows no gap; gate_gaps on main has the same ledger-order reading (evidence.py:296), so an older-head PASS attested later clears a FIX at the head",
-   "promise": "gate_gaps and breaking_gaps rank verdicts at the PR head above verdicts at older heads, whatever their ledger order: for each gate, the verdicts whose head the PR head starts with are read first, and older-head verdicts only when none is at the head. Fixes spec.md:54 of breaking-latest, which claims a bound that does not hold. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs/design.md:108. Runtime lines: estimate +2, budget 4. Order: after breaking-latest merges. Rollback: revert the commit. Assumptions: a verdict at the current head is the more relevant one; overturned if the owner wants ledger order to rule.",
-   "acceptance": [
-    "given an arch verdict at the PR head saying Breaking: yes (FIX or PASS) and a later-attested arch PASS at an older head saying Breaking: no, when evidence.gaps reads the PR, then the breaking gap holds",
-    "given an arch FIX at the PR head and a later-attested arch PASS at an older head, when gate_gaps reads the PR, then arch is still owed at the head",
-    "given only older-head verdicts, when evidence reads the PR, then today's ledger-order reading is unchanged"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": false
   },
   {
    "id": "models-record",
