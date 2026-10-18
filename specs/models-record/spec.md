@@ -19,13 +19,13 @@ it never denies and never sends `updatedInput`.
    change failure budget says so. When the launch departs from every setting the table allows
    there, and the brief has no `Model reason:` line, it returns `additionalContext`:
    "table says <model> <effort> for <role> at <tier>; record a 'Model reason:' line in the brief".
-   It never returns a permission decision and never `updatedInput`. A Haiku gate is advised even
-   with a reason line, since the floor is not a departure a reason can cover; an owner `models`
-   row that sets Haiku is the owner's exception and gets no advice.
+   It never returns a permission decision and never `updatedInput`. A launch that puts Haiku on a
+   gate, or a `models` row that does, is advised even with a reason line or a fit, since the floor
+   is not a departure a reason can cover and any seat can write a `models` row: only the owner's
+   `exception:` answer breaks it.
 3. The PostToolUse hook records on `seat.started` the model that ran (`resolvedModel`), the model
    and effort asked for (`unrecorded` when absent), the brief's `Model reason:` line and the item.
-   `seat.stopped` records the `effort.level` the SubagentStop input carries (`unmeasured` when
-   absent). A gate's `attest` row copies `model` and `effort` from the `seat.started` row with the
+   A gate's `attest` row copies `model` and `effort` from the `seat.started` row with the
    same agent id, and records how many blocking findings the verdict holds.
 4. `.wuwei/config.toml` takes a sixth key, `models`: a table of `"<role>[ <tier>]" =
    "<model> <effort>"`. A row for the role and tier, else for the role, replaces the table's
@@ -75,11 +75,12 @@ The acceptance scenarios, restated:
 3. A record that misleads. A foreground launch's PostToolUse fires after the seat ended, so its
    `attest` row is written before `seat.started` and copies `unrecorded`; the report joins by agent
    id and still groups it. `effort.level` at SubagentStop may be the level of the session that
-   fired the hook rather than the seat's: it is recorded on `seat.stopped` only, and the report
-   groups by the effort asked for.
-4. An older plugin reading a new config. `write_config` now writes `models = {}`; WUWEI before
-   this item lists `models` as a retired key and asks for `wuwei init`. Rollback reverts the
-   commit; the extra key is then the only trace.
+   fired the hook rather than the seat's, so it is not recorded, and the report groups by the
+   effort asked for.
+4. An older plugin reading a new config. `write_config` writes `models` only when it holds rows;
+   WUWEI before this item lists `models` as a retired key, and its `wuwei init` rewrites the
+   config without it, so the owner's rows are lost there (the old file stays as
+   `config.0x.toml`).
 
 ## Clarifications
 
@@ -118,12 +119,13 @@ paths.
 ### US2: the hook advises on a departure and stays quiet on a fit (P1)
 
 Acceptance 2, 3 and 5 (first half). Also: a reason line silences the advice except for a Haiku
-gate; an owner row for Haiku silences it; a raised tier is read from the cached budget; a Codex
+gate; a `models` row for Haiku does not silence it either; a raised tier is read from the cached budget; a Codex
 spawn and a non-WUWEI role get none; the environment variables turn each half off.
 
 ### US3: what ran is recorded (P1)
 
-Acceptance 4, a Codex spawn recorded as `unmeasured`, and `seat.stopped` carrying `effort.level`.
+Acceptance 4, the attest joined to its own launch by agent id, and a Codex spawn recorded as
+`unmeasured`.
 
 ### US4: the owner's rows and the sixth key (P1)
 
@@ -137,14 +139,13 @@ Acceptance 5 (second half) and 6.
 
 - FR-001: `agents.TABLE` replaces `MODELS`; `render` writes `model:` and `effort:` from it.
 - FR-002: `hook.pre_tool` returns advice as `additionalContext` only, on an Agent launch outside
-  the allowed settings with no reason line, or a Haiku gate.
-- FR-003: `seat.started` holds `model`, `asked`, `effort`, `reason`, `item`; `seat.stopped` holds
-  `effort`; `attest` holds `model`, `effort`, `blocking`.
+  the allowed settings with no reason line, or a Haiku gate by the call or a `models` row.
+- FR-003: `seat.started` holds `model`, `asked`, `effort`, `reason`, `item`; `attest` holds `model`, `effort`, `blocking`.
 - FR-004: `ws.DEFAULTS` holds `models`; `config`, `write_config`, `set_config` and `retired`
   handle it.
 - FR-005: `setup.doctor` names the two environment variables when set.
 - FR-006: `report.learning` prints the seat x model x effort lines and the unrecorded count.
-- FR-007: runtime stays at 3,400 or fewer. The item's budget was 40 lines; it lands at 60 (plan.md,
+- FR-007: runtime stays at 3,400 or fewer. The item's budget was 40 lines; it lands at 59 (plan.md,
   Lines), recorded for the planner.
 
 ## Assumptions
@@ -162,4 +163,5 @@ Acceptance 5 (second half) and 6.
 ## Rollback
 
 Revert the commit, rebuild `agents/` and re-vendor `.claude/`. Rows already written keep fields
-readers ignore; a `models = {}` line in a config is then listed as retired.
+readers ignore. A config with `models` rows is then listed as retired, and that version's
+`wuwei init` drops the rows (the old file stays as `.wuwei/config.0x.toml`).
