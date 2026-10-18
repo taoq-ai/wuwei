@@ -608,7 +608,8 @@ def test_the_fail_closed_check_reads_the_doors_from_the_guards_table(monkeypatch
 
 
 PAYLOADS = Path(__file__).resolve().parent / 'fixtures' / 'payloads'
-STARTED = {'claude-agent-post-accepted.json': ['a3c1962f47bd20e43'], 'codex-spawn-agent-post.json': ['019a7c3e-5b1d']}
+STARTED = {'claude-agent-post-accepted.json': ['a3c1962f47bd20e43'], 'claude-agent-post-model-effort.json': ['a5d4687477f9bdfaa'],
+           'codex-spawn-agent-post.json': ['019a7c3e-5b1d']}
 STOPPED = {'claude-subagent-stop.json': ['a0c989a635b251810']}
 QUIET = {'claude-agent-pre-accepted.json', 'claude-agent-pre-rejected.json', 'claude-agent-post-rejected.json',
          'claude-subagent-pre-tool.json'}
@@ -624,7 +625,7 @@ def test_every_fixture_payload_names_its_provenance():
         encoding='utf-8'), re.M))
     assert set(found) == {p.name for p in PAYLOADS.glob('*.json')}
     assert sorted(name for name, kind in found.items() if kind == 'transcript') == [
-        'claude-agent-post-accepted.json', 'claude-agent-pre-accepted.json']
+        'claude-agent-post-accepted.json', 'claude-agent-post-model-effort.json', 'claude-agent-pre-accepted.json']
 
 
 @pytest.mark.parametrize('name', sorted(set(STARTED) | set(STOPPED) | QUIET))

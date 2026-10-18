@@ -2,6 +2,8 @@
 name: sentinel-goal
 description: Independent WUWEI goal gate for one item at one head.
 tools: Read, Glob, Grep, Bash, Write
+model: claude-sonnet-5-5
+effort: high
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

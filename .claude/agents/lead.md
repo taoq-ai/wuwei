@@ -2,6 +2,8 @@
 name: lead
 description: Discovery, scope, tier and ranked candidates for a WUWEI plan pass.
 tools: Read, Glob, Grep, Bash, Write
+model: claude-opus-5-5
+effort: xhigh
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

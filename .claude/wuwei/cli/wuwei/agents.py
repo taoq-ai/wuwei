@@ -14,15 +14,22 @@ DESCRIPTIONS = {
     'sentinel-goal': 'Independent WUWEI goal gate for one item at one head.',
 }
 AUTHORING = {'lead', 'builder', 'shepherd', 'steward'}
-# One gate on a different model than the session's, so the reviews do not share every blind spot.
-MODELS = {'sentinel-quality': 'sonnet'}
+# The planner's table (charters/planner.md, "Model and effort"): each role's default (''), its setting at a tier, and
+# its setting on risky, owner or contract paths or for a logic conflict. The hook advises from it and never refuses.
+PATHS, CONFLICT = 'on risky, owner or contract paths', 'for a conflict where both sides changed logic'
+TABLE = {'lead': {'': 'Opus 5.5 xhigh'}, 'sentinel-arch': {'': 'Opus 5.5 high'}, 'sentinel-goal': {'': 'Sonnet 5.5 high'},
+         'steward': {'': 'Opus 5.5 high'}, 'shepherd': {'': 'Sonnet 5.5 medium', CONFLICT: 'Opus 5.5 high'},
+         'builder': {'': 'Opus 5.5 medium', 'light': 'Sonnet 5.5 medium', 'full': 'Opus 5.5 high', PATHS: 'Opus 5.5 high'},
+         'sentinel-security': {'': 'Opus 5.5 high', 'full': 'Opus 5.5 xhigh', PATHS: 'Opus 5.5 xhigh'},
+         'sentinel-quality': {'': 'Sonnet 5.5 high', 'full': 'Opus 5.5 high', PATHS: 'Opus 5.5 high'}}
 
 
 def render(plugin, role, tools):
     charters = Path(plugin) / 'charters'
     parts = ['_common.md'] + (['_common-authoring.md'] if role in AUTHORING else ['_gate.md']) + [f'{role}.md']
     body = '\n\n'.join((charters / part).read_text(encoding='utf-8').strip() for part in parts)
-    model = f'model: {MODELS[role]}\n' if role in MODELS else ''
+    name, effort = TABLE[role][''].rsplit(' ', 1)
+    model = f'model: claude-{name.lower().replace(" ", "-").replace(".", "-")}\neffort: {effort}\n'
     return (f'---\nname: {role}\ndescription: {DESCRIPTIONS[role]}\ntools: {", ".join(tools)}\n{model}---\n\n'
             f'<!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->\n\n{body}\n')
 

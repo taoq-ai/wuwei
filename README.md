@@ -98,7 +98,7 @@ Codex, cloud sessions and several repositories: see [getting started](https://ta
 | `report` | The day report; `--dora` for the DORA keys |
 | `close` | Checkpoint the day |
 | `andon` | Pull or clear the cord on one repository |
-| `init`, `doctor`, `config`, `verify`, `agents` | Set up, check, five config keys, the ledger chain, the role agents |
+| `init`, `doctor`, `config`, `verify`, `agents` | Set up, check, six config keys, the ledger chain, the role agents |
 
 ## Learn more
 

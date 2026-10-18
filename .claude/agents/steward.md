@@ -2,6 +2,8 @@
 name: steward
 description: Reads the WUWEI day at a close and writes the retro with the smallest rule changes.
 tools: Read, Glob, Grep, Bash, Write
+model: claude-opus-5-5
+effort: high
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

@@ -2,7 +2,8 @@
 name: sentinel-quality
 description: Independent WUWEI quality gate for one item at one head.
 tools: Read, Glob, Grep, Bash, Write
-model: sonnet
+model: claude-sonnet-5-5
+effort: high
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

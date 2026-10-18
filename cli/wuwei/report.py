@@ -87,7 +87,7 @@ def since_checkpoint(root, date):
 
 def learning(root):
     """What the shipped work teaches: escapes traced to their gates, gate yield, cost, autonomy, a sample."""
-    out, attests = ['', '## Learning'], ws.rows(root, 'attest')
+    out, attests, escaped = ['', '## Learning'], ws.rows(root, 'attest'), set()
     since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
     week = (ws.now() - datetime.timedelta(days=7)).isoformat()
     for repo in _repos(root):
@@ -105,8 +105,9 @@ def learning(root):
         for revert in (pr for pr in merged if pr['title'].startswith('Revert "')):
             if original := titles.get(revert['title'][8:].rstrip('"')):
                 ref = f'{repo}#{original["number"]}'
-                passed = [f'{r["data"]["gate"]} ({r["data"].get("confidence") or "?"})' for r in attests
-                          if r['data'].get('pr') == ref and r['data'].get('verdict') == 'PASS']
+                passing = [r['data'] for r in attests if r['data'].get('pr') == ref and r['data'].get('verdict') == 'PASS']
+                escaped.update(d['agent'] for d in passing if d.get('agent'))
+                passed = [f'{d["gate"]} ({d.get("confidence") or "?"})' for d in passing]
                 out.append(f'- escaped: {ref} reverted by #{revert["number"]}; it passed: {", ".join(passed) or "no gate"}')
         spent = evidence.budget(root, repo)
         if spent['cfr'] is not None:
@@ -124,6 +125,16 @@ def learning(root):
     for row in ws.rows(root, 'seat.stopped'):
         spent[row['data'].get('role')] += row['data'].get('tokens') or 0
     out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
+    started, key = [r['data'] for r in ws.rows(root, 'seat.started')], lambda d: ' '.join(str(d.get(k, 'unrecorded')) for k in ('role', 'model', 'effort'))
+    tokens = {r['data'].get('agent'): r['data'].get('tokens') or 0 for r in ws.rows(root, 'seat.stopped')}
+    for group in sorted({key(d) for d in started}):  # each seat by the model that ran and the effort asked for
+        seats = [d for d in started if key(d) == group]
+        ids, items, on_items = {d.get('agent') for d in seats}, {d['item'] for d in seats if d.get('item')}, sum(1 for d in seats if d.get('item'))
+        out.append(f'- seat {group}: {len(seats)} launches, {(on_items - len(items)) / len(items) if items else 0:.1f} fix rounds per item, '
+                   f'{sum(r["data"].get("blocking", int(r["data"].get("verdict") != "PASS")) for r in attests if r["data"].get("agent") in ids)} '
+                   f'blocking findings, {len(ids & escaped)} escapes, {sum(tokens.get(a, 0) for a in ids)} tokens')
+    if unrecorded := sum(1 for d in started if {'unrecorded', 'unmeasured'} & {d.get('model', 'unrecorded'), d.get('effort', 'unrecorded')}):
+        out.append(f'- model or effort unrecorded on {unrecorded} launches')
     out += [f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}' for d in (row['data'] for row in ws.rows(root, 'ruling'))
             if d.get('kind') == 'exception' and d.get('approved')]
     return out

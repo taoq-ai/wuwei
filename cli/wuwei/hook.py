@@ -4,12 +4,13 @@ lets the work go on and records why; a door call it fails on is refused."""
 import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
 import time
 
-from wuwei import board, evidence, guards, plan, sync, verdict, ws
+from wuwei import agents, board, evidence, guards, plan, sync, verdict, ws
 
 
 def transcript(payload):
@@ -56,7 +57,7 @@ def pre_tool(root, payload):
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
     found = {'decision': 'deny', 'reason': problem + '\nThen hand back again.'} if problem else guards.pre_tool(root, payload)
     if found is None:
-        return None
+        return advise(root, payload.get('tool_input') or {}) if payload.get('tool_name') in ('Agent', 'Task') else None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
     try:  # the decision stands even when its record fails
         ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500], 'session': payload.get('session_id')})
@@ -66,6 +67,36 @@ def pre_tool(root, payload):
         return context('PreToolUse', found['reason'])
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': found['decision'],
                                    'permissionDecisionReason': 'WUWEI: ' + found['reason']}}
+
+
+def asked(data):
+    """The item the brief names, the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
+    item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
+        r'\bItem:\s*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:\s*(\S.*)$'))
+    return item and item[1], str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+
+
+def advise(root, data):
+    """A note on a launch that departs from agents.TABLE or the owner's models rows; never a refusal or a rewrite."""
+    role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
+    if role not in agents.TABLE or not data.get('prompt'):  # a Codex spawn carries no brief and no model
+        return None
+    item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
+    tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
+    if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
+        tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
+    allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
+        (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
+    fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
+    model, effort = str(data.get('model') or table[''].rsplit(' ', 1)[0]), effort or table[''].rsplit(' ', 1)[1]
+    floor = role.startswith('sentinel-') and fam(model) == 'haiku'  # a reason covers a departure, never this floor
+    if reason and not floor or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
+                                   (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed):
+        return None
+    return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
+                   f"brief (asked: {model} {effort}" + ''.join(f'; {s} {when}' for s, when in allowed[1:]) + ').' + (
+                       " Haiku 5.5 never runs a gate on risky, owner or contract paths, and a reason does not cover that: it is "
+                       "an exception: for the owner, or the owner's models row." if floor else ''))
 
 
 def closed(root):
@@ -120,9 +151,10 @@ def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
     _, tokens, ended = transcript(payload)
+    effort = payload['effort'] if isinstance(payload.get('effort'), dict) else {}  # effort.level: the level in effect at the stop
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
-                                     'session': payload.get('session_id')})
+                                     'session': payload.get('session_id'), 'effort': str(effort.get('level') or 'unmeasured')})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
             return None
@@ -173,10 +205,12 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
+    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id')), {})
     ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
-                               'transcript': payload.get('agent_transcript_path')})
+                               'transcript': payload.get('agent_transcript_path'), 'model': seat.get('model', 'unrecorded'),
+                               'effort': seat.get('effort', 'unrecorded'), 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
     return None
 
 
@@ -190,9 +224,11 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
+        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
         ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
                                          'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId']})
+                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
