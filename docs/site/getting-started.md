@@ -46,7 +46,7 @@ To run WUWEI in Claude Code on the web too, add `--cloud` and commit `.claude/`;
 ## Your first day
 
 1. Open Claude Code in the workspace directory. The session starts oriented: the way of working,
-   the planner charter, your goals and the board.
+   the decision and done rules, the board, and where the planner charter and your goals are.
 2. Run `/wuwei-run`. With no goals yet, it proposes up to three and asks you once. Then the lead
    ranks candidates, you see the plan as a view (`.wuwei/plan.html`), approve or change it, and the
    work starts.

@@ -5,7 +5,7 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 
 | Stage | When | What happens |
 | --- | --- | --- |
-| Teach | before a move | the session starts with the way of working, the planner charter, goals, standards and the board; before `gh pr create`, the PR standard with a ready body |
+| Teach | before a move | the session starts with the way of working, the Decisions and Done rules, where the planner charter, goals and standards are, and the board; before `gh pr create`, the PR standard with a ready body |
 | Watch | during | every tool call is traced, silently |
 | Correct | right after | a new PR is told what it still lacks; a one-way answer is turned into an ADR note |
 | Stop | where it matters | the doors; a malformed verdict sent back; one reminder when the team tries to stop with work it can close |
@@ -15,7 +15,7 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 
 | Hook | Role |
 | --- | --- |
-| SessionStart | orientation: the way of working, `_common.md`, the planner charter, goals, `.wuwei/standards.md`, the board |
+| SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
 | PostToolUse | a trace per call; what a new PR lacks; owner answers recorded as prompts, rulings, exceptions |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested |

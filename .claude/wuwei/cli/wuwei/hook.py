@@ -290,19 +290,22 @@ def _goal(root, ref, repo):
 
 
 def session_start(root, payload):
-    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
+    """Orientation under Claude Code's 10,000-character additionalContext cap; what does not fit is named, not inlined."""
+    cli, charters = str(ws.PLUGIN / 'bin' / 'wuwei'), ws.PLUGIN / 'charters'
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
-    for name in ('goals.md', 'standards.md'):
-        path = Path(root) / ws.DIR / name
-        if path.is_file() and path.read_text(encoding='utf-8').strip():
-            parts.append(f'{name}:\n' + path.read_text(encoding='utf-8').strip()[:3000])
+    read = lambda name: (charters / name).read_text(encoding='utf-8') if (charters / name).is_file() else ''  # noqa: E731
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)', read('_way.md').strip(), '_common.md, Decisions and Done:\n'
+             + ''.join(re.findall(r'^## (?:Decisions|Done)\n.*?(?=^## |\Z)', read('_common.md'), re.S | re.M)).strip(),
+             f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
+             f'and the goals and standards in {Path(root) / ws.DIR}.']
     try:
-        parts.append(board.text(board.rows(root), root))
+        lines, cut = board.text(board.rows(root), root).split('\n'), 0
+        while len('\n\n'.join(parts)) + len('\n'.join(lines)) > 9900 and lines[-1].startswith('- '):
+            lines, cut = lines[:-1], cut + 1
+        parts.append('\n'.join(lines + [f'{cut} more items left out; `wuwei status` lists them all.'] if cut else lines))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
-    return context('SessionStart', '\n\n'.join(parts))
+    return context('SessionStart', '\n\n'.join(parts)[:10000])
 
 
 HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'SubagentStop': subagent_stop,
