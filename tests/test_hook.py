@@ -303,6 +303,35 @@ def test_an_exception_over_two_prs_records_both(root):
     assert all(r['gap'] == 'gates missing at head e750645: security' for r in rulings)
 
 
+def test_an_exception_answer_records_the_gap_after_the_refs(root):
+    plan_one(root)
+    answer(root, 'exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?', 'Accept')
+    assert [{k: r['data'][k] for k in ('kind', 'pr', 'head', 'gap')} for r in ws.rows(root, 'ruling')] == [
+        {'kind': 'exception', 'pr': 'o/r#1', 'head': 'abc1234', 'gap': 'gates missing at head abc1234: quality'}]
+
+
+def test_every_exception_the_guard_passes_is_one_the_hook_records(root):
+    """Generated: prefixes x refs x separators x gaps x tails. A pass the hook reads as nothing is a hole."""
+    import itertools
+    prefixes = ['exception: ', 'Exception:', '  exception: ', 'exception: for the hotfix ', 'exception: see x/y#3 at 1234567, ']
+    refs = ['o/r#1 at abc1234', 'o/r#1 at abc1234 and #2 at def5678', 'o/r#1 at abc1234 and x/y#2 at def5678',
+            '#1 at abc1234', 'o/r#1 at abc12', 'o/r#\uff11 at abc1234']
+    seps = [': ', ':', ' : ', '. ', ' ', ': . ', ': ? ', '?', ': :', '\n: ', ':\n', ':\t', ': .']
+    gaps = ['no test in the diff', 'gates missing at head abc1234: quality', '', '.github changed', '#2 at def5678',
+            'see x/y#3 at 1234567', '...', ':']
+    tails = ['. Accept?', '? Accept', '. owner review: x/y#2 at def5678. Accept?', '', '.', ' #4 at 7654321. Accept?']
+    passed, holes = 0, []
+    for parts in itertools.product(prefixes, refs, seps, gaps, tails):
+        question = ''.join(parts)
+        if guards.pre_tool(root, {'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [{'question': question}]}}):
+            continue
+        passed += 1
+        found, gap_text = hook.exception_refs(question)
+        if not (found and gap_text):
+            holes.append(question)
+    assert passed > 100 and holes == [], holes[:5]
+
+
 def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
     plan_one(root)
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),

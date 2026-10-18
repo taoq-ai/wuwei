@@ -267,6 +267,24 @@ def test_a_classed_question_that_will_not_parse_is_refused_with_the_template(roo
     assert decision['decision'] == 'deny' and 'owner/repo#n at <sha7>' in decision['reason']
 
 
+@pytest.mark.parametrize('question', ['exception: o/r#1 at abc1234. Some prose. Accept?',
+                                      'exception: o/r#1 at abc1234 and #2 at def5678. Accept?',
+                                      'exception: o/r#7 at abc1234: CI failing. owner review: x/y#2 at def5678. Accept?',
+                                      'exception: o/r#1 at abc1234: #2 at def5678. Accept?', 'exception: o/r#1 at abc1234: . Accept?',
+                                      '  exception: o/r#1 at abc1234: no test in the diff. Accept?'])
+def test_an_exception_whose_refs_are_not_followed_by_a_gap_is_refused_with_the_shape(root, question):
+    decision = guards.pre_tool(root, ask(question))
+    assert decision['decision'] == 'deny' and 'Use the exact shape' in decision['reason']
+    assert '"exception: owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>"' in decision['reason']
+
+
+@pytest.mark.parametrize('question', ['exception: o/r#1 at abc1234 and #2 at def5678: no test in the diff. Accept?',
+                                      'exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?',
+                                      'Exception: for the hotfix o/r#1 at abc1234: CI failing. Accept?'])
+def test_an_exception_in_the_shape_reaches_the_owner(root, question):
+    assert guards.pre_tool(root, ask(question)) is None
+
+
 def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
     found = guards.segments('r=$(x evidence A-Teams-Network/ai-stacks#3241); [ "$r" = ok ] && '
                             'gh pr merge 3241 -R A-Teams-Network/ai-stacks --squash')
