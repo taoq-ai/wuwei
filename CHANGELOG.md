@@ -1,5 +1,41 @@
 # Changelog
 
+## [3.0.0](https://github.com/taoq-ai/wuwei/compare/v2.0.0...v3.0.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **guards:** a git command after a -c or --config-env that sets alias.*, remote.*, branch.*, url.*, include* or push.default is refused, and so is a command naming push after an option git 2.43 does not take (for example --no-advice or --super-prefix). Run git without the option; set aliases and push configuration in git config.
+* **guards:** a command that runs a shell without -c and names a door program anywhere in its text (echo 'git push origin x' | bash, bash run.sh && git push origin x) is refused. Run the door command in its own one-line call.
+* **guards:** a command that runs sh, bash, zsh or dash with no readable -c body (input piped or fed in, a script path, or -c after an option the guards do not read such as -o pipefail, --rcfile or --command) and names a door program anywhere in its text is refused as unreadable, and a door command after a named-fd redirect ({fd}>x) now meets its door.
+* **evidence:** an owner review on owned paths is no longer cleared by an approved breaking or exception ruling, only by an owner review ruling or the owner's approving review; a repository whose CI runs only on pull_request_target now gets the CI-not-started gap on a head with no checks; a failed Actions read now gives the gap text "CI not started at <sha7> (Actions host unreadable: <error>)"; and a prose-only head is no longer held by the CI-not-started gap.
+* **guards:** a door command behind process substitution, a glued separator, |& or a redirect before the program now meets its door; a command naming a door program with $'...' or $"..." quoting, or with a redirect followed by another operator or by nothing, is refused as unreadable; a writer or output redirect naming .wuwei, .wuwei/, .wuwei/ledger or .wuwei/ledger.jsonl (with or without a trailing slash, after =, or with // or /./) is refused as a ledger write; and a multi-line command naming bare .wuwei is refused.
+
+### Bug Fixes
+
+* **evidence:** owner review reads only owner review rulings, and the CI-not-started gap reads prose-only diffs, unreadable hosts and pull_request_target ([#1114](https://github.com/taoq-ai/wuwei/issues/1114)) ([ab841e3](https://github.com/taoq-ai/wuwei/commit/ab841e30b0882158c1256cd39f5d1df86ed0daf3))
+* **guards:** a shell fed its commands on stdin and a redirect on a named fd meet the doors ([#1115](https://github.com/taoq-ai/wuwei/issues/1115)) ([5fa32fe](https://github.com/taoq-ai/wuwei/commit/5fa32fe4e764ade6de9b79a535536f361a598fe6))
+* **guards:** git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door ([#1122](https://github.com/taoq-ai/wuwei/issues/1122)) ([c84913e](https://github.com/taoq-ai/wuwei/commit/c84913ecff63c24a4a9f7fba35e1012b4cc2a69f))
+* **guards:** process substitution, glued separators, $'...' quoting and ledger paths without a trailing slash meet the doors ([#1109](https://github.com/taoq-ai/wuwei/issues/1109)) ([9d6701e](https://github.com/taoq-ai/wuwei/commit/9d6701e960002442dbbc0397e39a42b532255d00))
+* **guards:** writes to the ledger and the cache meet the ledger door in the spellings sh expands ([#1116](https://github.com/taoq-ai/wuwei/issues/1116)) ([d1c3d79](https://github.com/taoq-ai/wuwei/commit/d1c3d795c60ac8d007156922c15caa8d16a10444))
+
+
+### Documentation
+
+* **charters:** decisions and done stated once, repository lessons out of the charters, an architect's arch gate, and fitness tests on the charters and skills ([#1124](https://github.com/taoq-ai/wuwei/issues/1124)) ([d4a809d](https://github.com/taoq-ai/wuwei/commit/d4a809d428d7cb26e5c1b7f234ef37e2056da8ff))
+* **charters:** gate verdicts for a head go to the builder together, parser changes carry a generated probe, and equivalence needs a differential probe ([#1111](https://github.com/taoq-ai/wuwei/issues/1111)) ([a5edd81](https://github.com/taoq-ai/wuwei/commit/a5edd81ac640c780dce1659d17c364990993fd3a))
+
+
+### Code Refactoring
+
+* free runtime lines with no behaviour change and no complexity change ([#1123](https://github.com/taoq-ai/wuwei/issues/1123)) ([9c637ab](https://github.com/taoq-ai/wuwei/commit/9c637abaafd372766295d81ad9c9d93fe6ca2feb))
+* free runtime lines with no behaviour change, and make the dense guard lines readable ([#1112](https://github.com/taoq-ai/wuwei/issues/1112)) ([86135fa](https://github.com/taoq-ai/wuwei/commit/86135facef0ff6927098ae7dc7f173c05e0c8407))
+
+
+### Miscellaneous Chores
+
+* **release:** every conventional commit type on main has a visible changelog section, so the release notes list all of main ([#1125](https://github.com/taoq-ai/wuwei/issues/1125)) ([4c3aa59](https://github.com/taoq-ai/wuwei/commit/4c3aa5997a7dfa23be06e225f9ed00e9200d6eca))
+
 ## [2.0.0](https://github.com/taoq-ai/wuwei/compare/v1.2.1...v2.0.0) (2026-10-17)
 
 
