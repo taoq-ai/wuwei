@@ -84,3 +84,14 @@ def test_a_finding_written_after_the_merge_is_an_escape(root, fake):
     ws.record(root, 'attest', {'pr': 'acme/app#40', 'gate': 'quality', 'verdict': 'FIX', 'head': 'a' * 40})
     assert 'merged before quality PASS' not in report.day(root)
     assert '- escaped (post-merge): acme/app#40 merged before quality FIX' in report.day(root)
+
+
+def test_the_report_lists_the_goals_the_owner_ruled_met(root, fake):
+    from wuwei import hook
+    assert 'Met goals: none.' in report.day(root)
+    for question, reply in (('goal: G-2 met? 100 percent.', 'Yes'), ('goal: G-1 met? 40 percent.', 'No'),
+                            ('goal: G-4 met? done.', 'Yes'), ('goal: G-4 met? reopened.', 'No')):
+        hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
+                                          'tool_input': {'questions': [{'question': question}]},
+                                          'tool_response': {'answers': {question: reply}}})
+    assert 'Met goals: G-2.' in report.day(root)

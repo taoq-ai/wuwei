@@ -45,6 +45,9 @@ role's lines of `.wuwei/standards.md`.
 
 - Goals in `.wuwei/goals.md` set the direction. Each plan pass ends with the plan as a view
   (`wuwei plan view`, #990) and one `plan:` question, Approve or Change; new items wait for it.
+- A plan pass offers each goal past its date with no ruling as `goal: G-n met? <evidence>`. A yes
+  records the goal as met (the report lists it, and it gets no new items); a no waits until its
+  date moves. `goals.md` changes only by the owner.
 - A plan pass (`/wuwei-run`, `wuwei plan pass`) adds, drops or re-ranks items in a running queue.
   Any number per day. The lead returns only ready candidates (promise, acceptance scenarios,
   repository, files) and red-teams the plan (the riskiest item and the cheapest early test of it).

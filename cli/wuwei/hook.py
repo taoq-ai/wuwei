@@ -260,6 +260,9 @@ def _answers(root, data, response):
             else:
                 ws.record(root, 'plan.change', {'answer': answer})
                 notes.append('WUWEI: the owner asked for a change: apply it, show the view again and re-ask.')
+        if (goal := re.match(r'\s*goal: *(G-[0-9]+) met\?', question, re.I)) and answer:  # what the plan pass asks (#975)
+            ws.record(root, 'ruling', {'kind': 'goal.met', 'goal': goal[1].upper(), 'approved': yes, 'question': question, 'answer': answer})
+            notes.append(f'WUWEI: goal {goal[1].upper()} recorded as ' + ('met.' if yes else 'open; the plan pass offers it again once its date moves.'))
         if question.lower().startswith('one-way:') and answer:
             notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
                          "repository's docs/adr/ through the item's PR, quoting the owner's answer.")

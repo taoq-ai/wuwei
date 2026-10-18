@@ -37,6 +37,14 @@ def goals(root):
     return found
 
 
+def goal_status(root):
+    """([(G-n, date)] past its ISO date, not ruled met nor kept open since; [G-n ruled met]); the latest ruling counts (#975)."""
+    ruled = {r['data'].get('goal'): (r['data'].get('approved'), r['ts'][:10]) for r in ws.rows(root, 'ruling') if r['data'].get('kind') == 'goal.met'}
+    due = [(name, date) for name, (_, date) in goals(root).items() if re.fullmatch(r'G-[0-9]+', name, re.I) and re.fullmatch(
+        r'[0-9]{4}-[0-9]{2}-[0-9]{2}', date) and not (seen := ruled.get(name.upper(), (False, '')))[0] and seen[1] <= date < ws.today()]
+    return due, sorted(goal for goal, (met, _) in ruled.items() if met)
+
+
 def _size(item):
     scores = item.get('scores') or {}
     return scores.get('size', 0) if item.get('framework', 'wsjf') == 'wsjf' else scores.get('effort', 0)
