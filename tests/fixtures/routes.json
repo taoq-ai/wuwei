@@ -255,6 +255,8 @@
     {"command": "git push ../r.git main", "source": "item scratch-remotes acceptance 1 (the corpus cwd /repo lies in no scratch folder, so the door holds)", "verdict": "push"},
     {"command": "git push file:///repo/.git main", "source": "item scratch-remotes acceptance 2 (a local path outside any scratch folder)", "verdict": "push"},
     {"command": "cd ../g && git push origin main", "source": "item scratch-remotes (a cd before the push: the scratch rule reads one plain git call only)", "verdict": "push"},
-    {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"}
+    {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"},
+    {"command": "git --work-tree=../x push .git :main", "source": "gates scratch-remotes at 6a5d00d (security: a work tree outside the shell's directory; real git deleted main in the working repository)", "verdict": "push"},
+    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"}
   ]
 }

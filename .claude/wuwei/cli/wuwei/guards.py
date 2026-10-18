@@ -49,7 +49,7 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
-TEMP = (gettempdir(), '/tmp')  # a session's scratch folder and a fresh temporary folder lie below one: their local remotes take any push
+TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
                       r'((no-)?literal|(no)?glob|icase)-pathspecs|no-optional-locks|(exec|html|man|info)-path|help|version|(git-dir|work-tree|namespace|'
@@ -164,16 +164,18 @@ def git_push(root, args, cwd):
 
 
 def scratch(cwd, opts, args, command):  # one plain git call pushing to git directories below TEMP: not the working one nor one holding .wuwei
-    if not (args and args[0][:1] != '-' and re.fullmatch(r'[ \t]*git([ \t]+[\w./=@:-]+)+[ \t]*', command)):  # the remote first; no cd, wrapper, $ or ~
+    if not (args and args[0][:1] != '-' and re.fullmatch(r'[ \t]*git([ \t]+[\w./=@:+-]+)+[ \t]*', command) and not any(  # remote first, no cd,
+            a[:2] == '--' and (n := a[2:].split('=')[0]) and ('receive-pack'.startswith(n) or 'exec'.startswith(n)) for a in args)):  # $, ~ or program
         return False
-    top, own = (_git(cwd, *opts, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir') + '\n').split('\n')[:2]
-    urls = [u for u in _git(cwd, *opts, 'remote', 'get-url', '--push', '--all', args[0]).split('\n') if u] or args[:1]  # a remote's push urls
-    moved = [e.split('\n', 1) for e in _git(cwd, *opts, 'config', '-z', '--get-regexp', r'^url\..*insteadof$|^remote\..*\.(vcs|receivepack)$')
-             .split('\0') if '\n' in e]  # config that sends a push elsewhere: a rewrite of a typed path, a remote helper or receive-pack
+    inside, top, own = (_git(cwd, *opts, 'rev-parse', '--path-format=absolute', '--is-inside-work-tree', '--show-toplevel', '--git-common-dir')
+                        + '\n\n').split('\n')[:3]  # git reads a relative remote from the top when the shell is inside the work tree
+    urls = (named := [u for u in _git(cwd, *opts, 'remote', 'get-url', '--push', '--all', args[0]).split('\n') if u]) or args[:1]  # push urls
+    moved = [e.split('\n', 1) for e in _git(cwd, *opts, 'config', '-z', '--get-regexp', r'^url\..*insteadof$|^remote\.').split('\0') if '\n' in e]
     homes = [_git(top, '--git-dir=' + join(top, m[2]), 'rev-parse', '--path-format=absolute', '--git-common-dir') if top and (  # from the top,
         m := re.fullmatch(r'(file://(?=/))?([\w./-]+)', u)) and not Path(top, m[2], '.git').exists() else '' for u in urls]  # as git enters it
-    return not any(k[:4] != 'url.' or any(u.startswith(v) for u in urls) for k, v in moved) and all(
-        h and own and (c := Path(realpath(h))) != Path(realpath(own)) and any(c.is_relative_to(realpath(t)) for t in TEMP)
+    return inside == 'true' and not any(k[:4] == 'url.' and any(u.startswith(v) for u in urls) or k.endswith(('.vcs', '.receivepack')) or not named
+                                        and k.startswith(f'remote.{args[0]}.') for k, v in moved) and all(  # config that sends it elsewhere
+        h and own and (c := Path(realpath(h))) != Path(realpath(own)) and any(c.is_relative_to(realpath(t)) for t in TEMP or (gettempdir(), '/tmp'))
         and not any((p / ws.DIR).exists() for p in (c, *c.parents)) for h in homes)
 
 

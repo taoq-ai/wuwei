@@ -63,17 +63,21 @@ runs a command the guard never reads. Set either with `git config` before the ca
 The push door passes any push, force and delete included, to a git directory in a scratch folder,
 so real-git evidence needs no route around it. The command must be one plain git call: `git`, its
 options, `push`, then the remote as the first word, with every word plain (letters, digits and
-`./=@:-`). Each URL git pushes to (`git remote get-url --push --all` for a remote name, so a
-`pushurl` or `pushInsteadOf` counts) must be a path or a `file:///` URL. A relative path is read
-from the top of the worktree, as git reads it, and git's own options (`-C`, `--git-dir`,
-`--work-tree`) are passed to the guard's git calls. The path must be a git directory (bare, or a
-`.git` path) with no `.git` entry inside it. Its common directory, symlinks resolved, must lie
-below `tempfile.gettempdir()` or `/tmp`. It must not be the common directory of the repository git
-runs in, and neither it nor any folder above it may hold `.wuwei`. Config that sends the push
-elsewhere keeps the door: a `url.<base>.insteadOf` or `pushInsteadOf` whose value starts a push
-URL, and any `remote.<name>.vcs` or `remote.<name>.receivepack`. So do a `cd`, `pushd`, wrapper,
-subshell, env assignment, `~`, `$`, quote or second command, an option before the remote, a `%`
-escape or a host in a `file://` URL, a worktree or non-bare path, and a network URL.
+`./=@:+-`) and no `--exec` or `--receive-pack` (or a prefix git reads as one). Each URL git
+pushes to (`git remote get-url --push --all` for a remote name, so a `pushurl` or `pushInsteadOf`
+counts) must be a path or a `file:///` URL. The shell's directory must lie inside the work tree,
+where git reads a relative path from the top; from outside it (`--work-tree`, `core.worktree`)
+git reads it from the shell's directory, so the rule refuses. git's own options (`-C`,
+`--git-dir`, `--work-tree`) are passed to the guard's git calls. The path must be a git directory
+(bare, or a `.git` path) with no `.git` entry inside it. Its common directory, symlinks resolved,
+must lie below `tempfile.gettempdir()` or `/tmp`. It must not be the common directory of the
+repository git runs in, and neither it nor any folder above it may hold `.wuwei`. Config in any
+scope that sends the push elsewhere keeps the door: a `url.<base>.insteadOf` or `pushInsteadOf`
+whose value starts a push URL, any `remote.<name>.vcs` or `remote.<name>.receivepack`, and a
+`remote.<word>.*` key for a typed word that `git remote get-url` does not name (a remote set in
+global or system config). So do a `cd`, `pushd`, wrapper, subshell, env assignment, `~`, `$`,
+quote or second command, an option before the remote, a `%` escape or a host in a `file://` URL,
+a worktree or non-bare path, and a network URL.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 
