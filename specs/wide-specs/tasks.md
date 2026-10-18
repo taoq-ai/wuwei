@@ -21,3 +21,9 @@
 - [x] T011 Rows for docs/conf.py, src/docs/x.py, NOTICE_handler.py, docs/requirements.txt, docs/openapi.yaml, a mixed-case spec contract, a proto under specs/ and code under contracts/; charter test asserts the verb and tier; run red: 4 failed
 - [x] T012 `TEXT` prose test for `wide`; the contract check reads every file; docs/design.md breaking paragraph names spec contracts; site table names prose
 - [x] T013 Breaking section; class probe main against head; full suite green; runtime 2,979 lines
+
+## Phase 4: Fix round at 4b535bd
+
+- [x] T014 Rows for requirements/prod.txt, CMakeLists.txt, charters/x.md, AGENTS.md, Specs/001-x/contracts/api.md; NOTICE_handler.py expects quality; charter test reads "lines that are not prose"; run red: 6 failed
+- [x] T015 `wide` reads `PROSE`; `TEXT` dropped; `DOCS` anchors LICENSE and NOTICE; rule text in the charter, design and site
+- [x] T016 Class probe and the security gate's 144,480 cases at the head; full suite green; runtime 2,978 lines

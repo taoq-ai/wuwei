@@ -11,15 +11,17 @@ counted every file's lines, prose included, for the wide trigger. The rule and t
 The issue's second option, made true in both the code and the rules:
 
 1. In `evidence.needed`, the wide trigger (over 200 changed lines) counts every line but prose.
-   Prose is a `.md`, `.rst`, `.adoc` or `.txt` file outside `specs/` and `openspec/`, or a path
-   that is exactly `LICENSE` or `NOTICE`. Code files, spec files and code under a `docs/` folder
-   count (fix round at a7654a8). So a prose-only diff needs no gate at any size, and a large spec
-   diff at standard takes arch.
+   Prose is what the CI-not-started rule already calls prose (`PROSE`, docs/design.md "CI not
+   started"), outside `specs/` and `openspec/`: a `.md`, `.rst` or `.adoc` file other than the
+   files seats load, or a path that is exactly `LICENSE` or `NOTICE`. Code files, spec files,
+   `.txt` files, code under a `docs/` folder and the files seats load count (fix rounds at a7654a8
+   and 4b535bd). So a prose-only diff needs no gate at any size, and a large spec diff at standard
+   takes arch.
 2. A change under `specs/**/contracts/` or `openspec/**/contracts/` takes arch at any tier, as a
    contract file (an OpenAPI or Swagger file, `.proto`, `.graphql`, `.schema.json`) does. The
    contract check reads every file in the diff, so a contract file under `docs/` takes arch too.
-3. `charters/_common.md` says so: a wide change is over 200 lines of code and specs, or 10 code
-   files; a spec contract takes arch at any tier. `docs/design.md` line 77 and the site's evidence
+3. `charters/_common.md` says so: a wide change is over 200 lines that are not prose, or 10
+   code files; a spec contract takes arch at any tier. `docs/design.md` line 77 and the site's evidence
    page match, `tests/test_charters.py` reads the new threshold text, and the agents are rebuilt.
 
 The quality and security triggers do not change, nor does the 10 code files count.
@@ -53,7 +55,7 @@ The acceptance scenarios, restated:
    only what `needed` calls code, which drops every path under a `docs/` folder and every path
    that starts with `LICENSE` or `NOTICE`: a 300-line `docs/conf.py`, `src/docs/handler.py` or
    `NOTICE_handler.py` lost arch, and `docs/openapi.yaml` lost the contract check. The fix reads
-   prose by a narrow test (extension, or exactly `LICENSE` or `NOTICE`); each of those paths has a
+   prose by the repository's one prose test (`PROSE`); each of those paths has a
    test that expects arch.
 
 ## Clarifications
@@ -94,6 +96,22 @@ The acceptance scenarios, restated:
   folders). Over 200 lines at standard they took arch on main and take no gate at the head.
   Recorded under Assumptions.
 
+### Fix round at 4b535bd
+
+- Q: Is a `.txt` prose? A: No. The planner's ruling: keep one prose definition, the `PROSE` regex
+  the CI-not-started rule uses, which leaves `.txt` out. A 300-line `requirements/prod.txt`,
+  `constraints.txt` or `CMakeLists.txt` takes arch at standard, as on main.
+- Q: Are the files seats load prose? A: No, by the same regex: `AGENTS.md`, `CLAUDE.md`,
+  `charters/*.md`, `agents/*.md` and `skills/*/SKILL.md` count, so over 200 lines at standard
+  they take arch, as on main. This replaces the answer of the round at a7654a8.
+- Q: Does `PROSE` cover `openspec/`? A: Its pattern `(open)?specs/` matches `openspecs/`, not
+  `openspec/`, so `openspec/` files are not prose to it; `needed` counts both spec prefixes by
+  name, so the wide trigger is right either way. The CI-not-started side is a candidate item.
+- Q: Does `code` change? A: One line, the arch gate's call: `DOCS` anchors `LICENSE` and `NOTICE`
+  (`^(LICENSE|NOTICE)$`), so a root path that only starts with them (`NOTICE_handler.py`,
+  `LICENSES/x.py`, `LICENSE-MIT`) is code: quality at light and standard, all four at full, and
+  the test rule. `COPYING` was already code on main.
+
 ## Assumptions
 
 - The owner prefers arch on large spec diffs and on spec contracts (the issue says the second
@@ -102,9 +120,6 @@ The acceptance scenarios, restated:
 - A contract file (OpenAPI, Swagger, `.proto`, `.graphql`, `.schema.json`) under `specs/` takes
   arch at any tier, as it would anywhere else. Overturned if the owner wants only the
   `contracts/` folder to count inside specs.
-- The files seats load are prose, as the promise defines it, so a 300-line charter or
-  `AGENTS.md` rewrite at standard takes no gate (on main it took arch). Overturned if the owner
-  wants them counted as code, a candidate the gates named.
 - Code under `docs/` still takes no quality gate and no test at any size (unchanged from main);
   the planner files it as a follow-up.
 - "Spec contract" is a new term; a grep of charters, docs, skills and cli at the base found no
@@ -122,10 +137,15 @@ mergeable on main. The commit and PR title take a `!` and a `BREAKING CHANGE:` l
   `.graphql`, `.schema.json`) under `specs/`, `openspec/` or a `docs/` folder, and a delta after
   review that touches a spec contract, even 2 lines.
 - Newly held at standard: a spec-only delta after review over 200 lines is re-read by arch.
-- Newly passing at standard: prose over 200 lines (README, docs pages, `LICENSE`, `NOTICE`, the
-  `.md` files seats load) no longer takes arch.
+- Newly held at every tier: a root path that starts with `LICENSE` or `NOTICE` but is not exactly
+  that name (`LICENSE-MIT`, `LICENSES/`, `NOTICE_handler.py`) is code: quality at light and
+  standard, all four at full, and a test or a `No test:` line.
+- Newly passing at standard: prose over 200 lines (`.md`, `.rst` and `.adoc` files such as README
+  and docs pages, `LICENSE`, `NOTICE`) no longer takes arch. `.txt` files and the `.md` files
+  seats load still take it, as on main.
 - Migration: plan an arch gate for any PR that changes a spec contract or a contract file, at any
-  tier; prose-only PRs need no gate. No config or data changes.
+  tier; prose-only PRs need no gate; add a test or a `No test:` line to a PR that edits a file
+  such as `LICENSE-MIT`. No config or data changes.
 
 ## Rollback
 
@@ -148,13 +168,13 @@ Acceptance 4. Test in tests/test_charters.py.
 
 ## Requirements
 
-- FR-001: `needed` counts every line but prose for the wide trigger (prose: `TEXT`, outside the
+- FR-001: `needed` counts every line but prose for the wide trigger (prose: `PROSE`, outside the
   spec folders).
 - FR-002: `CONTRACT` matches `specs/**/contracts/` and `openspec/**/contracts/`, and `needed` runs it
   over every file at any tier.
 - FR-003: The delta rule in `gate_gaps` follows FR-001 and FR-002 with no change of its own.
 - FR-004: charters/_common.md, docs/design.md and docs/site/concepts/evidence.md state the rule;
-  agents rebuilt; `.claude/` re-vendored; runtime at most 3,000 lines (2,976 to 2,979).
+  agents rebuilt; `.claude/` re-vendored; runtime at most 3,000 lines (2,976 to 2,978).
 
 ## Success criteria
 
