@@ -40,7 +40,7 @@ The acceptance scenarios, restated:
    of these has a test.
 2. A false hold: prose or a near-miss path is read as a spec contract or as wide, so a docs PR
    waits for arch. Ways in: `docs/contracts/api.md`, `specs/contracts.md`, a 200-line spec (the
-   bound is over 200), 150 code lines plus 300 lines of README and LICENSE. Each has a test that
+   bound is over 200), 150 code lines plus 600 lines of README and LICENSE. Each has a test that
    expects no arch.
 3. The delta rule moves the wrong way after review fixes. `gate_gaps` runs `needed` on the delta,
    so the same counting applies there: a 300-line README delta now carries the passes (on main it
