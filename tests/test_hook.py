@@ -727,9 +727,10 @@ def test_a_link_at_the_temporary_name_is_never_followed(root, tmp_path_factory, 
         target.write_text(verdict_text(verdict='FIX'))
     held = target.read_bytes()
     monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
     copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
     copy.parent.mkdir(parents=True, exist_ok=True)
-    copy.with_name(f'.{copy.name}.4242.tmp').symlink_to(target)
+    copy.with_name(f'.{copy.name}.4242.7.tmp').symlink_to(target)
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
     assert target.read_bytes()[:len(held)] == held and (aimed == 'ledger' or target.read_bytes() == held)
     assert not copy.is_symlink() and copy.read_text() == verdict_text() and ws.verify(root) == []
@@ -741,7 +742,8 @@ def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root
     ledger = next((root / ws.DIR / 'ledger').glob('*.jsonl'))
     held = ledger.read_bytes()
     monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
-    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.tmp'
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.7.tmp'
     unlink = Path.unlink
 
     def replant(self, missing_ok=False):  # the race the exclusive create closes
