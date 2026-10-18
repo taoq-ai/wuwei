@@ -1,0 +1,27 @@
+Verdict: PASS
+Gate: goal
+Item: scratch-remotes
+PR: taoq-ai/wuwei#1141
+Head: 6a5d00d6fa5ffd8b5269782eb8e9bcc20facc87c
+Confidence: medium
+
+## Findings
+- [low] blocks: no. Runtime lines: cat cli/wuwei/*.py | wc -l reads 2,992 at the head and 2,976 at efcd9e7, so +16 against the plan's estimate of +2 and budget of +3. The PR body states this and offers trimming. It is a process misfit (never a block), but push-refspecs and gh-args now share 8 lines under the 3,000 cap. The delivered rule is far wider than the plan sized (git-directory read, push-URL read, config check, planted .git check).
+- [low] blocks: no. The promise says "the session scratch folder or a fresh temporary folder"; the code takes anything below tempfile.gettempdir() or /tmp. This is declared under Assumptions and over-refuses only if a harness puts scratch elsewhere. A session scratch folder under /tmp/claude-0/... was accepted in my run.
+- [low] blocks: no. Narrower than the promise's "a push whose remote is a local path": `git push -u ../r.git main` keeps the door (an option before the remote). Declared in the PR body and spec. Over-refusal only.
+- [low] blocks: no. Force pushes and deletes to a scratch remote now pass. No requirement asked for it, but it follows from the promise (any push to a scratch remote) and is declared with its reason. It is not drift.
+- [low] blocks: no. The generated probe script is not in the diff (it lives in the builder's scratch folder, builder-scratch-remotes/probes/probe_scratch.py), so a later round cannot re-run it from the repo. I re-ran it from a copy.
+
+## Probes
+- Trace: the goal G-2 outcome (bugs found running WUWEI on itself fixed) to the item promise (`wuwei plan show scratch-remotes`) to specs/scratch-remotes/spec.md to the diff (guards.py +17/-3 in `scratch()`, the vendored copy .claude/wuwei/cli/wuwei/guards.py byte-identical to cli/wuwei/guards.py, SECURITY.md +18, routes.json +4 rows, tests/test_guards.py +101). Every file the promise names is present. Nothing outside the promise changed.
+- Explain-back: the PR body and spec restate both acceptance scenarios in the plan's terms (`../r.git` and `origin` pass and the bare remote gets main; the working repository, a symlink to it and GitHub are refused as before). No mismatch with the item or the goal. Declared assumptions were checked against the code: realpath, push URLs via `git remote get-url --push --all`.
+- Acceptance 1 and 2, run at the head (`git archive` copy) with a script of mine: guards.pre_tool in a Bash payload with cwd in a scratch clone below /tmp/claude-0/... (this session's scratch folder). Passes: `git push ../r.git main` and `git push origin main` (origin = ../s.git). Real bash then ran both, and `rev-parse main` in r.git and s.git read d8811161.... Refused with "pushing to the default branch main refused": `git push gh main` (GitHub URL), a push through a symlink to a working .git, `/home/user/wuwei/.git`, the clone's own .git, and a https URL. The same script on an efcd9e7 copy refused every one, so the pass is the change.
+- Does the suite meet "from real execution through the door"? Yes. The 12 real-execution tests call the head's `guards.bash`, which must return None, then run real bash and git and assert the bare remote's ref. The live hook is main's guard, and the vendored copy is identical to the head's `cli/wuwei/guards.py`. The only unexercised layer is the hook process wiring, which this diff does not touch. My pre_tool run covers the guards entry point the hook calls.
+- Suite at the head: `pytest -q` gives 1747 passed, 2 skipped (body: same). `-k` selecting the item tests gives 59 passed at the head. The same test file against efcd9e7's guards gives 14 failed, 1238 passed (body: 14 red; the failing names are the 12 real-execution passes, the worktree pass and the moved TEMP).
+- Runtime lines: 2,992 at the head, 2,976 at efcd9e7 (`cat cli/wuwei/*.py | wc -l` over `git archive` copies). +16 matches the body. Estimate +2 and budget 3 are exceeded (see the first finding).
+- Corpus: `sha256sum tests/fixtures/routes.json` gives head 9a874675f64329455e689fafc6f0878fa34f2acfce54ae2a93f5255981fe4a0e and efcd9e7 12725ace6adab6f965422e9a2a010d13b93e0897f177fd00bda53b080bfe1cb1, both matching the body. 255 routes at the head. `test_every_route_reads_as_recorded` passes 255 of 255 on the head's guards and on efcd9e7's guards with the head's routes.json, so 0 verdicts move. The 4 added rows carry verdict push, refusal-class or pass, and are not moves.
+- Generated probe, re-run from the builder's script (probe_scratch.py, real bash, stub git on PATH logging then exec'ing git 2.43) at the head: generated 10,260, ran the door program 9,720, holes 0, guard passed 452. In rows.json: 2,165 commands moved a protected main with 0 passed by the guard, 394 passes landed in scratch, `cd` forms 1,620 and `env -C` forms 540. Same set on efcd9e7: generated 10,260, ran 9,720, holes 0, guard passed 0. All figures match the body and are read from my own run output.
+- Mutants: not run. They belong to the quality gate, and the other seats' verdicts hold them.
+
+## Residual risk
+The acceptance's pass-and-land evidence comes from the suite and a guards-level run, not the live hook, because the session's hook is main's guard; the diff leaves the hook wiring alone. The 16-line overrun costs sibling items their line budget (push-refspecs, gh-args); the PR body names a 3-line cut if the owner wants it.
