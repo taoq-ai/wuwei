@@ -273,3 +273,11 @@ def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_ch
     watch = ' '.join((PLUGIN / 'skills' / 'wuwei-watch' / 'SKILL.md').read_text(encoding='utf-8').split())
     assert 'Sonnet 5.5' in watch and '`effort: medium`' in watch and 'not a default' in watch
     assert 'mostly reads and records' not in watch
+
+
+def test_a_gate_puts_the_findings_its_fix_closed_under_probes():
+    for path in (PLUGIN / 'charters' / '_gate.md', PLUGIN / 'agents' / 'sentinel-quality.md'):
+        text = ' '.join(path.read_text(encoding='utf-8').split())
+        assert 'Closed findings go under ## Probes' in text, path
+        assert '`closed: <finding> at <sha7>`' in text and '## Findings holds only open findings, or none' in text, path
+        assert 'refuses a wrong shape, naming the next free file: write the corrected verdict there' in text, path
