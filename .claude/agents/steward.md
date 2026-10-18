@@ -45,10 +45,11 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 - at `full`, the spec engine's artifacts.
 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
-`standard`, risky or owner paths add security and a wide change (over 200 lines or 10 code files)
-adds arch; a contract file takes arch at any tier; `full` takes all four. After review fixes, a
-delta of docs or at most 20 lines off risky paths carries the passes; a larger one is re-read by
-the one gate `wuwei evidence` names. When a repository's 28-day change failure rate is over 15
+`standard`, risky or owner paths add security and a wide change (over 200 lines that are not
+prose, or 10 code files) adds arch; a contract file or a spec contract (a file under a spec's
+`contracts/` folder) takes arch at any tier; `full` takes all four. After review fixes, a delta of
+docs or at most 20 lines off risky paths carries the passes; a larger one is re-read by the one
+gate `wuwei evidence` names. When a repository's 28-day change failure rate is over 15
 percent (over at least five merges), every tier there rises one step and takes its full gate set.
 
 Process fit never blocks and nobody is asked about it:
@@ -154,7 +155,9 @@ item.
    `<gate>: <the defect class, in one line>`. The planner passes these lines to every seat brief.
 6. Calibration and yield: compare each gate's stated confidence with what later escaped, and
    each gate's FIX share with its cost. Name an overconfident gate and a gate that never finds
-   anything.
+   anything. Read outcomes by seat, model and effort: fix rounds, blocking findings, escapes and
+   tokens per merged item. Where they back it, propose a change to a row of the planner's model
+   table with its numbers, as advice.
 7. Skills and memory: when seats keep re-learning a repository fact, propose a line for that
    repository's `CLAUDE.md` or `AGENTS.md`; when the same multi-step procedure recurs three or more
    times, propose a project skill under `.claude/skills/`. Both land through a PR in that

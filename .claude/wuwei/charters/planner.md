@@ -72,3 +72,50 @@ there are several. Everything else you decide, record and show in the report.
 - An owner may accept a gap as an exception (`exception: owner/repo#n at <sha7>: <gap>`). WUWEI
   records it and adds an item that closes it later; exceptions expire into work, never into
   silence.
+
+## Model and effort
+
+Choose each seat's model and effort from this table, drawn from Anthropic's model and effort
+guidance (sources, reasons and Codex on WUWEI's models page,
+https://taoq-ai.github.io/wuwei/concepts/models/). It is advice: follow it, or depart with a
+reason; a choice is never refused. The tier is the item's, after the change failure rate rule
+raises it (`_common.md`, Done). Where two settings in a row apply, the later one holds.
+
+| Seat | Model and effort |
+| --- | --- |
+| `lead` | Opus 5.5 xhigh |
+| `builder` | Sonnet 5.5 medium at light; Opus 5.5 medium at standard; Opus 5.5 high at full or on risky, owner or contract paths |
+| `sentinel-security` | Opus 5.5 high; Opus 5.5 xhigh at full or on risky, owner or contract paths |
+| `sentinel-arch` | Opus 5.5 high |
+| `sentinel-quality` | Sonnet 5.5 high; Opus 5.5 high at full or on risky, owner or contract paths |
+| `sentinel-goal` | Sonnet 5.5 high |
+| `shepherd` | Sonnet 5.5 medium; Opus 5.5 high for a conflict where both sides changed logic |
+| `steward` | Opus 5.5 high |
+| lookups and searches | Haiku 5.5 low |
+
+1. Pass `model` and `effort` on each Agent call, with the full model ID (`claude-opus-5-5`,
+   `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`). On a provider with its own model
+   IDs, use the owner's rows or pinned aliases (models page). The brief's first line is
+   `Model: <model> <effort> (<row>)`; a departure adds `Model reason: <one line>`.
+2. Ladder: Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1. Raise a seat one
+   step after a failed fix round or a gate blocker the builder missed; a step never lowers effort.
+   Fable 5.1 is the step for an item parked as a design problem and for a one-way decision. Under
+   zero data retention, where Fable is unavailable, the top step is Opus 5.5 max. Step a seat class
+   down only on retro evidence: 10 merged items on the lower setting with no escaped defect.
+3. Diversity: at least one gate per head runs on a different model than the builder. When the
+   table puts every gate on the builder's model, the quality gate takes the other of Opus 5.5 and
+   Sonnet 5.5, at high. At a delta the passes that carry count, so the gate that re-reads keeps its
+   model.
+4. Floor: Haiku 5.5 never runs a gate on risky, owner or contract paths. This is not a departure: a
+   need to break it is an `exception:` for the owner.
+5. Effort: set it on every call, since Opus 5.5 defaults to medium. Use at least high for
+   intelligence-sensitive work, max when correctness matters more than cost, low for simple
+   lookups. Before moving a seat to a cheaper model, measure the stronger model at a lower effort.
+   Judge cost per completed item, not per request.
+6. Precedence, as Claude Code resolves it: the call's `model` parameter, then the agent file's
+   `model` frontmatter, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the session model.
+   `CLAUDE_CODE_EFFORT_LEVEL` beats every effort setting, so a workspace that sets it turns effort
+   advice off. The models page lists the other cases.
+7. The owner's `models` rows in `.wuwei/config.toml` override any row here. The session's own model
+   is the owner's choice, and this table never names it. On Codex, the models page maps each step to
+   a Codex model; that mapping is unmeasured.

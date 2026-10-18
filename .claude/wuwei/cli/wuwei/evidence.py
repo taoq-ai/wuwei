@@ -14,8 +14,8 @@ from wuwei.verdict import parse
 REQUIRED = {'light': ('quality',), 'standard': ('arch', 'quality', 'security'),
             'full': ('arch', 'quality', 'security', 'goal')}
 TEST = re.compile(r'(^|/)(tests?|spec|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$')
-DOCS = re.compile(r'\.(md|rst|txt|adoc)$|(^|/)docs/|^LICENSE|^NOTICE')
-# What a diff may hold and still skip CI not started: prose, a license, specs; never a .txt, code under docs/ or a file seats load.
+DOCS = re.compile(r'\.(md|rst|txt|adoc)$|(^|/)docs/|^(LICENSE|NOTICE)$')
+# Prose, a license, specs: may skip CI not started, and outside specs/ never wide; never a .txt, code under docs/ or a seat's file.
 PROSE = re.compile(r'^(?!(.*/)?(AGENTS\.md|CLAUDE\.md|(charters|agents)/[^/]+\.md|skills/[^/]+/SKILL\.md)$)(.+\.(md|rst|adoc)|LICENSE|NOTICE|(open)?specs/.+)$')
 GENERATED = re.compile(r'(^|/)([\w.-]+\.lock|package-lock\.json|pnpm-lock\.yaml|go\.sum)$|\.min\.(js|css)$'
                        r'|(^|/)(dist|vendor|__snapshots__)/')
@@ -37,7 +37,8 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
                      r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
-CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
+CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$'
+                      r'|^(specs|openspec)/(.+/)?contracts/', re.I)  # a contract file, or a spec's contract
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
 RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
@@ -249,14 +250,15 @@ def verdicts(root, item_id, ref=''):
 
 def needed(root, tier, files):
     """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
-    security comes for risky or owner paths, arch for a contract or a wide change; full takes all four."""
+    security comes for risky or owner paths, arch for a contract or a wide change of all but prose; full all four."""
     code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
             or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
+    wide = [f for f in files if not PROSE.match(f['path']) or f['path'].startswith(('specs/', 'openspec/'))]
     risky = owned(root, code) or any(RISKY.search(p) for p in code)
     if tier == 'full' and code:
         return REQUIRED['full']
-    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(p) for p in code)
-             or tier == 'standard' and (lines(files) > WIDE or len(code) > 10)}
+    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in files)
+             or tier == 'standard' and (lines(wide) > WIDE or len(code) > 10)}
     return tuple(g for g in REQUIRED['standard'] if wants[g])
 
 
@@ -326,11 +328,15 @@ def uncounted(root, item_id):
 
 
 def breaking_gaps(root, ref, pr, item_id):
-    """A breaking change to an outward contract (declared with ! or BREAKING CHANGE:, or found by the arch
-    gate) needs an announcement, then the owner's confirmation at this head."""
-    body, head = pr.get('body') or '', pr['headRefOid']
+    """A breaking change (declared with ! or BREAKING CHANGE:, or an arch yes no later no cleared from a strict
+    descendant of its head on the PR head's line) needs an announcement, then the owner's confirmation at this head."""
+    body, head, repo, said = pr.get('body') or '', pr['headRefOid'], ref.split('#')[0], None
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
-    if not (declared or any(v.get('breaking') for v in verdicts(root, item_id, ref))):
+    for v in (v for v in verdicts(root, item_id, ref) if v['gate'] == 'arch' and 'breaking' in v):  # oldest first
+        if v['breaking'] or not said or v['head'] != said['head'] and gh.ancestor(repo, said['head'], v['head']) \
+                and gh.ancestor(repo, v['head'], head):
+            said = v
+    if not (declared or said and said['breaking']):
         return []
     if not re.search(r'^Announcement:[ \t]*\S', body, re.M):
         return [gap('breaking change without an announcement: add "Announcement: <link to the client communication, '

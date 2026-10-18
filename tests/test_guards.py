@@ -267,6 +267,40 @@ def test_a_classed_question_that_will_not_parse_is_refused_with_the_template(roo
     assert decision['decision'] == 'deny' and 'owner/repo#n at <sha7>' in decision['reason']
 
 
+@pytest.mark.parametrize('question', ['exception: o/r#1 at abc1234. Some prose. Accept?',
+                                      'exception: o/r#1 at abc1234 and #2 at def5678. Accept?',
+                                      'exception: o/r#7 at abc1234: CI failing. owner review: x/y#2 at def5678. Accept?',
+                                      'exception: o/r#1 at abc1234: #2 at def5678. Accept?', 'exception: o/r#1 at abc1234: . Accept?',
+                                      '  exception: o/r#1 at abc1234: no test in the diff. Accept?',
+                                      'exception: o/r#1 at abc1234: CI failing.\nowner review: x/y#2 at def5678. Accept?',
+                                      'exception: o/r#1 at abc1234 needs a decision. Accept?',
+                                      'exception: o/r#9 at 9999999 was rejected; only o/r#1 at abc1234: CI failing. Accept?',
+                                      'exception: o/r#1 at 1111111 failed CI; o/r#1 at abc1234: no test in the diff. Accept?',
+                                      'exception: o/r#1 at abc1234: \u200b. Accept?', 'exception: o/r#1 at abc1234:\nAccept?',
+                                      'exception: o/r#1 at abc1234\t: CI failing. Accept?', 'exception: o/r#1 at abc1234: _x. Accept?'])
+def test_an_exception_whose_refs_are_not_followed_by_a_gap_is_refused_with_the_shape(root, question):
+    decision = guards.pre_tool(root, ask(question))
+    assert decision['decision'] == 'deny' and 'Use the exact shape' in decision['reason']
+    assert '"exception: owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>"' in decision['reason']
+
+
+@pytest.mark.parametrize('question', ['exception: o/r#1 at abc1234 and #2 at def5678: no test in the diff. Accept?',
+                                      'exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?',
+                                      'Exception: for the hotfix o/r#1 at abc1234: CI failing. Accept?',
+                                      'exception: o/r#1 at abc1234: 2 review threads unanswered. Accept?'])
+def test_an_exception_in_the_shape_reaches_the_owner(root, question):
+    assert guards.pre_tool(root, ask(question)) is None
+
+
+@pytest.mark.parametrize('question', ['exception: ' + 'a' * 36000, 'exception: o/r#1 at abc1234:' + ' ' * 36000 + '.',
+                                      'exception: o/r#1 at abc1234:' + '\n' * 36000 + '.', 'exception: ' + 'o/r#1 at abc1234: .' * 1900,
+                                      'exception: ' + 'o/r#1 at abc1234: ' * 2000, 'exception: ' + 'o/r#1 at abc1234 and ' * 1700])
+def test_a_long_exception_question_is_read_in_linear_time(root, question):
+    started = time.perf_counter()
+    guards.pre_tool(root, ask(question))
+    assert time.perf_counter() - started < 0.5
+
+
 def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
     found = guards.segments('r=$(x evidence A-Teams-Network/ai-stacks#3241); [ "$r" = ok ] && '
                             'gh pr merge 3241 -R A-Teams-Network/ai-stacks --squash')
@@ -1266,6 +1300,16 @@ def test_the_pr_standard_note_is_the_charter_with_the_plugin_version(root, fake,
     version = json.loads((Path(guards.__file__).parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']
     text = (Path(guards.__file__).parents[2] / 'charters' / '_pr.md').read_text(encoding='utf-8').strip()
     assert guards.pre_tool(root, bash('gh pr create --fill'))['reason'] == text.replace('<version>', version)
+
+
+def test_the_pr_standard_note_opens_a_draft_and_leaves_the_reviewer_to_the_shepherd(root, fake, repo):
+    note = ' '.join(guards.bash(root, 'gh pr create --draft', str(root), 's1')['reason'].split())
+    for clause in ('The PR opens as a draft so CI runs, and the gates the diff needs read the draft head.',
+                   'It turns ready once they pass, and the shepherd requests the reviewer then.',
+                   'Before merge, CI is green and every review thread is answered.'):
+        assert clause in note, clause
+    assert 'request a reviewer' not in note.lower() and 'before it opened' not in note
+    assert guards.bash(root, 'gh pr create --draft', str(root), 's1') is None  # once per session
 
 
 def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
