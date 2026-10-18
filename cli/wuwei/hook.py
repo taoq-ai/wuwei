@@ -300,9 +300,9 @@ def session_start(root, payload):
              f'and the goals and standards in {Path(root) / ws.DIR}.']
     try:
         lines, cut = board.text(board.rows(root), root).split('\n'), 0
-        while len('\n\n'.join(parts)) + len('\n'.join(lines)) > 9900 and lines[-1].startswith('- '):
-            lines, cut = lines[:-1], cut + 1
-        parts.append('\n'.join(lines + [f'{cut} more items left out; `wuwei status` lists them all.'] if cut else lines))
+        while len('\n\n'.join(parts)) + len('\n'.join(lines)) > 9900 and any(line.startswith('- ') for line in lines):
+            lines, cut = lines[:-1], cut + lines[-1].startswith('- ')  # a title's own newline makes a line that is no item
+        parts.append('\n'.join(lines + [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] if cut else lines))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
     return context('SessionStart', '\n\n'.join(parts)[:10000])

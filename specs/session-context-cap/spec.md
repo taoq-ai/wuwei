@@ -37,10 +37,12 @@ The acceptance scenarios, restated:
 1. A charter grows (`_way.md`, or the Decisions and Done sections) until the fixed part leaves the
    board little room. The board then shows few items, and the planner orients from `wuwei status`.
    The fitness test asserts at least 10 of 40 items show, so that growth fails a test first.
-2. A board line that does not start with `- ` sits at the end (an andon line, or a gap whose text
-   holds a newline), so trimming stops before the whole fits. The final cut at 10,000 then ends
-   the text mid-line and can drop the left-out count. The cap holds; the count can be lost. A test
-   holds the cap with 30 long andon lines.
+2. The board has no item line left to drop (only andon lines, or every item already dropped), so
+   trimming stops before the whole fits. The final cut at 10,000 then ends the text mid-line and
+   can drop the left-out count. The cap holds; the count can be lost. A test holds the cap with 30
+   long andon lines, and asserts the rules still come whole before them. A title or gap text that
+   holds a newline no longer stops the trim (fix round 1): the loop drops any last line while an
+   item line remains, and counts only the lines that start with `- `.
 3. The planner trusts the inlined rules and never reads `planner.md`, so it misses rules such as
    the model table or the gate order. The pointer line says to read it before the first plan pass,
    and `/wuwei-run` already reads goals and standards at step 2. A planner that skips it is the
@@ -80,7 +82,8 @@ rebuilt with `setup.vendor('.')`.
 - FR-001: `session_start` returns at most 10,000 characters of `additionalContext`.
 - FR-002: the context names the CLI path, the `planner.md` path, and holds `_way.md` and the
   Decisions and Done sections of `_common.md`.
-- FR-003: a board cut to fit says how many items it left out.
+- FR-003: a board cut to fit says how many items it left out, as its last line, whole ("1 more
+  item" in the singular).
 - FR-004: runtime lines grow by at most 6 (the item's budget); estimate 3.
 
 ## Assumptions
@@ -90,5 +93,16 @@ rebuilt with `setup.vendor('.')`.
   rule; overturned if a planner session plans without reading them.
 - A Codex session start has no smaller cap than Claude Code's; overturned by a Codex doc or a live
   run that shows one.
+- The cap is counted in Python code points (`len` of a `str`). The harness's own unit is
+  unmeasured. If it counts UTF-16 units, as a JavaScript string length does, a board with emoji
+  or other astral characters in titles or andon reasons can be longer there than here (40 titles
+  of 200 emoji: 9,875 code points, 13,875 UTF-16 units). The harness then shows its file path and
+  2,000-character preview, the mode main is always in. Overturned by a harness doc or a live run
+  that names the unit.
+- A title or andon reason may hold a newline, since `plan.add` and `board.andon` do not refuse
+  one. A continuation line that starts with `- ` counts as an item in the left-out count, and an
+  andon reason holding such a line lets the trim, once every real item is gone, drop the board
+  header and later andon lines. Refusing newlines at input would change `plan.py` and `board.py`,
+  outside this item; overturned if a real plan or andon reason carries one.
 
 Rollback: revert the commit; the hook then injects the full charters again.

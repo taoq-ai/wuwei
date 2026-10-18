@@ -278,18 +278,31 @@ def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_ch
 SESSION_CAP = 10000  # Claude Code saves a longer additionalContext to a file and shows a 2,000-character preview
 
 
+def session_plan(root, items, newline=''):
+    from conftest import write_plan
+    write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
+                       'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries,{newline} '
+                       'with its promise named in the title the way this plan writes them'} for n in range(items)])
+
+
+def session_context(root):
+    from wuwei import hook
+    return hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+
+
+def left_out(cut):
+    return f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'
+
+
 @pytest.mark.parametrize('items', [0, 40])
 def test_the_session_start_context_fits_the_cap_and_says_what_it_left_out(root, fake, items):
-    from conftest import write_plan
-    from wuwei import hook, ws
+    from wuwei import ws
     if items:
-        write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
-                           'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries, '
-                           'with its promise named in the title the way this plan writes them'} for n in range(items)])
+        session_plan(root, items)
     for name in ('goals.md', 'standards.md') if items else ():
         (root / ws.DIR / name).write_text('- ' + 'x' * 3000 + '\n')
-    text = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
-    assert len(text) <= SESSION_CAP, f'{len(text)} characters: Claude Code caps additionalContext at {SESSION_CAP}'
+    text = session_context(root)
+    assert len(text) < SESSION_CAP, f'{len(text)} characters: Claude Code caps additionalContext at {SESSION_CAP}'
     charters = PLUGIN / 'charters'
     assert f'WUWEI CLI: {PLUGIN / "bin" / "wuwei"}' in text and str(charters / 'planner.md') in text
     assert (charters / '_way.md').read_text(encoding='utf-8').strip() in text
@@ -299,11 +312,33 @@ def test_the_session_start_context_fits_the_cap_and_says_what_it_left_out(root, 
     shown, left = len(re.findall(r'^- item-', text, re.M)), re.search(r'^(\d+) more items left out', text, re.M)
     assert shown + (int(left[1]) if left else 0) == items and (left is None) == (items == 0)
     assert items == 0 or shown >= 10, 'the board keeps the top items'
+    assert items == 0 or text.endswith('\n' + left_out(items - shown)), 'the left-out line is whole and last'
+
+
+def test_the_left_out_line_counts_one_item_in_the_singular(root, fake):
+    from wuwei import ws
+    session_plan(root, 40)
+    shown = len(re.findall(r'^- item-', session_context(root), re.M))
+    session_plan(root, shown + 1)
+    ws.cache_put(root, 'board', None)
+    text = session_context(root)
+    assert len(text) < SESSION_CAP and text.endswith('\n1 more item left out; `wuwei status` lists them all.')
+
+
+def test_a_title_with_a_newline_still_lets_the_board_trim(root, fake):
+    session_plan(root, 40, newline='\n')
+    text = session_context(root)
+    shown = len(re.findall(r'^- item-', text, re.M))
+    assert len(text) < SESSION_CAP and shown >= 10 and text.endswith('\n' + left_out(40 - shown))
 
 
 def test_the_session_start_context_holds_the_cap_when_the_board_has_no_item_line_to_drop(root):
-    from wuwei import board, hook
+    from wuwei import board
     for n in range(30):
         board.andon(root, f'acme/app{n}', 'base branch red: ' + 'x' * 400)
-    text = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+    text = session_context(root)
     assert len(text) == SESSION_CAP and text.startswith(f'WUWEI CLI: {PLUGIN / "bin" / "wuwei"}') and 'ANDON acme/app0:' in text
+    common, board_at = (PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8'), text.index('ANDON acme/app0:')
+    rules = [(PLUGIN / 'charters' / '_way.md').read_text(encoding='utf-8').strip()]
+    rules += [common.split(heading, 1)[1].split('\n## ', 1)[0].strip() for heading in ('## Decisions', '## Done')]
+    assert all(rule in text[:board_at] for rule in rules), 'the rules come whole before the untrusted board text'
