@@ -40,7 +40,7 @@ def atomic_write(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
-    temp.write_text(text, encoding='utf-8')
+    temp.write_bytes(text if isinstance(text, bytes) else text.encode('utf-8'))
     os.replace(temp, path)
 
 

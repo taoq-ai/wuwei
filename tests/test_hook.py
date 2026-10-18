@@ -633,6 +633,59 @@ def test_a_verdict_written_in_a_worktree_is_copied_into_the_workspace_and_attest
     assert ws.rows(root, 'attest')[0]['data']['path'] == '.wuwei/verdicts/I-1/quality-aaaaaaa.md'
 
 
+def worktree_verdict(tmp_path_factory, rel='x/quality-abc1234.md'):
+    written = tmp_path_factory.mktemp('wt') / '.wuwei' / 'verdicts' / rel
+    written.parent.mkdir(parents=True)
+    written.write_text(verdict_text())
+    return written
+
+
+@pytest.mark.parametrize('held', [None, 'outside\n', verdict_text()], ids=['dangling', 'other', 'same'])
+def test_a_symlink_at_the_copy_path_is_refused_and_its_target_unchanged(root, tmp_path_factory, held):
+    target = tmp_path_factory.mktemp('outside') / 'target.md'
+    if held is not None:
+        target.write_text(held)
+    link = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+    reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
+    assert str(link) in reason and 'remove the link' in reason
+    assert (target.read_text() if target.exists() else None) == held
+    assert link.is_symlink() and ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('linked', ['verdicts/x', 'verdicts'])
+def test_a_symlinked_parent_into_the_ledger_is_refused_and_the_ledger_unchanged(root, tmp_path_factory, linked):
+    ledger = root / ws.DIR / 'ledger'
+    ws.record(root, 'plan.pass', {})
+    before = {p: p.read_bytes() for p in ledger.rglob('*') if p.is_file()}
+    (root / ws.DIR / linked).parent.mkdir(parents=True, exist_ok=True)
+    (root / ws.DIR / linked).symlink_to(ledger)
+    reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
+    assert 'remove the link' in reason
+    after = {p: p.read_bytes() for p in ledger.rglob('*') if p.is_file()}
+    assert after.keys() == before.keys() and ws.rows(root, 'attest') == []
+    assert all(after[p].startswith(before[p]) for p in before)  # the ledger only grows by its own rows
+
+
+def test_a_link_planted_after_the_check_is_replaced_never_followed(root, tmp_path_factory, monkeypatch):
+    target = tmp_path_factory.mktemp('outside') / 'target.md'  # dangling, so the write is the only way in
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    is_symlink = Path.is_symlink
+
+    def plant(self):  # the check reads the copy path: a link appears right after
+        out = is_symlink(self)
+        if self == copy and not out:
+            monkeypatch.undo()
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.symlink_to(target)
+        return out
+    monkeypatch.setattr(Path, 'is_symlink', plant)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert not copy.is_symlink() and copy.read_text() == verdict_text()
+    assert not target.exists() and ws.rows(root, 'attest')
+
+
 def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md')['reason']
     assert str((root / ws.DIR / 'verdicts').resolve()) in reason
