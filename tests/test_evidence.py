@@ -5,10 +5,10 @@ from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
 
 
-def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None):
+def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breaking='no', pr='acme/app#42'):
     path = root / ws.DIR / 'verdicts' / item / (name or f'{gate}-{head[:7]}.md')
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item))
+    path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item, pr=pr, breaking=breaking))
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
@@ -550,12 +550,62 @@ def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
     (('requirements.txt',), 1, 'quality, security'),
     (('src/geometry/diameter.py',), 3, 'quality'),
     (('docs/auth.md',), 30, None),
-    (('docs/guide.md',), 30, None)])
+    (('docs/guide.md',), 30, None),
+    (('README.md', 'docs/site/index.md'), 150, None),
+    (('specs/004-voice/spec.md', 'specs/004-voice/plan.md'), 890, 'arch')])
 def test_the_diff_decides_which_gates_a_standard_item_needs(root, fake, files, lines, gates):
     standard(root)
     fake.prs['42'] = make_pr(files=files, lines=lines, body='WUWEI-Item: I-1\nNo test: config')
     found = [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if 'gate' in t]
     assert found == ([f'gates missing at head aaaaaaa: {gates}'] if gates else [])
+
+
+@pytest.mark.parametrize('tier,files,gates', [
+    ('standard', {'specs/004-voice/spec.md': 900, 'specs/004-voice/plan.md': 879, 'specs/001-x/spec.md': 1}, ('arch',)),
+    ('standard', {'README.md': 100, 'docs/site/index.md': 100, 'docs/site/concepts/evidence.md': 100}, ()),
+    ('standard', {'README.md': 5000, 'LICENSE': 300, 'docs/guide.md': 900}, ()),
+    ('standard', {'specs/004-voice/spec.md': 200}, ()),
+    ('standard', {'openspec/changes/x/proposal.md': 201}, ('arch',)),
+    ('standard', {'src/a.py': 150, 'specs/004-voice/spec.md': 51}, ('arch', 'quality')),
+    ('standard', {'src/a.py': 150, 'specs/004-voice/spec.md': 50}, ('quality',)),
+    ('standard', {'src/a.py': 150, 'README.md': 300, 'LICENSE': 300}, ('quality',)),
+    ('light', {'specs/001-x/contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'openspec/changes/x/specs/contracts/events.md': 3}, ('arch',)),
+    ('standard', {'specs/contracts/api.yaml': 3}, ('arch',)),
+    ('full', {'specs/001-x/contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'specs/001-x/spec.md': 3, 'docs/contracts/api.md': 3, 'specs/contracts.md': 3}, ()),
+    ('standard', {'docs/conf.py': 300}, ('arch',)),
+    ('standard', {'src/docs/x.py': 300}, ('arch',)),
+    ('standard', {'NOTICE_handler.py': 300}, ('arch', 'quality')),
+    ('standard', {'requirements/prod.txt': 300}, ('arch',)),
+    ('standard', {'CMakeLists.txt': 300}, ('arch',)),
+    ('standard', {'charters/x.md': 300}, ('arch',)),
+    ('standard', {'AGENTS.md': 300}, ('arch',)),
+    ('light', {'Specs/001-x/contracts/api.md': 3}, ('arch',)),
+    ('standard', {'docs/requirements.txt': 300}, ('arch', 'quality', 'security')),
+    ('light', {'docs/openapi.yaml': 3}, ('arch',)),
+    ('light', {'specs/001-x/api.proto': 3}, ('arch',)),
+    ('light', {'specs/001-x/Contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'contracts/Token.sol': 3, 'src/specs/contracts/h.py': 3}, ('quality',)),
+])
+def test_the_wide_trigger_counts_code_and_spec_lines_and_a_spec_contract_takes_arch(root, tier, files, gates):
+    files = [{'path': path, 'additions': n, 'deletions': 0} for path, n in files.items()]
+    assert evidence.needed(root, tier, files) == gates
+
+
+def test_a_long_docs_delta_carries_the_passes_and_a_long_spec_delta_is_read_by_arch(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    for gate in ('arch', 'quality'):
+        attest(root, gate, OLD)
+    fake.deltas[(OLD, HEAD)] = [{'path': 'README.md', 'additions': 300, 'deletions': 0}]
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.deltas[(OLD, HEAD)] = [{'path': 'specs/004-voice/spec.md', 'additions': 200, 'deletions': 0}]
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    for path, n in (('specs/004-voice/spec.md', 201), ('specs/004-voice/contracts/api.yaml', 2)):
+        fake.deltas[(OLD, HEAD)] = [{'path': path, 'additions': n, 'deletions': 0}]
+        assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by arch)']
 
 
 def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(root, fake):
@@ -857,3 +907,67 @@ def test_evidence_names_the_shape_for_a_pr_not_in_ascii_digits_and_calls_no_gh(r
     with pytest.raises(SystemExit, match='owner/repo#number'):
         cli.main(['evidence', ref])
     assert fake.calls == []
+
+
+def breaking(root, fake, *said, title='feat: change 42'):
+    """Breaking gaps once arch verdicts are attested in the order given, as (head, Breaking, verdict[, PR]) rows."""
+    standard(root)
+    fake.prs['42'] = {**make_pr(), 'title': title}
+    fake.ancestors.add((OLD, HEAD))
+    for n, (head, says, verdict, *pr) in enumerate(said):
+        attest(root, 'arch', head, verdict, name=f'arch-{n}.md', breaking=says, pr=(pr or ['acme/app#42'])[0])
+    attest(root, 'quality')
+    attest(root, 'security')
+    return [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith('breaking change')]
+
+
+OTHER = 'c' * 40  # a head that is no ancestor of the PR head
+ANNOUNCE = ['breaking change without an announcement: add "Announcement: <link to the client communication, '
+            'release note or migration guide>"']
+
+
+@pytest.mark.parametrize('said, found', [
+    ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a later re-read clears it
+    ([(OLD, 'no', 'PASS'), (HEAD, 'yes: drops --format', 'FIX')], ANNOUNCE),  # a later re-read finds it
+    ([(HEAD, 'yes: drops --format', 'PASS'), (HEAD, 'no', 'PASS')], ANNOUNCE),  # relaunching at one head clears nothing
+    ([(HEAD, 'no', 'PASS'), (HEAD, 'yes: drops --format', 'PASS')], ANNOUNCE),
+    ([(HEAD, 'no', 'PASS'), (OLD, 'yes: drops --format', 'PASS')], ANNOUNCE),  # a yes holds at any head
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OLD, 'no', 'PASS')], ANNOUNCE),  # F1: a stale seat at an ancestor
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS')], ANNOUNCE),  # F2: a head off this PR's line
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/app#7')], ANNOUNCE),  # F3: another PR
+    ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/other#1')], ANNOUNCE),  # F3: another repo
+    ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
+])
+def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
+    assert breaking(root, fake, *said) == found
+
+
+@pytest.mark.parametrize('title', ['fix(x)!: drop the v1 export', 'feat!: drop the v1 export'])
+def test_a_declared_break_holds_though_every_arch_verdict_says_no(root, fake, title):
+    assert breaking(root, fake, (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS'), title=title) == ANNOUNCE
+
+
+def test_ledger_order_decides_not_file_names(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'arch', OLD, name='arch-z.md', breaking='yes: drops --format')  # sorts last, attested first
+    attest(root, 'arch', name='arch-a.md', breaking='no')
+    attest(root, 'quality')
+    attest(root, 'security')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_an_edited_arch_verdict_that_kept_no_breaking_field_leaves_the_last_one_that_did(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'arch', OLD, name='arch-0.md', breaking='yes: drops --format')
+    edited = attest(root, 'arch', HEAD, 'FIX', name='arch-1.md')
+    edited.write_text(edited.read_text() + '\nedited\n')  # the FIX holds as recorded, without its Breaking line
+    assert ANNOUNCE[0] in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+def test_a_no_on_a_dropped_descendant_of_the_yes_clears_nothing(root, fake):
+    fake.ancestors.add((OLD, OTHER))  # OTHER grew from OLD but was force-pushed away: not under the PR head
+    assert breaking(root, fake, (OLD, 'yes: drops --format', 'FIX'), (OTHER, 'no', 'PASS')) == ANNOUNCE

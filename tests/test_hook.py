@@ -303,6 +303,37 @@ def test_an_exception_over_two_prs_records_both(root):
     assert all(r['gap'] == 'gates missing at head e750645: security' for r in rulings)
 
 
+def test_an_exception_answer_records_the_gap_after_the_refs(root):
+    plan_one(root)
+    answer(root, 'exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?', 'Accept')
+    assert [{k: r['data'][k] for k in ('kind', 'pr', 'head', 'gap')} for r in ws.rows(root, 'ruling')] == [
+        {'kind': 'exception', 'pr': 'o/r#1', 'head': 'abc1234', 'gap': 'gates missing at head abc1234: quality'}]
+
+
+def test_every_exception_the_guard_passes_is_one_the_hook_records_as_written(root):
+    """Generated: prefixes x refs x separators x gaps x tails. A pass the hook reads as nothing, as other refs
+    than the chain names, or as another gap than the one written, is a hole."""
+    import itertools
+    prefixes = ['exception: ', 'Exception:', '  exception: ', 'exception: for the hotfix ', 'exception: see x/y#3 at 1234567, ',
+                'exception: o/r#9 at 9999999 was rejected; only ', 'exception: o/r#1 at 1111111 failed CI; ']
+    refs = ['o/r#1 at abc1234', 'o/r#1 at abc1234 and #2 at def5678', 'o/r#1 at abc1234 and x/y#2 at def5678',
+            '#1 at abc1234', 'o/r#1 at abc12', 'o/r#\uff11 at abc1234']
+    seps = [': ', ':', ' : ', '. ', ' ', ': . ', ': ? ', '?', ': :', '\n: ', ':\n', ':\t', ': .']
+    gaps = ['no test in the diff', 'gates missing at head abc1234: quality', '', '.github changed', '#2 at def5678',
+            'see x/y#3 at 1234567', '...', ':', '\u200b', '_x']
+    tails = ['. Accept?', '? Accept', '. owner review: x/y#2 at def5678. Accept?', '', '.', ' #4 at 7654321. Accept?',
+             '.\n#4 at 7654321. Accept?', '\nowner review: x/y#2 at def5678. Accept?']
+    passed, holes = 0, []
+    for prefix, chain, sep, gap, tail in itertools.product(prefixes, refs, seps, gaps, tails):
+        question = prefix + chain + sep + gap + tail
+        if guards.pre_tool(root, {'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [{'question': question}]}}):
+            continue
+        passed += 1
+        if hook.exception_refs(question) != (hook.exception_refs(f'exception: {chain}: x')[0], gap):
+            holes.append(question)
+    assert passed > 100 and holes == [], holes[:5]
+
+
 def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
     plan_one(root)
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),
@@ -631,6 +662,105 @@ def test_a_verdict_written_in_a_worktree_is_copied_into_the_workspace_and_attest
     copy = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
     assert copy.read_bytes() == written.read_bytes()
     assert ws.rows(root, 'attest')[0]['data']['path'] == '.wuwei/verdicts/I-1/quality-aaaaaaa.md'
+
+
+def worktree_verdict(tmp_path_factory, rel='x/quality-abc1234.md'):
+    written = tmp_path_factory.mktemp('wt') / '.wuwei' / 'verdicts' / rel
+    written.parent.mkdir(parents=True)
+    written.write_text(verdict_text())
+    return written
+
+
+@pytest.mark.parametrize('held', [None, 'outside\n', verdict_text()], ids=['dangling', 'other', 'same'])
+def test_a_symlink_at_the_copy_path_is_refused_and_its_target_unchanged(root, tmp_path_factory, held):
+    target = tmp_path_factory.mktemp('outside') / 'target.md'
+    if held is not None:
+        target.write_text(held)
+    link = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+    reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
+    assert f'{link} is a symlink' in reason and 'Blocked:' in reason
+    assert (target.read_text() if target.exists() else None) == held
+    assert link.is_symlink() and ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('linked', ['verdicts/x', 'verdicts'])
+def test_a_symlinked_parent_into_the_ledger_is_refused_and_the_ledger_unchanged(root, tmp_path_factory, linked):
+    ledger = root / ws.DIR / 'ledger'
+    ws.record(root, 'plan.pass', {})
+    before = {p: p.read_bytes() for p in ledger.rglob('*') if p.is_file()}
+    (root / ws.DIR / linked).parent.mkdir(parents=True, exist_ok=True)
+    (root / ws.DIR / linked).symlink_to(ledger)
+    reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
+    assert f'{root.resolve() / ws.DIR / linked} is a symlink' in reason and 'Blocked:' in reason
+    after = {p: p.read_bytes() for p in ledger.rglob('*') if p.is_file()}
+    assert after.keys() == before.keys() and ws.rows(root, 'attest') == []
+    assert all(after[p].startswith(before[p]) for p in before)  # the ledger only grows by its own rows
+
+
+def test_a_link_planted_after_the_check_is_replaced_never_followed(root, tmp_path_factory, monkeypatch):
+    target = tmp_path_factory.mktemp('outside') / 'target.md'  # dangling, so the write is the only way in
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    is_symlink = Path.is_symlink
+
+    def plant(self):  # the check reads the copy path: a link appears right after
+        out = is_symlink(self)
+        if self == copy and not out:
+            monkeypatch.undo()
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.symlink_to(target)
+        return out
+    monkeypatch.setattr(Path, 'is_symlink', plant)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert not copy.is_symlink() and copy.read_text() == verdict_text()
+    assert not target.exists() and ws.rows(root, 'attest')
+
+
+@pytest.mark.parametrize('aimed', ['ledger', 'seat'])
+def test_a_link_at_the_temporary_name_is_never_followed(root, tmp_path_factory, monkeypatch, aimed):
+    ws.record(root, 'plan.pass', {})
+    target = next((root / ws.DIR / 'ledger').glob('*.jsonl')) if aimed == 'ledger' else \
+        root / ws.DIR / 'verdicts' / 'x' / 'quality-other.md'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if aimed == 'seat':
+        target.write_text(verdict_text(verdict='FIX'))
+    held = target.read_bytes()
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.with_name(f'.{copy.name}.4242.7.tmp').symlink_to(target)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert target.read_bytes()[:len(held)] == held and (aimed == 'ledger' or target.read_bytes() == held)
+    assert not copy.is_symlink() and copy.read_text() == verdict_text() and ws.verify(root) == []
+
+
+@pytest.mark.parametrize('kind', ['symlink', 'hardlink'])
+def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root, tmp_path_factory, monkeypatch, kind):
+    ws.record(root, 'plan.pass', {})
+    ledger = next((root / ws.DIR / 'ledger').glob('*.jsonl'))
+    held = ledger.read_bytes()
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.7.tmp'
+    unlink = Path.unlink
+
+    def replant(self, missing_ok=False):  # the race the exclusive create closes
+        unlink(self, missing_ok)
+        if self == temp:
+            temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
+    monkeypatch.setattr(Path, 'unlink', replant)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['decision'] == 'block'
+    assert ledger.read_bytes()[:len(held)] == held and ws.rows(root, 'attest') == []
+
+
+def test_a_workspace_reached_through_a_symlinked_path_still_copies_in(root, tmp_path_factory):
+    alias = tmp_path_factory.mktemp('alias') / 'root'
+    alias.symlink_to(root)
+    assert reviewer_stop(alias, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert (root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md').read_text() == verdict_text()
+    assert ws.rows(root, 'attest')[0]['data']['path'] == '.wuwei/verdicts/x/quality-abc1234.md'
 
 
 def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):

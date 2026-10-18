@@ -23,7 +23,9 @@ item.
    `<gate>: <the defect class, in one line>`. The planner passes these lines to every seat brief.
 6. Calibration and yield: compare each gate's stated confidence with what later escaped, and
    each gate's FIX share with its cost. Name an overconfident gate and a gate that never finds
-   anything.
+   anything. Read outcomes by seat, model and effort: fix rounds, blocking findings, escapes and
+   tokens per merged item. Where they back it, propose a change to a row of the planner's model
+   table with its numbers, as advice.
 7. Skills and memory: when seats keep re-learning a repository fact, propose a line for that
    repository's `CLAUDE.md` or `AGENTS.md`; when the same multi-step procedure recurs three or more
    times, propose a project skill under `.claude/skills/`. Both land through a PR in that

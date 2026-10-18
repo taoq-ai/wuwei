@@ -30,14 +30,15 @@ the work was done, only whether its evidence exists.
 6. The harness owns permissions; WUWEI adds deny and ask rules and checks what a static rule
    cannot: content, evidence and completion.
 7. Be water: read each repository's own process and fill only the gaps.
-8. Configuration holds facts, not behaviour: five keys.
+8. Configuration holds facts, not behaviour: six keys.
 
 ## 3. The team
 
 Planner (the owner's session), lead, builder, four sentinels (arch, quality, security, goal),
 shepherd, steward. `charters/` is the one source; `wuwei agents build` generates the agents with
-their reviewed tool grants. The quality sentinel runs on a different model than the session's
-(`MODELS` in `cli/wuwei/agents.py`). Seats cannot ask the owner. The planner passes each seat its
+their reviewed tool grants. Each seat's model and effort come from the table in the planner charter
+(`docs/site/concepts/models.md`); at least one gate per head runs on a different model than the
+builder. Seats cannot ask the owner. The planner passes each seat its
 role's lines of `.wuwei/standards.md`.
 
 ## 4. The day
@@ -74,7 +75,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change; a contract file takes arch at any tier; full takes all four |
+| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
 | CI green, threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |
@@ -106,9 +107,9 @@ day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
-by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
-needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
-head. Both are safety gaps.
+by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
+gate at any tier) needs an `Announcement: <link>` line and then the owner's `breaking:`
+confirmation at the head. Both are safety gaps.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
@@ -209,8 +210,9 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 
 ## 11. Configuration and budgets
 
-Five keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`. Runtime at most 3,000
-lines of stdlib Python (a test holds it). A change that breaks a budget deletes something first.
+Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
+most 3,400 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 `hooks/hooks.json`, with the same hook events and outputs). The hook entry maps Codex's tool shapes

@@ -92,10 +92,10 @@ The tier is a ceiling and the diff decides what runs under it:
 
 | The diff | Gates |
 | --- | --- |
-| docs or specs only | none |
+| prose only, at any size (`.md`, `.rst` and `.adoc` files outside the spec folders, other than the files seats load such as `AGENTS.md`, `CLAUDE.md`, charters, agents and skills; `LICENSE`; `NOTICE`), or specs of 200 lines or fewer with no contract | none |
 | code | quality |
 | risky paths (auth, sessions, tokens, secrets, crypto, SQL, migrations, policies, infrastructure, CI, dependency manifests) or `owner_paths`, at standard | + security |
-| a contract file (any tier), or more than 200 changed lines or 10 code files (standard) | + arch |
+| a contract file or a spec contract (a file under a spec's `contracts/` folder) at any tier, or at standard more than 200 changed lines that are not prose (code, specs, `.txt` files, code under `docs/`, the files seats load) or 10 code files | + arch |
 | full tier | all four |
 
 A one-line config flag costs one gate. After a fix round only the gate that found the problem
