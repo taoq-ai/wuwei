@@ -57,7 +57,7 @@ def main(tree, scratch, pytest):
             continue
         (copy / path).write_text(text.replace(old, new), encoding='utf-8')
         if name.startswith(('M25', 'M26')):  # the agent files are generated: rebuild them as wuwei agents build would
-            subprocess.run([sys.executable, '-I', str(copy / 'bin' / 'wuwei'), 'agents', 'build'], cwd=copy, capture_output=True)
+            subprocess.run([str(copy / 'bin' / 'wuwei'), 'agents', 'build'], cwd=copy, capture_output=True)
         run = subprocess.run([pytest, '-q', '-x', '-p', 'no:cacheprovider', *TESTS], cwd=copy, capture_output=True, text=True)
         caught = run.returncode != 0
         survived += not caught
