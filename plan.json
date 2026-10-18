@@ -400,6 +400,30 @@
    "approved": true
   },
   {
+   "id": "seat-files-gated",
+   "title": "fix(evidence): seat-loaded Markdown (charters, agents, skills, AGENTS.md, CLAUDE.md) and code under docs/ count as code for gates and the test rule",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "arch gate on #1142 at a7654a8: charters/*.md, agents/*.md, skills/*/SKILL.md, AGENTS.md and CLAUDE.md are read as prose by needed(), so a 300-line charter rewrite at standard takes no gate once wide-specs lands, though seats execute that text; code under docs/ (docs/conf.py) already gets no quality, security or test requirement on main",
+   "promise": "needed() and the test rule (evidence.py:385) treat seat-loaded Markdown (charters/, agents/, skills/, .claude/agents/, AGENTS.md, CLAUDE.md, .specify/memory/) and non-prose files under docs/ as code: they count toward the wide trigger and take quality, and a code change there needs a test or a No test: line (docs alone stay exempt). Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, _common.md and design.md where they state the rule. Runtime lines: estimate +2, budget 4. Order: after wide-specs merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given a standard PR changing 300 lines of charters/builder.md, when needed() reads it, then it takes quality and arch",
+    "given a PR changing docs/conf.py by 20 lines with no test, when evidence reads it, then it shows the missing-test gap"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "pr-draft-text",
    "title": "docs(charters): the PR standard says the PR opens as a draft and the shepherd requests the reviewer",
    "goal": "G-2",
