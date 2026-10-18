@@ -551,6 +551,30 @@
    "approved": true
   },
   {
+   "id": "exception-parser",
+   "title": "refactor(guards): one exception: ref and gap parser in guards, called by the hook, so the guard passes only what the hook records",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 2,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 6.0,
+   "why": "arch gate on #1136 at 353b6f7: guard and hook still disagree on whitespace before the colon (a tab or newline passes the guard and the hook records ':x'); the property test checks only a non-empty gap; the optional-colon mutant survives; the refusal does not name the cause for a leading space or a later '#n at <sha>'",
+   "promise": "guards gains one parser for exception: questions (refs, then ':' and the gap) and hook.exception_refs calls it, so every question the guard passes records exactly the refs and gap the owner read. The refusal names the cause (leading space, missing colon, a later ref in the gap). The property test asserts the recorded gap equals the text after the colon. Files: cli/wuwei/guards.py, cli/wuwei/hook.py, tests/test_guards.py, tests/test_hook.py, the vendored copies, docs naming the [and #m at <sha7>] form. Runtime lines: estimate -2 (one regex goes), budget +2. Order: after exception-shape merges, before goal-met (hook._answers). Rollback: revert the commit.",
+   "acceptance": [
+    "given 'exception: o/r#1 at abc1234\\t: gap. Accept?', when the guard and the hook read it, then either both refuse or the hook records the gap 'gap'",
+    "given a generated set of exception: questions, when each passes the guard, then exception_refs records the gap equal to the text between ':' and the first '. ' or '?'"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "db-recipe",
    "title": "docs(charters): a seat gets a private Postgres under its scratch folder, or says the DB suite rests on CI",
    "goal": "G-1",
