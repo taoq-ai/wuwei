@@ -50,7 +50,7 @@ MUTANTS = [
     ('M37 trailing period kept on the item', H, "item[1].rstrip('.')", 'item[1]'),
     ('M38 an empty models key written', W, " if key != 'models' or data[key]", ''),
     ('M39 floor on every role', H, "floor = role.startswith('sentinel-') and ", 'floor = '),
-    ('M40 Task launches not advised', H, "in ('Agent', 'Task') else None", "== 'Agent' else None"),
+    ('M40 Task launches not advised', H, "or {}) if payload.get('tool_name') in ('Agent', 'Task')", "or {}) if payload.get('tool_name') == 'Agent'"),
     ('M41 attest rows without blocking not counted', R, 'int(r["data"].get("verdict") != "PASS")', '0'),
 ]
 TESTS = ['tests/test_models.py', 'tests/test_ledger.py', 'tests/test_report.py', 'tests/test_setup.py', 'tests/test_hook.py']
@@ -74,7 +74,8 @@ def main(tree, scratch, pytest):
         run = subprocess.run([pytest, '-q', '-x', '-p', 'no:cacheprovider', *TESTS], cwd=copy, capture_output=True, text=True)
         caught = run.returncode != 0
         survived += not caught
-        print(f"{name}: {'killed' if caught else 'SURVIVED'} ({run.stdout.strip().splitlines()[-1] if run.stdout.strip() else run.stderr[-200:]})")
+        failed = next((line.split(' - ')[0] for line in run.stdout.splitlines() if line.startswith(('FAILED', 'ERROR'))), '')
+        print(f"{name}: {'killed' if caught else 'SURVIVED'} ({run.stdout.strip().splitlines()[-1] if run.stdout.strip() else run.stderr[-200:]}) {failed}")
     print(f'{len(MUTANTS)} mutants, {survived} survived')
     return 1 if survived else 0
 
