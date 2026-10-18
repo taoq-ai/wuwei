@@ -64,10 +64,10 @@ def test_the_runtime_table_is_the_planner_table_at_every_tier_on_and_off_the_pat
 def test_the_planner_and_the_page_say_the_hook_notes_a_departure_and_never_refuses():
     text = ' '.join(_models_section().split())
     assert "On a departure with no reason line the hook adds a note naming the table's setting; it never refuses the call." in text
-    assert 'An owner `models` row that sets Haiku 5.5 for a gate is that exception.' in text
+    assert 'A `models` row is not that exception: only the owner\'s `exception:` answer is.' in text
     page = ' '.join((PLUGIN / 'docs' / 'site' / 'concepts' / 'models.md').read_text(encoding='utf-8').split())
     assert "it adds a note naming the table's setting; it never refuses or rewrites the call." in page
-    assert 'A `models` row that puts Haiku 5.5 on a gate is your exception to the floor.' in page
+    assert 'A `models` row that puts Haiku 5.5 on a gate does not break the floor: only your `exception:` answer does.' in page
 
 
 def test_a_codex_role_file_still_names_no_model():
@@ -123,13 +123,24 @@ def test_a_model_reason_line_ends_the_advice(root):
     assert launch(root, 'sentinel-goal', 'opus', 'high', prompt='Item: I-1\nModel reason: second family') is None
 
 
-def test_a_haiku_gate_is_advised_even_with_a_reason_unless_the_owner_set_it(root):
+FLOOR = ('Haiku 5.5 never runs a gate on risky, owner or contract paths, and neither a reason nor a models row covers '
+         'that: it is an exception: for the owner.')
+
+
+def test_a_haiku_gate_is_advised_even_with_a_reason_or_a_models_row(root, monkeypatch):
     plan_item(root, 'standard')
-    text = advice(launch(root, 'sentinel-quality', 'haiku', 'low', prompt='Item: I-1\nModel reason: cheap'))
-    assert 'Haiku 5.5 never runs a gate on risky, owner or contract paths' in text and 'exception:' in text
-    assert "owner's models row" in text
-    ws.set_config(root, 'models', 'sentinel-quality=haiku low')
-    assert launch(root, 'sentinel-quality', 'haiku', 'low', prompt='Item: I-1\nModel reason: cheap') is None
+    assert FLOOR in advice(launch(root, 'sentinel-quality', 'haiku', 'low', prompt='Item: I-1\nModel reason: cheap'))
+    ws.set_config(root, 'models', 'sentinel-quality=claude-haiku-5-5 low')  # any seat can write config.toml
+    assert FLOOR in advice(launch(root, 'sentinel-quality', 'haiku', 'low', prompt='Item: I-1\nModel reason: cheap'))
+    assert FLOOR in advice(launch(root, 'sentinel-quality', 'claude-opus-5-5', 'high'))  # the row itself puts Haiku on the gate
+    monkeypatch.setenv('CLAUDE_CODE_SUBAGENT_MODEL', 'claude-haiku-5-5')
+    assert FLOOR in advice(launch(root, 'sentinel-quality', 'haiku', 'low'))
+
+
+def test_the_haiku_floor_is_for_gates_only(root):
+    plan_item(root, 'standard')
+    assert launch(root, 'builder', 'haiku', 'low', prompt='Item: I-1\nModel reason: a typo fix') is None
+    assert 'Haiku 5.5 never' not in advice(launch(root, 'builder', 'haiku', 'low'))
 
 
 def test_an_owner_row_for_the_role_and_tier_replaces_the_table(root):
@@ -157,6 +168,23 @@ def test_the_item_is_read_from_a_wuwei_item_line_and_a_brief_without_one_reads_a
     assert 'for builder at standard' in advice(launch(root, 'builder', 'sonnet', 'high', prompt='Build the thing.'))
 
 
+def test_the_task_tool_name_is_advised_too(root):
+    plan_item(root, 'standard')
+    assert 'Sonnet 5.5 high' in advice(launch(root, 'sentinel-goal', 'opus', tool='Task'))
+
+
+@pytest.mark.parametrize('prompt, item, reason', [
+    ('Item: I-1\nModel reason:\nBuild it.', 'I-1', None), ('Item:\nModel: claude-opus-5-5 high', None, None),
+    ('Item: I-1.\nModel reason: \t second family ', 'I-1', 'second family'), ('Build Item: `I-1`, then stop.', 'I-1', None)])
+def test_the_brief_lines_are_read_within_their_own_line(root, prompt, item, reason):
+    assert hook.asked({'prompt': prompt})[0::2] == (item, reason)
+
+
+def test_an_empty_model_reason_line_does_not_end_the_advice(root):
+    plan_item(root, 'full')
+    assert 'for builder at full' in advice(launch(root, 'builder', 'sonnet', 'low', prompt='Item: I-1.\nModel reason:\nBuild it.'))
+
+
 @pytest.mark.parametrize('variable, model, effort', [('CLAUDE_CODE_EFFORT_LEVEL', 'sonnet', 'low'),
                                                      ('CLAUDE_CODE_SUBAGENT_MODEL', 'opus', 'high')])
 def test_an_environment_variable_turns_its_half_of_the_advice_off(root, monkeypatch, variable, model, effort):
@@ -170,6 +198,8 @@ def test_no_advice_for_a_codex_spawn_or_a_role_outside_the_table(root):
     plan_item(root, 'full')
     spawn = {'session_id': 's1', 'tool_name': 'spawn_agent', 'cwd': str(root),
              'tool_input': {'agent_type': 'builder', 'task_name': 'build I-1', 'message': 'Item: I-1'}}
+    assert hook.handle(root, 'PreToolUse', spawn) is None
+    ws.set_config(root, 'models', 'builder=sonnet medium')  # a row the agent file's default departs from
     assert hook.handle(root, 'PreToolUse', spawn) is None
     assert launch(root, 'Explore', 'haiku', 'low') is None
     assert ws.rows(root, 'hook.error') == []
@@ -200,7 +230,22 @@ def test_a_launch_records_what_ran_what_was_asked_and_the_reason_and_the_attest_
                                               'effort': {'level': 'high'}, 'cwd': str(root)}) is None
     [attest] = ws.rows(root, 'attest')
     assert (attest['data']['model'], attest['data']['effort'], attest['data']['blocking']) == ('claude-opus-5-5', 'high', 1)
-    assert ws.rows(root, 'seat.stopped')[0]['data']['effort'] == 'high'
+
+
+def test_the_attest_copies_the_launch_with_its_own_agent_id(root, fake):
+    plan_item(root, 'standard')
+    fake.prs['42'] = make_pr()
+    for agent, model, effort in (('rev1', 'claude-sonnet-5-5', 'high'), ('rev2', 'claude-opus-5-5', 'xhigh')):
+        started(root, {'subagent_type': 'wuwei:sentinel-quality', 'effort': effort, 'prompt': 'Item: I-1'},
+                {'agentId': agent, 'resolvedModel': model})
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text(verdict='PASS'))
+    assert hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality',
+                                              'last_assistant_message': 'Verdict file: .wuwei/verdicts/I-1/quality.md',
+                                              'cwd': str(root)}) is None
+    [attest] = ws.rows(root, 'attest')
+    assert (attest['data']['agent'], attest['data']['model'], attest['data']['effort']) == ('rev1', 'claude-sonnet-5-5', 'high')
 
 
 def test_a_launch_with_nothing_readable_records_unrecorded_and_unmeasured(root):
@@ -208,8 +253,6 @@ def test_a_launch_with_nothing_readable_records_unrecorded_and_unmeasured(root):
     data = ws.rows(root, 'seat.started')[0]['data']
     assert (data['model'], data['asked'], data['effort'], data['reason'], data['item']) == (
         'unmeasured', 'unrecorded', 'unrecorded', None, None)
-    hook.handle(root, 'SubagentStop', {'agent_id': 'b1', 'agent_type': 'builder', 'last_assistant_message': 'done'})
-    assert ws.rows(root, 'seat.stopped')[0]['data']['effort'] == 'unmeasured'
 
 
 def test_the_briefs_model_line_is_the_recorded_effort_when_the_call_has_none(root):
@@ -261,6 +304,15 @@ def test_the_models_key_is_set_kept_and_written_as_toml(root):
     assert ws.retired(root) == [] and len(ws.DEFAULTS) == 6
 
 
+def test_an_empty_models_key_is_not_written(root):
+    """An older plugin's wuwei init lists models as retired and rewrites the config without it."""
+    ws.set_config(root, 'telemetry', 'false')
+    assert 'models' not in (root / ws.DIR / 'config.toml').read_text()
+    ws.set_config(root, 'models', 'lead=opus high')
+    ws.set_config(root, 'models', '')
+    assert 'models' not in (root / ws.DIR / 'config.toml').read_text() and ws.config(root)['models'] == {}
+
+
 def test_a_blank_or_repeated_models_value_sets_what_it_can(root):
     assert ws.set_config(root, 'models', '')['models'] == {}
     assert ws.set_config(root, 'models', 'lead=opus high, lead=opus xhigh, =opus low')['models'] == {'lead': 'opus xhigh'}
@@ -294,7 +346,9 @@ def test_learning_shows_each_seat_by_model_and_effort(root, fake):
         pr.update(title=title, mergedAt=now)
         fake.prs[str(number)] = pr
     seats = [('q1', 'sentinel-quality', 'claude-sonnet-5-5', 'high', 'I-1'), ('q2', 'sentinel-quality', 'claude-sonnet-5-5', 'high', 'I-1'),
-             ('q3', 'sentinel-quality', 'claude-opus-5-5', 'high', 'I-2'), ('b1', 'builder', 'unmeasured', 'unrecorded', 'I-1')]
+             ('q3', 'sentinel-quality', 'claude-opus-5-5', 'high', 'I-2'), ('b1', 'builder', 'unmeasured', 'unrecorded', 'I-1'),
+             ('q4', 'sentinel-quality', 'claude-sonnet-5-5', 'high', 'I-2'), ('q5', 'sentinel-quality', 'claude-sonnet-5-5', 'high', 'I-2'),
+             ('g1', 'sentinel-goal', 'unmeasured', 'high', 'I-1')]
     for agent, role, model, effort, item in seats:
         ws.record(root, 'seat.started', {'role': role, 'agent': agent, 'model': model, 'effort': effort, 'item': item})
         ws.record(root, 'seat.stopped', {'role': role, 'agent': agent, 'tokens': 100})
@@ -302,10 +356,12 @@ def test_learning_shows_each_seat_by_model_and_effort(root, fake):
     ws.record(root, 'attest', {'agent': 'q1', 'gate': 'quality', 'verdict': 'FIX', 'blocking': 2, 'pr': 'acme/app#42'})
     ws.record(root, 'attest', {'agent': 'q2', 'gate': 'quality', 'verdict': 'PASS', 'blocking': 0, 'pr': 'acme/app#42'})
     ws.record(root, 'attest', {'agent': 'q3', 'gate': 'quality', 'verdict': 'PASS', 'pr': 'acme/app#40'})
+    ws.record(root, 'attest', {'agent': 'q4', 'gate': 'quality', 'verdict': 'FIX', 'pr': 'acme/app#43'})  # from before this item
     text = report.day(root)
-    assert ('- seat sentinel-quality claude-sonnet-5-5 high: 2 launches, 1.0 fix rounds per item, 2 blocking findings, '
-            '0 escapes, 200 tokens') in text
+    assert ('- seat sentinel-quality claude-sonnet-5-5 high: 4 launches, 1.0 fix rounds per item, 3 blocking findings, '
+            '0 escapes, 400 tokens') in text
     assert ('- seat sentinel-quality claude-opus-5-5 high: 1 launches, 0.0 fix rounds per item, 0 blocking findings, '
             '1 escapes, 100 tokens') in text
     assert '- seat builder unmeasured unrecorded: 1 launches' in text
-    assert '- model or effort unrecorded on 2 launches' in text
+    assert '- seat sentinel-goal unmeasured high: 1 launches' in text
+    assert '- model or effort unrecorded on 3 launches' in text

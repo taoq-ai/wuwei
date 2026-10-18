@@ -110,13 +110,14 @@ departure the planner can record with a reason: breaking it is an `exception:` f
   so). On a departure with no `Model reason:` line it adds a note naming the table's setting; it
   never refuses or rewrites the call. It cannot see the diff's paths at launch, so a setting the
   row gives on risky, owner or contract paths, or for a logic conflict, counts as a fit. A Haiku
-  gate gets the note even with a reason line.
+  gate gets the note even with a reason line or a `models` row.
 - Each launch records the model that ran, the model and effort asked for, the reason and the item
   (`unrecorded` or `unmeasured` where the hook cannot read them). A gate's verdict row copies the
   model and effort.
 - Your own `models` rows in `.wuwei/config.toml` override any table row, for example
   `models = {"builder light" = "opus medium"}`. A row for a role and tier wins over one for the
-  role alone. A `models` row that puts Haiku 5.5 on a gate is your exception to the floor.
+  role alone. A `models` row that puts Haiku 5.5 on a gate does not break the floor: only your
+  `exception:` answer does.
 - `wuwei doctor` names `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL` when they are set.
   With the first set, the hook leaves effort out of its note; with the second, the model.
 - `/wuwei-watch` may run on Sonnet 5.5 at medium effort through its own frontmatter. The skill offers

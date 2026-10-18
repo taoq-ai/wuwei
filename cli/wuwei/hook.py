@@ -72,8 +72,8 @@ def pre_tool(root, payload):
 def asked(data):
     """The item the brief names, the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\bItem:\s*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:\s*(\S.*)$'))
-    return item and item[1], str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+        r'\bItem:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+    return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 
 def advise(root, data):
@@ -89,14 +89,14 @@ def advise(root, data):
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
     fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
     model, effort = str(data.get('model') or table[''].rsplit(' ', 1)[0]), effort or table[''].rsplit(' ', 1)[1]
-    floor = role.startswith('sentinel-') and fam(model) == 'haiku'  # a reason covers a departure, never this floor
-    if reason and not floor or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
-                                   (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed):
+    floor = role.startswith('sentinel-') and 'haiku' in (fam(model), fam(allowed[0][0]))  # no reason or row covers it
+    if not floor and (reason or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
+                                    (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed)):
         return None
     return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
                    f"brief (asked: {model} {effort}" + ''.join(f'; the row also allows {s} {when}' for s, when in allowed[1:]) + ').' + (
-                       " Haiku 5.5 never runs a gate on risky, owner or contract paths, and a reason does not cover that: it is "
-                       "an exception: for the owner, or the owner's models row." if floor else ''))
+                       " Haiku 5.5 never runs a gate on risky, owner or contract paths, and neither a reason nor a models row "
+                       "covers that: it is an exception: for the owner." if floor else ''))
 
 
 def closed(root):
@@ -151,10 +151,9 @@ def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
     _, tokens, ended = transcript(payload)
-    effort = payload['effort'] if isinstance(payload.get('effort'), dict) else {}  # effort.level: the level in effect at the stop
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
-                                     'session': payload.get('session_id'), 'effort': str(effort.get('level') or 'unmeasured')})
+                                     'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
             return None

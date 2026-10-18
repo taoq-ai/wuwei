@@ -92,7 +92,7 @@ def _toml(value):
 
 def write_config(root, data):
     atomic_write(Path(root) / DIR / 'config.toml',
-                 ''.join(f'{key} = {_toml(data[key])}\n' for key in DEFAULTS))
+                 ''.join(f'{key} = {_toml(data[key])}\n' for key in DEFAULTS if key != 'models' or data[key]))
 
 
 def set_config(root, key, value):

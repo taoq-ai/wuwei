@@ -108,8 +108,8 @@ raises it (`_common.md`, Done). Where two settings in a row apply, the later one
    Sonnet 5.5, at high. At a delta the passes that carry count, so the gate that re-reads keeps its
    model.
 4. Floor: Haiku 5.5 never runs a gate on risky, owner or contract paths. This is not a departure: a
-   need to break it is an `exception:` for the owner. An owner `models` row that sets Haiku 5.5 for
-   a gate is that exception.
+   need to break it is an `exception:` for the owner. A `models` row is not that exception: only the
+   owner's `exception:` answer is.
 5. Effort: set it on every call, since Opus 5.5 defaults to medium. Use at least high for
    intelligence-sensitive work, max when correctness matters more than cost, low for simple
    lookups. Before moving a seat to a cheaper model, measure the stronger model at a lower effort.
