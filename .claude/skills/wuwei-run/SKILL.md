@@ -9,9 +9,10 @@ Start or resume the day. It opens with a plan pass. The plan in `.wuwei/plan.jso
 queue; this pass adds, drops or re-ranks.
 
 1. Run `wuwei plan pass --reason "<why this pass: morning, queue dry, owner asked, ...>"`. It
-   reopens a closed day. For each goal it names as past its date, ask the question it prints with
-   Yes and No, the `<evidence>` replaced by what the goal's measure shows now. WUWEI records the
-   answer; a met goal gets no new items, and a No waits until the owner moves the goal's date.
+   reopens a closed day. For each goal it names as past its date, read the goal's measure as step 5
+   says, then ask the question it prints with Yes and No, the `<evidence>` replaced by that reading.
+   WUWEI records the answer; a met goal gets no new items, and a No waits until the owner moves the
+   goal's date.
 2. Read `.wuwei/goals.md`, `.wuwei/standards.md`, `wuwei plan` and `wuwei status`. On a later pass,
    start from what changed since the last one.
 3. Start what is already approved before you launch the lead. An approved item with no pull

@@ -37,12 +37,11 @@ def goals(root):
     return found
 
 
-def goal_status(root):
-    """([(G-n, date)] past its ISO date, not ruled met nor kept open on or after it; [G-n ruled met]); the latest ruling counts (#975)."""
-    ruled = {r['data'].get('goal'): (r['data'].get('approved'), r['ts'][:10]) for r in ws.rows(root, 'ruling') if r['data'].get('kind') == 'goal.met'}
-    due = [(name, date) for name, (_, date) in goals(root).items() if re.fullmatch(r'G-[0-9]+', name, re.I) and re.fullmatch(
-        r'[0-9]{4}-[0-9]{2}-[0-9]{2}', date) and not (seen := ruled.get(name.upper(), (False, '')))[0] and seen[1] < date < ws.today()]
-    return due, sorted(goal for goal, (met, _) in ruled.items() if met)
+def goal_status(root):  # ([(G-n, date) to ask], [G-n met]); the latest goal.met ruling counts while goals.md holds its Outcome (#975)
+    said = {(g.get('goal'), g.get('outcome')): (g.get('approved'), r['ts'][:10]) for r in ws.rows(root, 'ruling') if (g := r['data']).get('kind') == 'goal.met'}
+    seen = [(n, d, *said.get((n, o), (False, ''))) for n, (o, d) in ((k.upper(), v) for k, v in goals(root).items()) if re.fullmatch(r'G-[0-9]+', n)]
+    return ([(n, d) for n, d, met, day in seen if not met and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', d) and day < d < ws.today()],
+            [n for n, _, met, _ in seen if met])
 
 
 def _size(item):

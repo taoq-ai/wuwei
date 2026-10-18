@@ -12,13 +12,16 @@ surface it at each pass, not leave it to the lead by chance.
    `goal G-n dated <d>: ask the owner 'goal: G-n met? <evidence>'`. The planner replaces
    `<evidence>` with what the measure shows; WUWEI does not read the measure.
 2. When the owner answers a question that starts `goal: G-n met?`, the PostToolUse hook records a
-   `ruling` row with `kind: goal.met`, the goal id, `approved` (the yes words the hook already
-   reads), the question and the answer. A no keeps the goal open. The pass does not offer it again
+   `ruling` row with `kind: goal.met`, the goal id, the goal's Outcome as goals.md holds it then,
+   `approved` (the yes words the hook already reads), the question and the answer. A ruling counts
+   only while goals.md still holds that Outcome under that id, so a goal the owner rewrites in place
+   is a new goal and is offered again. A no keeps the goal open. The pass does not offer it again
    until the owner moves its date past the day of the no.
 3. The day report prints `Met goals: <ids>` (or `none`). The lead charter says a met goal gets no
    new candidates. Nothing this change adds writes `goals.md`; only the owner changes it.
 
-Runtime lines: +13, within the item's budget of 13 (2,986 at 3d2eb29, 2,999 at the head).
+Runtime lines: +13, within the item's budget of 13 (2,986 at 3d2eb29, 2,999 at the head, the
+same after arch round 1).
 
 The acceptance scenarios, restated:
 
@@ -58,6 +61,11 @@ The acceptance scenarios, restated:
   once the date passes, because the owner has not yet answered for that date.
 - Q: Which ruling counts when there are several? A: The latest per goal, so a later no reopens a
   goal once ruled met.
+- Q: The owner rewrites the G-1 block in place with a new outcome and date. Is the new G-1 met?
+  A: No. The ruling keeps the Outcome it answered, and a ruling counts only while goals.md holds
+  that Outcome under that id (arch round 1). The report's `Met goals:` line reads the goals in
+  goals.md, so a goal removed from the file or rewritten no longer shows as met. A no recorded
+  against the old Outcome does not hold the new goal either.
 - Q: Which goal names are offered? A: Only `G-n` headings, the shape the hook records. Another
   heading would be asked every pass and never recorded.
 - Q: Does any other consumer read a goal.met ruling? A: `evidence.py` reads rulings with
@@ -69,11 +77,15 @@ The acceptance scenarios, restated:
 ### US1: the pass offers a goal past its date (P1)
 
 Acceptance 1, plus: a goal dated today or tomorrow, an empty or non-ISO date, a non-`G-n` heading,
-a goal ruled met before or after its date, and a no on the goal's own date are each not offered.
+a goal ruled met before or after its date, a no on the goal's own date, a lowercase heading
+(`## g-10`) ruled met and a month-only date (`Date: 2026-10`) are each not offered. A lowercase
+heading with no ruling is offered under its upper-case id.
 
 ### US2: a yes records the goal as met and the report lists it (P1)
 
-Acceptance 2, through Claude's AskUserQuestion and Codex's request_user_input.
+Acceptance 2, through Claude's AskUserQuestion and Codex's request_user_input. Two goals ruled met
+are both listed. A goal the owner rewrites in place (new Outcome and date) is offered again, and
+the report no longer lists it as met.
 
 ### US3: a no holds the goal until its date moves (P1)
 
@@ -95,9 +107,11 @@ hook at main and at the head.
 
 - FR-001: `wuwei plan pass` prints the goal: line for each `G-n` goal past its ISO date with no
   latest ruling of met and no no on or after its date.
-- FR-002: `hook._answers` records `ruling {kind: goal.met, goal, approved, question, answer}` for a
-  non-empty answer to a question in the shape, and adds a note naming what it recorded.
-- FR-003: `report.day` prints `Met goals:` with the goals whose latest ruling is met, or `none`.
+- FR-002: `hook._answers` records `ruling {kind: goal.met, goal, outcome, approved, question,
+  answer}` for a non-empty answer to a question in the shape, and adds a note naming what it
+  recorded.
+- FR-003: `report.day` prints `Met goals:` with the goals in goals.md whose latest ruling for their
+  current Outcome is met, in goals.md order, or `none`.
 - FR-004: The lead charter gives a met goal no new candidates; the run skill tells the planner to ask
   the printed question.
 - FR-005: Nothing this change adds writes goals.md (init and upgrade keep their existing writes).
@@ -114,6 +128,12 @@ hook at main and at the head.
   early no to hold until the date moves.
 - The report lists met goals from every day's rulings, not only today's, since a goal outlives a
   day. Overturned if the owner wants only today's.
+- A goal is its id and its Outcome text: a ruling holds only while goals.md keeps both. An edit to
+  the Outcome text alone (a typo fix) makes the goal due again, and the owner answers once more.
+  This fails toward asking. Overturned if owners often reword outcomes without changing the goal.
+- Goal ids are not normalised: `goal: G-02 met?` records `G-02`, which matches no `## G-2` heading,
+  so G-2 stays offered (under-records, never forges). The pass prints `G-2`, so the planner asks in
+  that shape. Overturned if a planner writes padded ids in practice.
 
 ## Rollback
 

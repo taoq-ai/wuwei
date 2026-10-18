@@ -169,8 +169,10 @@ def test_a_plan_pass_offers_each_goal_whose_date_passed_once(root, monkeypatch, 
     monkeypatch.chdir(root)
     day = lambda n: (ws.now() + datetime.timedelta(days=n)).date().isoformat()  # noqa: E731
     goals_md(root, {'G-1': day(-1), 'G-2': day(1), 'G-3': day(0), 'G-4': '', 'G-5': 'end of Q4', 'G-6': day(-9),
-                    'G-7': day(-1), 'Release': day(-1), 'G-8': '1 October 2026', 'G-9': day(-3)})
+                    'G-7': day(-1), 'Release': day(-1), 'G-8': '1 October 2026', 'G-9': day(-3), 'g-10': day(-1),
+                    'g-11': day(-1), 'G-12': day(-40)[:7]})
     answer_goal(root, 'goal: G-6 met? 100 percent at 2026-10-01.', 'Yes')
+    answer_goal(root, 'goal: g-10 met? done.', 'Yes')  # a lowercase heading, ruled met in lowercase
     real = ws.now()
     monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(days=5))  # met early, before its date
     answer_goal(root, 'goal: G-7 met? shipped early.', 'Yes')
@@ -180,7 +182,8 @@ def test_a_plan_pass_offers_each_goal_whose_date_passed_once(root, monkeypatch, 
     out = plan_pass(capsys)
     assert out.count(f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'") == 1
     assert [line for line in out.splitlines() if line.startswith('goal ')] == [
-        f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'"]
+        f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'",
+        f"goal G-11 dated {day(-1)}: ask the owner 'goal: G-11 met? <evidence>'"]
     assert ws.rows(root, 'plan.pass')
 
 
@@ -195,12 +198,28 @@ def test_a_no_keeps_the_goal_quiet_until_its_date_moves(root, monkeypatch, capsy
     assert 'goal G-2' not in plan_pass(capsys)
     assert 'goal G-2' not in plan_pass(capsys)
     real = ws.now()
+    goals_md(root, {'G-2': day(-1), 'G-3': day(-6)})
     monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(days=5))  # a no given five days ago
     answer_goal(root, 'goal: G-3 met? not yet.', 'No')
     monkeypatch.setattr(ws, 'now', lambda: real)
-    goals_md(root, {'G-2': day(-1), 'G-3': day(-6)})
     assert 'goal G-3' not in plan_pass(capsys)
     goals_md(root, {'G-2': day(-1), 'G-3': day(-5)})  # moved to the day of the no: still held
     assert 'goal G-3' not in plan_pass(capsys)
     goals_md(root, {'G-2': day(-1), 'G-3': day(-2)})  # the owner moved the date past the day of the no
     assert f"goal G-3 dated {day(-2)}: ask the owner 'goal: G-3 met? <evidence>'" in plan_pass(capsys)
+
+
+def test_a_goal_the_owner_rewrites_in_place_is_a_new_goal(root, monkeypatch, capsys):
+    import datetime
+    from wuwei import report
+    monkeypatch.chdir(root)
+    day = lambda n: (ws.now() + datetime.timedelta(days=n)).date().isoformat()  # noqa: E731
+    goals = root / ws.DIR / 'goals.md'
+    goals.write_text(f'# Goals\n\n## G-1\nOutcome: ship 3.0\nDate: {day(-3)}\n')
+    answer_goal(root, 'goal: G-1 met? 3.0 shipped.', 'Yes')
+    assert [r['data']['outcome'] for r in ws.rows(root, 'ruling')] == ['ship 3.0']
+    assert 'goal G-1' not in plan_pass(capsys)
+    assert 'Met goals: G-1.' in report.day(root)
+    goals.write_text(f'# Goals\n\n## G-1\nOutcome: halve review latency\nDate: {day(-1)}\n')
+    assert f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'" in plan_pass(capsys)
+    assert 'Met goals: none.' in report.day(root)

@@ -767,10 +767,11 @@ def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
 
 
 def test_a_yes_to_a_goal_met_question_records_the_goal_as_met(root):
+    (root / ws.DIR / 'goals.md').write_text('## G-1\nOutcome: ship\n\n## G-2\nOutcome: no bug open past three days\n')
     question = 'goal: G-2 met? 0 bugs open past three days; 3.0.2 carries the sweep.'
     out = answer(root, question, 'Yes')
-    assert [row['data'] for row in ws.rows(root, 'ruling')] == [
-        {'kind': 'goal.met', 'goal': 'G-2', 'approved': True, 'question': question, 'answer': 'Yes'}]
+    assert [row['data'] for row in ws.rows(root, 'ruling')] == [{'kind': 'goal.met', 'goal': 'G-2', 'outcome': 'no bug open past three days',
+                                                                  'approved': True, 'question': question, 'answer': 'Yes'}]
     assert 'goal G-2 recorded as met' in out['hookSpecificOutput']['additionalContext']
     from wuwei import report
     assert 'Met goals: G-2.' in report.day(root)
