@@ -16,7 +16,7 @@ Breaking: no   (arch gate only; or "yes: <what breaks for which clients>")
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
 - [low] <file>:<line> blocks: no. <a note>   (the <file>:<line> is optional on a note)
-(or the single word none)'''
+(open findings only, or the single word none; a finding your fix closed goes under ## Probes as "closed: <finding> at <sha7>")'''
 
 
 def _field(text, name):
