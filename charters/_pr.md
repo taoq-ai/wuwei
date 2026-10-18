@@ -17,6 +17,6 @@ WUWEI PR standard. Start from this body (keep the repository's own template sect
 
 End the body with that footer, filled from `wuwei plan show <id>`; it links the PR to its plan item.
 
-The gates the diff needs passed on this branch before it opened. Request a reviewer. Before merge,
-CI is green and every review thread is answered. A delta after review fixes is re-read when it
-needs it.
+The PR opens as a draft so CI runs, and the gates the diff needs read the draft head. It turns
+ready once they pass, and the shepherd requests the reviewer then. Before merge, CI is green and
+every review thread is answered. A delta after review fixes is re-read when it needs it.
