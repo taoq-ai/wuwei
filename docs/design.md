@@ -63,7 +63,10 @@ Owner questions start with their class: `one-way:`, `scope:`, `goal:`, `trust:`,
 `owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`,
 `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. Any other
 question is refused back to the model. A `one-way:` answer becomes an ADR in the repository. An
-accepted exception drops that gap at that head and adds a follow-up item that closes it.
+accepted exception drops that gap at that head and adds a follow-up item that closes it. The
+accepted gap must equal the printed gap text (case, spacing, end marks and a printed `[waiting]`
+aside), or equal the gates a gate gap names (`security` for `gates missing at head <sha7>:
+security`); a part of either waives nothing.
 
 ## 6. The evidence contract
 

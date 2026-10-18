@@ -279,6 +279,83 @@ def test_an_owner_exception_covers_one_gap_at_one_head(root, fake):
     assert 'no test in the diff' in texts(evidence.gaps(root, 'acme/app', 42))
 
 
+SECURITY, OWNER = 'gates missing at head aaaaaaa: security', 'owner review needed (owner_paths: infra/main.tf)'
+
+
+def owned_pr(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    attest(root, 'quality')
+
+
+def except_gap(root, text, head=HEAD[:7]):
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': head, 'gap': text, 'approved': True})
+
+
+def test_a_short_or_partial_exception_waives_nothing(root, fake):
+    owned_pr(root, fake)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    for text in ('e', 'E', ' e ', 'securit', 'security gate', 'owner review', 'owner review needed', 'gates missing',
+                 'gates missing at head aaaaaaa', 'gates missing at head aaaaaaa: security, quality', SECURITY + ' and arch',
+                 OWNER[:-1], 'owner_paths: infra/main.tf', 'infra/main.tf', 'a', '.', '?', '', None, 7, ['e']):
+        except_gap(root, text)
+    except_gap(root, 'quality')  # quality is not missing, so its name waives nothing either
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+
+
+def test_an_exception_naming_the_printed_gap_waives_that_gap_alone(root, fake):
+    from wuwei import report
+    owned_pr(root, fake)
+    except_gap(root, 'Gates  missing at head aaaaaaa:\tsecurity. ', head=OLD[:7])  # another head waives nothing
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#41', 'head': HEAD[:7], 'gap': SECURITY, 'approved': True})
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': HEAD[:7], 'gap': OWNER, 'approved': False})
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    except_gap(root, 'Gates  missing at head aaaaaaa:\tsecurity. ')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [OWNER]
+    except_gap(root, OWNER + ' [waiting]')  # as wuwei evidence prints a waiting gap
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    assert f'- exception: acme/app#42 at aaaaaaa: {OWNER} [waiting]' in report.day(root)
+
+
+def test_an_exception_naming_its_gate_list_exactly_waives_that_gate_gap(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'src/app.py', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: x')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality, security', OWNER]
+    for text in ('security', 'quality', 'arch', 'security, quality', 'quality, security, arch', 'quality security'):
+        except_gap(root, text)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality, security', OWNER]
+    except_gap(root, 'Quality,  Security.')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [OWNER]
+
+
+def test_no_generated_accepted_gap_waives_a_gap_it_does_not_name(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('probe', Path(__file__).parents[1] / 'specs' / 'excepted-exact' / 'probe.py')
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    gaps, accepted = probe.pairs()
+    found, wrong = [evidence.gap(g) for g in gaps], []
+    for a in accepted:
+        monkeypatch.setattr(ws, 'rows', lambda root, kind, a=a: [{'data': {'kind': 'exception', 'pr': 'acme/app#42',
+                                                                          'head': HEAD[:7], 'gap': a, 'approved': True}}])
+        left = {g['text'] for g in evidence.excepted('.', 'acme/app#42', HEAD, found)}
+        wrong += [(a, g) for g in gaps if (g not in left) != probe.names(a, g)]
+    assert len(accepted) > 9000 and wrong == []
+
+
+def test_a_delta_review_exception_names_its_gate(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate, OLD)
+    except_gap(root, 'security')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by quality)']
+    except_gap(root, 'quality')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
 def test_an_error_budget_overrun_raises_the_tier(root, fake):
     light(root)
     fake.prs['42'] = make_pr()

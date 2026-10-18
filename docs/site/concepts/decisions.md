@@ -54,6 +54,11 @@ merge records it for the retro.) You accept it with an
 `exception:` question. WUWEI records the ruling, drops that gap at that head, and adds a follow-up
 item to the plan that closes it later. The report lists open exceptions.
 
+The gap in the question must be the gap as `wuwei evidence` prints it. Case, spacing, end marks and
+a printed `[waiting]` do not matter. For a gate gap, the gates it names also work: `security` for
+`gates missing at head <sha7>: security`. A part of a gap waives nothing: `security` does not drop
+`gates missing at head <sha7>: quality, security`, and `e` drops no gap at all.
+
 **Why:** an accepted gap is a debt. Exceptions expire into work, never into silence.
 
 ## ADRs
