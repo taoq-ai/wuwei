@@ -6,7 +6,7 @@
 | lead | discovery, readiness, scope, tier, ranking, red-teaming the plan | deciding what to build is a different skill from building it |
 | builder | one item, test first, in its own branch and worktree | small, isolated changes are easier to review and undo |
 | sentinel-arch | architecture gate: conformance to the written design, coupling, contracts, quality attributes, budgets | coupling and contracts erode quietly |
-| sentinel-quality | quality gate, on a different model | tests that do not test, code that should not exist |
+| sentinel-quality | quality gate, on a different model than the builder when the [model table](models.md) puts the rest on one | tests that do not test, code that should not exist |
 | sentinel-security | security gate | trust boundaries need a reviewer who looks only at them |
 | sentinel-goal | goal gate (full tier) | building the wrong thing well is still wrong |
 | shepherd | PRs from raise to merge: reviewers, threads, CI, conflicts, the evidence comment | PRs die of neglect, not of bad code |
@@ -33,8 +33,9 @@ The sentinels review the diff, the requirement and the running code, never the b
 They run probes and mutants in a scratch copy of the tree at the head they review. Their verdicts
 count only when [attested](evidence.md#attested-verdicts).
 
-One gate (quality) runs on a different model than the session's by default, so the reviews do not
-share every blind spot. Change it in `cli/wuwei/agents.py` (`MODELS`).
+At least one gate per head runs on a different model than the builder, so the reviews do not share
+every blind spot. Each seat's model and effort come from one [table](models.md) in the planner
+charter, drawn from Anthropic's guidance; the planner follows it and may depart with a reason.
 
 **Why:** a reviewer who shares the author's assumptions finds the author's mistakes only by luck.
 

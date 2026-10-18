@@ -40,9 +40,11 @@ warns while the role files differ from the charters.
 | SubagentStop | SubagentStop | verdicts attested the same way |
 | `.claude/settings.json` rules | `.codex/rules/*.rules` | written by `wuwei init` and `wuwei init --codex` |
 
-The quality gate runs on a different model than the session's on Claude Code (`MODELS` in
-`cli/wuwei/agents.py`). On Codex the role files name no model: Codex chooses its own, and a Claude
-model name would not resolve there.
+On Claude Code each seat's model and effort come from the [model table](models.md). On Codex the
+role files name no model: Codex chooses its own, and a Claude model name would not resolve there.
+The models page maps each step of the table to a Codex model, read from Codex's own model catalog
+rather than OpenAI guidance on seats. That mapping is unmeasured, and writing it into the role files
+is later work.
 
 ## Gates on Codex
 

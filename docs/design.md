@@ -36,8 +36,9 @@ the work was done, only whether its evidence exists.
 
 Planner (the owner's session), lead, builder, four sentinels (arch, quality, security, goal),
 shepherd, steward. `charters/` is the one source; `wuwei agents build` generates the agents with
-their reviewed tool grants. The quality sentinel runs on a different model than the session's
-(`MODELS` in `cli/wuwei/agents.py`). Seats cannot ask the owner. The planner passes each seat its
+their reviewed tool grants. Each seat's model and effort come from the table in the planner charter
+(`docs/site/concepts/models.md`); at least one gate per head runs on a different model than the
+builder. Seats cannot ask the owner. The planner passes each seat its
 role's lines of `.wuwei/standards.md`.
 
 ## 4. The day

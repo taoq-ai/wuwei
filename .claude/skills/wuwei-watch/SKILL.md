@@ -36,3 +36,6 @@ The plugin runs no background process; Claude Code's own scheduling runs the wat
 - Local session: `/loop 20m /wuwei-watch`.
 - Cloud: a routine that runs `/wuwei-watch` hourly in the workspace repository, and a GitHub PR
   subscription on each open PR so reviews and CI wake the session between passes.
+- Cheaper passes, an option and not a default: a watch pass mostly reads and records, so it may run
+  on Sonnet 5.5 at medium effort. To choose it, set `model: claude-sonnet-5-5` and
+  `effort: medium` in this skill's frontmatter. Claude Code then runs the rest of that turn on them.

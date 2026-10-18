@@ -143,3 +143,61 @@ def test_the_trigger_set_covers_every_skill_with_near_misses():
         # a near miss is another WUWEI skill's own query: the valuable negative
         others = {q for other, o in triggers.items() if other != skill for q in o['should']}
         assert len(set(queries['should_not']) & others) >= 3, skill
+
+
+def _models_section():
+    text = (PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8')
+    assert '## Model and effort' in text
+    return text.split('## Model and effort', 1)[1].split('\n## ', 1)[0]
+
+
+def test_the_planner_table_names_a_model_and_effort_for_every_seat():
+    rows = {line.split('|')[1].strip().strip('`'): line for line in _models_section().splitlines()
+            if line.startswith('| ') and not line.startswith('| ---')}
+    for role in json.loads((PLUGIN / 'agents' / 'allowlist.json').read_text(encoding='utf-8')):
+        assert role in rows, role
+        assert re.search(r'(Opus 5\.5|Sonnet 5\.5|Haiku 5\.5) (low|medium|high|xhigh|max)', rows[role]), role
+    assert 'Haiku 5.5 low' in ' '.join(line for name, line in rows.items() if 'lookup' in name)
+
+
+def test_the_planner_states_the_ladder_the_diversity_rule_and_the_precedence():
+    text = ' '.join(_models_section().split())
+    assert 'Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1' in text
+    assert 'Opus 5.5 max' in text and 'zero data retention' in text
+    assert 'a different model than the builder' in text and 'Haiku 5.5' in text.split('a different model than the builder', 1)[1]
+    order = [text.index(word) for word in ("call's `model`", '`model` frontmatter', '`CLAUDE_CODE_SUBAGENT_MODEL`', 'session model')]
+    assert order == sorted(order), order
+    assert '`CLAUDE_CODE_EFFORT_LEVEL`' in text and 'Model reason:' in text and 'never refused' in text
+
+
+def test_the_models_page_names_and_dates_every_source():
+    page = (PLUGIN / 'docs' / 'site' / 'concepts' / 'models.md').read_text(encoding='utf-8')
+    sources = [line for line in page.split('## Sources', 1)[1].splitlines() if line.startswith('- ')]
+    assert len(sources) >= 6
+    for line in sources:
+        assert re.search(r'\]\(https://[^)]+\)', line) and re.search(r'read 20\d\d-\d\d-\d\d', line), line
+
+
+def test_the_team_and_codex_pages_and_the_design_link_the_table_instead_of_models():
+    for name in ('docs/site/concepts/team.md', 'docs/site/concepts/codex.md'):
+        text = (PLUGIN / name).read_text(encoding='utf-8')
+        assert 'MODELS' not in text and 'models.md' in text, name
+    assert 'unmeasured' in (PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8')
+    team = (PLUGIN / 'docs' / 'design.md').read_text(encoding='utf-8').split('## 3. The team', 1)[1].split('\n## ', 1)[0]
+    assert 'MODELS' not in team and 'concepts/models.md' in team
+
+
+def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_cheaper():
+    steward = ' '.join((PLUGIN / 'charters' / 'steward.md').read_text(encoding='utf-8').split())
+    assert 'by seat, model and effort' in steward and 'model table' in steward
+    watch = ' '.join((PLUGIN / 'skills' / 'wuwei-watch' / 'SKILL.md').read_text(encoding='utf-8').split())
+    assert 'Sonnet 5.5' in watch and '`effort: medium`' in watch and 'not a default' in watch
+
+
+def test_the_planner_maps_each_step_to_a_codex_model_and_marks_it_unmeasured():
+    section = _models_section()
+    for claude, codex in (('Fable 5.1', 'gpt-6-astra'), ('Opus 5.5', 'gpt-6.1-sol'), ('Sonnet 5.5', 'gpt-6-luna'),
+                          ('Haiku 5.5', 'gpt-6-luna low')):
+        assert any(line.startswith(f'| {claude} |') and codex in line for line in section.splitlines()), claude
+    text = ' '.join(section.split())
+    assert 'unmeasured' in text and 'not OpenAI guidance' in text and 'ultra' in text
