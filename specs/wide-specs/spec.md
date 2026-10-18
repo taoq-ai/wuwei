@@ -77,6 +77,12 @@ The acceptance scenarios, restated:
 - A contract file (OpenAPI, Swagger, `.proto`, `.graphql`, `.schema.json`) under `specs/` takes
   arch at any tier, as it would anywhere else. Overturned if the owner wants only the
   `contracts/` folder to count inside specs.
+- Code is what `needed` already calls code, so a code file under `docs/` (`docs/conf.py`) does
+  not count toward the wide trigger. On main a 300-line `docs/conf.py` change took arch at
+  standard only through the count of every line; at the head it takes no gate, as a 100-line one
+  already did on main (probe at the head, `probe-needed.py`, main against head). The real gap is
+  that code under `docs/` takes no quality gate at any size, which the promise puts outside; it is
+  a candidate item. Overturned if the owner wants the wide trigger to count code under `docs/`.
 - "Spec contract" is a new term; a grep of charters, docs, skills and cli at the base found no
   other meaning for it.
 
