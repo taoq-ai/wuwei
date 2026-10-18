@@ -65,9 +65,12 @@ times). An installed plugin path is a similar length; a shorter one leaves the b
 `specs/session-context-cap/route_diff.py` reads every route in `tests/fixtures/routes.json`
 through `guards.bash` and through `hook.handle` PreToolUse, every fixture payload through its own
 event, and SessionStart for 0 and 40 items, at main and at the head, with the corpus sha256.
-Expected: no route or payload moves; both SessionStart cases move.
+Result at cf75707 against main b28a3dc: corpus sha256
+12725ace6adab6f965422e9a2a010d13b93e0897f177fd00bda53b080bfe1cb1 on both; 511 cases; guards 251,
+0 moved; PreToolUse Bash 251, 0 moved; payloads 7, 0 moved; SessionStart 2, 2 moved (0 items:
+15,987 to 4,877 characters; 40 items: 20,456 to 9,346, with paths normalised).
 
 ## Mutants
 
 `specs/session-context-cap/mutants.py` applies eight textual mutants to `session_start` in fresh
-`git archive` copies and runs the session start tests. At f33f139: 8 mutants, 8 killed, 0 holes.
+`git archive` copies and runs the session start tests. At cf75707 (hook.py as at the head): 8 mutants, 8 killed, 0 holes.
