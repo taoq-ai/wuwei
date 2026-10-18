@@ -338,9 +338,9 @@ def breaking_gaps(root, ref, pr, item_id):
             said = v
     if not (declared or said and said['breaking']):
         return []
-    if not re.search(r'^Announcement:[ \t]*\S', body, re.M):
-        return [gap('breaking change without an announcement: add "Announcement: <link to the client communication, '
-                    'release note or migration guide>"')]
+    if not re.search(r'^Announcement:[ \t]*https?://[^\s/?#]+\S*[ \t\r]*$', body, re.M):
+        return [gap('breaking change without an announcement: add "Announcement: <http(s) URL of the published client '
+                    'communication, release note or migration guide>", the URL alone on its line')]
     if any(r['data'].get('kind') == 'breaking' and r['data'].get('approved') and r['data'].get('pr') == ref
            and head.startswith(r['data'].get('head') or '-') for r in ws.rows(root, 'ruling')):
         return []

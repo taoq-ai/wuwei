@@ -115,6 +115,12 @@ def test_the_security_gate_defines_its_scanner_and_reads_the_supply_chain():
     assert 'Supply chain:' in text and 'lockfile' in text
 
 
+def test_the_shepherd_asks_for_an_announcement_url_that_exists_at_the_head():
+    text = ' '.join((PLUGIN / 'charters' / 'shepherd.md').read_text(encoding='utf-8').split())
+    assert '`Announcement: <url>`' in text and 'one http(s) URL and nothing else' in text
+    assert 'must exist at the head' in text and 'the release will write later does not count' in text
+
+
 def test_the_steward_may_propose_charter_deletions():
     text = ' '.join((PLUGIN / 'charters' / 'steward.md').read_text(encoding='utf-8').split())
     assert 'Charters shrink too' in text and 'proposed for deletion' in text
