@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/taoq-ai/wuwei/compare/v3.0.0...v3.0.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **skills:** /wuwei-run starts already-approved work before it launches the lead ([#1127](https://github.com/taoq-ai/wuwei/issues/1127)) ([da2b1ea](https://github.com/taoq-ai/wuwei/commit/da2b1ea674c42f8d663eb5c6baeb1353513636b5))
+
 ## [3.0.0](https://github.com/taoq-ai/wuwei/compare/v2.0.0...v3.0.0) (2026-10-18)
 
 
