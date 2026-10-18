@@ -1302,6 +1302,16 @@ def test_the_pr_standard_note_is_the_charter_with_the_plugin_version(root, fake,
     assert guards.pre_tool(root, bash('gh pr create --fill'))['reason'] == text.replace('<version>', version)
 
 
+def test_the_pr_standard_note_opens_a_draft_and_leaves_the_reviewer_to_the_shepherd(root, fake, repo):
+    note = ' '.join(guards.bash(root, 'gh pr create --draft', str(root), 's1')['reason'].split())
+    for clause in ('The PR opens as a draft so CI runs, and the gates the diff needs read the draft head.',
+                   'It turns ready once they pass, and the shepherd requests the reviewer then.',
+                   'Before merge, CI is green and every review thread is answered.'):
+        assert clause in note, clause
+    assert 'request a reviewer' not in note.lower() and 'before it opened' not in note
+    assert guards.bash(root, 'gh pr create --draft', str(root), 's1') is None  # once per session
+
+
 def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
     from test_evidence import not_started
     not_started(root, fake)
