@@ -649,7 +649,7 @@ def test_a_symlink_at_the_copy_path_is_refused_and_its_target_unchanged(root, tm
     link.parent.mkdir(parents=True)
     link.symlink_to(target)
     reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
-    assert str(link) in reason and 'remove the link' in reason
+    assert f'{link} is a symlink' in reason and 'Blocked:' in reason
     assert (target.read_text() if target.exists() else None) == held
     assert link.is_symlink() and ws.rows(root, 'attest') == []
 
@@ -662,7 +662,7 @@ def test_a_symlinked_parent_into_the_ledger_is_refused_and_the_ledger_unchanged(
     (root / ws.DIR / linked).parent.mkdir(parents=True, exist_ok=True)
     (root / ws.DIR / linked).symlink_to(ledger)
     reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
-    assert 'remove the link' in reason
+    assert f'{root.resolve() / ws.DIR / linked} is a symlink' in reason and 'Blocked:' in reason
     after = {p: p.read_bytes() for p in ledger.rglob('*') if p.is_file()}
     assert after.keys() == before.keys() and ws.rows(root, 'attest') == []
     assert all(after[p].startswith(before[p]) for p in before)  # the ledger only grows by its own rows
@@ -684,6 +684,50 @@ def test_a_link_planted_after_the_check_is_replaced_never_followed(root, tmp_pat
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
     assert not copy.is_symlink() and copy.read_text() == verdict_text()
     assert not target.exists() and ws.rows(root, 'attest')
+
+
+@pytest.mark.parametrize('aimed', ['ledger', 'seat'])
+def test_a_link_at_the_temporary_name_is_never_followed(root, tmp_path_factory, monkeypatch, aimed):
+    ws.record(root, 'plan.pass', {})
+    target = next((root / ws.DIR / 'ledger').glob('*.jsonl')) if aimed == 'ledger' else \
+        root / ws.DIR / 'verdicts' / 'x' / 'quality-other.md'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if aimed == 'seat':
+        target.write_text(verdict_text(verdict='FIX'))
+    held = target.read_bytes()
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.with_name(f'.{copy.name}.4242.tmp').symlink_to(target)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert target.read_bytes()[:len(held)] == held and (aimed == 'ledger' or target.read_bytes() == held)
+    assert not copy.is_symlink() and copy.read_text() == verdict_text() and ws.verify(root) == []
+
+
+@pytest.mark.parametrize('kind', ['symlink', 'hardlink'])
+def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root, tmp_path_factory, monkeypatch, kind):
+    ws.record(root, 'plan.pass', {})
+    ledger = next((root / ws.DIR / 'ledger').glob('*.jsonl'))
+    held = ledger.read_bytes()
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.tmp'
+    unlink = Path.unlink
+
+    def replant(self, missing_ok=False):  # the race the exclusive create closes
+        unlink(self, missing_ok)
+        if self == temp:
+            temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
+    monkeypatch.setattr(Path, 'unlink', replant)
+    assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['decision'] == 'block'
+    assert ledger.read_bytes()[:len(held)] == held and ws.rows(root, 'attest') == []
+
+
+def test_a_workspace_reached_through_a_symlinked_path_still_copies_in(root, tmp_path_factory):
+    alias = tmp_path_factory.mktemp('alias') / 'root'
+    alias.symlink_to(root)
+    assert reviewer_stop(alias, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
+    assert (root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md').read_text() == verdict_text()
+    assert ws.rows(root, 'attest')[0]['data']['path'] == '.wuwei/verdicts/x/quality-abc1234.md'
 
 
 def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):

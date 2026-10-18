@@ -40,7 +40,9 @@ def atomic_write(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
-    temp.write_bytes(text if isinstance(text, bytes) else text.encode('utf-8'))
+    temp.unlink(missing_ok=True)  # a link planted at the temporary name is removed, never written through
+    with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666), 'wb') as out:
+        out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
     os.replace(temp, path)
 
 

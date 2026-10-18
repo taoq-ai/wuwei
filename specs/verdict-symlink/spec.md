@@ -14,11 +14,14 @@ When a sentinel hands back a verdict written in a worktree, the hook copies it i
 with no symlink in it. The check covers the copy itself, every folder between it and `verdicts/`,
 and `verdicts/` itself. The copy path is built under the resolved root, so a path with no link
 in it also resolves under the resolved verdicts folder: the promise's `copy.resolve()` condition
-follows from the link check. A path that fails the check is refused, and the refusal
-names the copy path and says to remove the link. Nothing is written in that case. A path that
-passes is written to a temporary file beside the copy and moved into place with `os.replace`
-(`ws.atomic_write`). So a link planted at the copy path after the check is replaced, never
-followed. A plain worktree verdict is copied and attested exactly as before.
+follows from the link check. A path that fails the check is refused, and nothing is written. The
+refusal names the first linked component and tells the seat to leave it and report it under
+`Blocked:`, since a seat must not edit the workspace. A path that passes is written to a
+temporary file beside the copy and moved into place with `os.replace` (`ws.atomic_write`). The
+temporary file is created exclusively: a name already there is unlinked first, then opened with
+`O_CREAT | O_EXCL | O_NOFOLLOW`, so a link at the temporary name is never written through either.
+So a link planted at the copy path after the check is replaced, never followed. A plain worktree
+verdict is copied and attested exactly as before.
 
 The acceptance scenarios, restated:
 
@@ -41,8 +44,16 @@ The acceptance scenarios, restated:
    a symlinked `verdicts/` folder, which the item's assumption says no corpus payload uses.
 3. A check built on `resolve()` misses a link loop: on Python 3.13 a non-strict `resolve()`
    returns a looping parent unchanged, and on 3.11 it raises. The check therefore reads each
-   component with `is_symlink()` (an `lstat`), which sees a loop as a link. The loop probes on
-   3.13 and 3.11 are refused with the link message.
+   component with `is_symlink()` (an `lstat`), which sees a loop as a link. A loop at the copy or
+   at a folder below `verdicts/` is refused with the link message on 3.11, 3.12 and 3.13. A loop
+   at `.wuwei/verdicts` itself is not: on 3.11 and 3.12, `verdicts = (...).resolve()` at the top
+   of `_verdict_problem` raises RuntimeError outside the `try`, so the hook fails open (records
+   `hook.error`, no write, no attest). Main behaves the same; the fix is a follow-up item.
+4. A link planted at the temporary name (`.<name>.<pid>.tmp`, one per pid) would turn the
+   atomic write itself into a write through a link, into the ledger or over another seat's
+   verdict. The gates found this in the first round. `atomic_write` now unlinks that name and
+   creates it with `O_EXCL | O_NOFOLLOW`; a link or hard link re-planted between the two calls
+   makes the create fail, and the copy-in is refused.
 
 ## Clarifications
 
@@ -60,9 +71,14 @@ The acceptance scenarios, restated:
   this item.
 - Q: Where does the temporary file go? A: `ws.atomic_write`, the workspace's existing helper: a
   `.name.pid.tmp` file beside the copy, then `os.replace`. It now takes bytes as well as text, so
-  the verdict bytes are copied unchanged.
-- Q: What does the refusal say? A: `<copy> passes through a symlink under <verdicts>/: remove the
-  link, then hand back again.`
+  the verdict bytes are copied unchanged. It creates the temporary file exclusively and without
+  following a link, with mode 0o666 before the umask (the mode `write_text` gave), which covers
+  every caller, `sync.py` included.
+- Q: What does the refusal say? A: `<first linked component> is a symlink on the way to <copy>:
+  leave it, and report it under Blocked: for the owner.` A seat must not remove a link in the
+  workspace, and for an operator's own link removing it could be destructive.
+- Q: Is a workspace reached through a symlinked path (macOS `/var -> /private/var`) refused? A:
+  No. The copy path is built under the resolved root, so links above the workspace never count.
 
 ## User Scenarios & Testing
 
@@ -82,15 +98,23 @@ The file the link pointed to stays unchanged.
 ### US4: a plain worktree verdict is copied as before (P1)
 
 Acceptance 3, held by the existing test
-`test_a_verdict_written_in_a_worktree_is_copied_into_the_workspace_and_attested`.
+`test_a_verdict_written_in_a_worktree_is_copied_into_the_workspace_and_attested`, and by a new
+test where the workspace is reached through a symlinked path.
+
+### US5: a link at the temporary name is never followed (P1)
+
+A link at `.quality-abc1234.md.<pid>.tmp` aimed at a ledger file or at another seat's verdict
+leaves both unchanged, and the copy is a regular file. A symlink or hard link re-planted between
+the unlink and the create makes the hand-back refused, and the ledger stays unchanged.
 
 ## Requirements
 
 - FR-001: `_verdict_problem` refuses the copy-in when the copy path or any folder above it, built
-  under the resolved root, is a symlink. The refusal names the path and says to remove the link,
-  and nothing is written.
+  under the resolved root, is a symlink. The refusal names the first linked component and says to
+  report it under `Blocked:`, and nothing is written.
 - FR-002: The copy is written with `ws.atomic_write` (temporary file beside it, then `os.replace`).
-- FR-003: `ws.atomic_write` accepts bytes as well as text.
+- FR-003: `ws.atomic_write` accepts bytes as well as text, and creates its temporary file with an
+  unlink, then `O_CREAT | O_EXCL | O_NOFOLLOW`.
 - FR-004: The runtime grows by at most 3 lines and stays at 3,000 or fewer.
 
 ## Assumptions
@@ -99,8 +123,11 @@ Acceptance 3, held by the existing test
   item). Overturned if a corpus payload does.
 - A symlinked `.wuwei/` is not a supported setup: the attest already fails for it today. The check
   refuses its copy-in too. Overturned if the owner wants to support a linked workspace folder.
-- A one-line change to `ws.atomic_write` (bytes as well as text) is inside the promise's "the write
-  goes to a temporary file beside it and os.replace". Overturned if the owner wants hook.py alone.
+- The `ws.atomic_write` change (bytes as well as text, exclusive create) is inside the promise's
+  "the write goes to a temporary file beside it and os.replace". Overturned if the owner wants
+  hook.py alone.
+- The parent swap race between the check and `os.replace`, and a loop at `.wuwei/verdicts`
+  itself on 3.11 and 3.12, stay out of this item: both are follow-up items from the planner.
 
 ## Rollback
 

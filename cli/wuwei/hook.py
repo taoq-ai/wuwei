@@ -148,8 +148,8 @@ def _verdict_problem(root, payload, role):
         path = path.resolve()
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
             copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
-            if any(p.is_symlink() for p in (copy, *copy.parents)):  # a planted link would carry the write out
-                return f'{copy} passes through a symlink under {ws.DIR}/verdicts/: remove the link, then hand back again.'
+            if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
+                return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
                 return f'{copy} already holds another verdict: write yours beside it as {copy.stem}-2.md.'
             ws.atomic_write(copy, body)

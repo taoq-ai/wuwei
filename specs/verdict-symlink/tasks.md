@@ -20,3 +20,14 @@
 - [x] T010 Route corpus through the guards and the PreToolUse hook at main and at the head, with its sha256
 - [x] T011 Path class and symlink probes at main and at the head, on Python 3.13 and 3.11
 - [x] T012 Re-vendor .claude/ with setup.vendor('.')
+
+## Phase 4: Gate round 1 (arch, quality, security FIX at 200f361)
+
+- [x] T013 [US5] A link at the temporary name aimed at a ledger file or another seat's verdict leaves both unchanged (tests/test_hook.py)
+- [x] T014 [US5] A symlink or hard link re-planted after the unlink makes the hand-back refused, ledger unchanged (tests/test_hook.py)
+- [x] T015 [US4] A workspace reached through a symlinked path still copies in (holds mutant M7) (tests/test_hook.py)
+- [x] T016 Run T013 red at 200f361: 2 failed (the ledger rows and the other seat's FIX overwritten)
+- [x] T017 `atomic_write` unlinks the temporary name and creates it with O_CREAT, O_EXCL and O_NOFOLLOW (cli/wuwei/ws.py)
+- [x] T018 The refusal names the first linked component and says to report it under Blocked: (cli/wuwei/hook.py)
+- [x] T019 Correct the loop claim in spec.md How this fails 3
+- [x] T020 Mutants M1 to M11 in fresh copies, the security gate's probes from a builder copy, re-vendor

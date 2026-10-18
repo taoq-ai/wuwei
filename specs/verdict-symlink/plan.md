@@ -17,13 +17,14 @@ this item may add 3.
 - I. Stdlib only: yes.
 - III. An auditor: no new door; the hand-back check stays in `_verdict_problem`.
 - V. Test first: the new tests run red before the change.
-- VI. Budgets: no config key; runtime at 2,978.
+- VI. Budgets: no config key; runtime at 2,979 (+3, the item's budget).
 
 ## Design
 
 - `copy` is `Path(root).resolve() / ws.DIR / 'verdicts' / <relative path>`, not the resolved
   `verdicts` folder, so a link at `verdicts/` itself stays visible.
-- Refuse when `any(p.is_symlink() for p in (copy, *copy.parents))`. `is_symlink()` reads each
+- Refuse when `next((p for p in (copy, *copy.parents) if p.is_symlink()), None)` finds a link, and
+  name that component in the refusal. `is_symlink()` reads each
   component with `lstat`, so a link loop counts as a link, and a component that does not exist yet
   is not a link. The root is already resolved, so only links at `.wuwei/` or below can match. A
   first draft compared `copy.parent.resolve()` with `copy.parent`; the loop probe showed that
@@ -32,10 +33,15 @@ this item may add 3.
   the seat as before.
 - Replace `mkdir` plus `write_bytes` with `ws.atomic_write(copy, body)`. `atomic_write` writes
   bytes as given and encodes text as UTF-8, as before.
+- Gate round 1: `atomic_write` opened its predictable temporary name with `write_bytes`, which
+  follows a link. It now runs `temp.unlink(missing_ok=True)` and opens the name with
+  `os.open(temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o666)`, writing through that fd. The
+  mode stays what `write_text` gave (0o666 before the umask); `mkstemp` would give 0600.
 
 ## Lines
 
-hook.py +1 (two added for the check, one saved by atomic_write), ws.py 0: runtime 2,976 to 2,977.
+hook.py +1 (two added for the check, one saved by atomic_write), ws.py +2 (the exclusive create):
+runtime 2,976 to 2,979.
 
 ## Guard testing (AGENTS.md)
 
