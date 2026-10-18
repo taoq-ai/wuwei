@@ -75,7 +75,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change; a contract file takes arch at any tier; full takes all four |
+| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
 | CI green, threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |
@@ -107,9 +107,9 @@ day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
-by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
-needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
-head. Both are safety gaps.
+by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
+gate at any tier) needs an `Announcement: <link>` line and then the owner's `breaking:`
+confirmation at the head. Both are safety gaps.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
