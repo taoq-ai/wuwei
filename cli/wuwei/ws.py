@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import threading
 import tomllib
 
 DIR = '.wuwei'
@@ -39,7 +40,7 @@ def today():
 def atomic_write(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    temp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # threads share a pid (#1121)
     temp.write_text(text, encoding='utf-8')
     os.replace(temp, path)
 
