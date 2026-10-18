@@ -326,11 +326,12 @@ def uncounted(root, item_id):
 
 
 def breaking_gaps(root, ref, pr, item_id):
-    """A breaking change to an outward contract (declared with ! or BREAKING CHANGE:, or found by the arch
-    gate) needs an announcement, then the owner's confirmation at this head."""
+    """A breaking change to an outward contract (declared with ! or BREAKING CHANGE:, or found by the latest arch
+    verdict) needs an announcement, then the owner's confirmation at this head."""
     body, head = pr.get('body') or '', pr['headRefOid']
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
-    if not (declared or any(v.get('breaking') for v in verdicts(root, item_id, ref))):
+    arch = [v for v in verdicts(root, item_id, ref) if v['gate'] == 'arch' and 'breaking' in v]  # oldest first
+    if not (declared or arch and arch[-1]['breaking']):
         return []
     if not re.search(r'^Announcement:[ \t]*\S', body, re.M):
         return [gap('breaking change without an announcement: add "Announcement: <link to the client communication, '
