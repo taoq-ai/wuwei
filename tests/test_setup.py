@@ -331,8 +331,8 @@ def test_the_run_skill_starts_already_approved_work_before_it_launches_the_lead(
     skill = (PLUGIN / 'skills' / 'wuwei-run' / 'SKILL.md').read_text()
     start = skill.index('already approved')
     assert start < skill.index('Launch the lead'), 'approved work never waits on a plan pass'
-    step = skill[start:skill.index('Launch the lead')]
-    assert 'no pull request' in step and 'no running seat' in step
+    step = ' '.join(skill[start:skill.index('Launch the lead')].split())
+    assert 'no pull request and no running seat' in step
 
 
 def test_the_contributor_docs_run_the_suite_where_python3_lacks_pytest():
