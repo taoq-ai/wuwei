@@ -1,153 +1,1143 @@
 [
-  {
-    "id": "free-lines-4",
-    "title": "refactor: free runtime lines with no behaviour change, and make the dense guard lines readable",
-    "goal": "G-2",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 8, "time": 8, "risk": 20, "size": 2},
-    "evidence": {
-      "value": "The runtime is at 2,999 of 3,000 (cat cli/wuwei/*.py | wc -l at 9d6701e); no runtime fix for G-2 can land until lines are freed.",
-      "time": "The queue is dry and the four runtime items below wait on it; G-2 is dated 2026-10-23.",
-      "risk": "Unblocks shell-stdin, records, gh-args and merge-evidence; the scratch prototype already shows 26 lines free, the suite green and 0 differences on 82,944 generated commands.",
-      "size": "A mechanical diff of 44 insertions and 70 deletions over 9 runtime files in the prototype."
-    },
-    "files": ["cli/wuwei/guards.py", "cli/wuwei/sync.py", "cli/wuwei/plan.py", "cli/wuwei/upgrade.py", "cli/wuwei/evidence.py", "cli/wuwei/report.py", "cli/wuwei/hook.py", "cli/wuwei/setup.py", "cli/wuwei/verdict.py", ".claude/wuwei/cli/wuwei/ (vendored copies)"],
-    "runtime_lines": "-26 estimated (prototype: 2,999 to 2,973); must free at least 22; adds none",
-    "after": [],
-    "promise": "Free at least 22 runtime lines with no behaviour change, and make the two dense guard lines the shell-doors quality gate named readable. (1) Each `x = f(...)` followed by `if x:` or `if not x:` becomes `if x := f(...):` where the line stays within 150 characters and reads at least as clearly, in guards, sync, plan, upgrade, evidence, report, hook, setup and verdict; a rewrite that reads worse (for example `if repo := match[1] or repo:`) is skipped. (2) In guards.bash the found-then-return checks for leak, git push and gh take the same form. (3) In guards.segments the $'/$\" check and the glued-redirect check become two named booleans; the `tokens[2:] + ['']` end sentinel stays, with a comment saying why: without it the last pair is skipped, and a generated probe shows 8,400 of 82,944 commands change. (4) The input-redirect line in guards._unwrap becomes an explicit if/else. (5) OPS drops only `\\|\\|` and `;;`, which split the same through the single-character fallback. `&&`, `|&` and `&>` stay: dropping one alone changes how 45, 45 and 630 of 25,200 generated punctuation runs split (`&&>|`, `|&>;`, `&><;`). This overturns the shell-doors quality note that all five were equivalent. (6) The ledger refusal text becomes one constant. Files: cli/wuwei/guards.py, sync.py, plan.py, upgrade.py, evidence.py, report.py, hook.py, setup.py, verdict.py and their vendored copies under .claude/wuwei/cli/wuwei/. Runtime lines: estimate -26 (scratch prototype at 9d6701e: 2,999 to 2,973, 1192 passed, 2 skipped); floor: frees at least 22; adds none. Order: first; every other runtime item in this pass starts after it merges. Proof of no behaviour change: the suite passes unchanged, and a generated differential probe of guards.segments between 9d6701e and the branch (operators x operators x words x four positions) shows 0 differences. Rollback: revert the commit. Outside: any behaviour change, and the readability notes on the DOOR_WORDS and LEDGER regexes (records replaces LEDGER). Assumptions: the walrus form fits this code (guards.py uses it already); overturned if the quality gate finds a rewritten line harder to read, in which case that line is dropped while the item stays above the floor.",
-    "acceptance": [
-      "given the branch head, when `cat cli/wuwei/*.py | wc -l` runs, then it prints 2,977 or less, and the vendored copies under .claude/wuwei/cli/wuwei/ are identical to cli/wuwei/",
-      "given the branch head, when `python3 -m pytest -q` (or `pytest -q`) runs from the repository root, then every test passes and no test file changed except where a test reads a removed name",
-      "given a git archive of 9d6701e and of the branch head in two scratch folders, when a generated probe feeds both guards.segments every command built from 24 operators (empty, ;, &&, ||, |, |&, &, ;;, (, ), >, >>, >|, &>, &>>, <, <>, >&, <&, <<, <<<, 2>, 10>, {fd}>) taken in pairs, 6 words (x, .wuwei/ledger, git push origin main, $'a', \"a b\", <(true)) taken in pairs and 4 positions, then the outputs differ for 0 commands",
-      "given the branch head, when guards.OPS is read, then it still holds `&&`, `|&` and `&>`, and a test splits `x&&>|y` into x, &&, >|, y and `x|&>y` into x, |&, >, y"
-    ],
-    "why": "The 1-line headroom blocks every runtime fix; a prototype in scratch frees 26 lines with no behaviour change and showed that 3 of the 5 OPS alternatives called equivalent are not."
+ {
+  "id": "budget-3400",
+  "title": "docs(constitution): the runtime budget is 3,400 lines and config holds six keys, sized to the 2026-10-18 backlog",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 8,
+   "time": 13,
+   "risk": 13,
+   "size": 1
   },
-  {
-    "id": "seat-rules",
-    "title": "docs(charters): gate verdicts for a head go to the builder together, parser changes carry a generated probe, equivalence needs a differential probe, and repo lessons have a home",
-    "goal": "G-1",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 8, "time": 8, "risk": 8, "size": 2},
-    "evidence": {
-      "value": "shell-doors took three security rounds until a generated pair probe closed the class (findings line 4); quality arrived after the fix commit (line 6); both cost gate rounds under G-1.",
-      "time": "shell-stdin and records are guard-parser builds in this pass; their builders and gates should read the probe rule first.",
-      "risk": "This pass found the shell-doors quality claim that five OPS alternatives were equivalent wrong for three of them; it would have opened a misparse had it been built as stated.",
-      "size": "Six short rules over four charters, then `bin/wuwei agents build`; no runtime lines."
-    },
-    "files": ["charters/planner.md", "charters/_gate.md", "charters/builder.md", "charters/steward.md", "agents/*.md (built)", ".claude/wuwei/charters/ and agents copies (vendored)"],
-    "runtime_lines": "0",
-    "after": [],
-    "promise": "Six charter rules from the findings and this pass. (1) planner.md: the planner forwards every gate verdict for a head to the builder together, once the last gate for that head returns, and the builder starts fixing only then. (2) _gate.md: when a change makes more commands unreadable or rewrites a parser, the gates probe the checks that do not rely on door words (the leak check on network programs, the infra ask) with the new shape. (3) builder.md and _gate.md: a change to guard parsing comes with a generated combinatorial probe run under real bash with a stub program on PATH (operator or spelling classes x positions x targets), and the PR or verdict reports how many commands were generated, how many really ran the door program, and the holes; a gate round on a parser re-runs it and adds a class for each hole it finds. (4) _gate.md: a gate calls code equivalent or deletable only after a generated differential probe between the head and the change shows 0 differences; a surviving mutant alone is reported as untested. (5) steward.md: a lesson about one repository's code goes in that repository's standards lines (.wuwei/standards.md); a lesson about how seats work in any repository is a charter proposal for the retro. (6) builder.md and _gate.md: probe fixtures that hold JSON escapes are written by code (json.dumps or a Python literal), never typed into a shell. Then `bin/wuwei agents build` regenerates agents/ and the vendored copies. Files: charters/planner.md, charters/_gate.md, charters/builder.md, charters/steward.md, agents/ and the vendored charters and agents under .claude/wuwei/. Runtime lines: 0, budget 0. Order: none; it can run beside free-lines-4 (no shared file), and it is best merged before shell-stdin's build starts. Rollback: revert the commit. Outside: the Stop hook wording (with the parent session's #1099) and the #1078 attestation path.",
-    "acceptance": [
-      "given the branch head, when `bin/wuwei agents build` runs, then git status shows no change, and the suite's drift test passes",
-      "given agents/builder.md and agents/sentinel-security.md at the head, when a reader looks for the parser rule, then each names a generated combinatorial probe under real bash with a stub on PATH and the three counts it reports (generated, ran, holes)",
-      "given agents/sentinel-quality.md at the head, when a reader looks for equivalence, then it says code is called equivalent or deletable only after a generated differential probe shows 0 differences, and a surviving mutant alone is untested",
-      "given charters/planner.md at the head, when a reader looks for gate verdicts, then it says the verdicts for one head go to the builder together after the last gate for that head returns",
-      "given charters/steward.md at the head, when a reader looks for a repository-specific lesson, then it names .wuwei/standards.md for lessons about one repository's code and a charter proposal for lessons about seats"
-    ],
-    "why": "Gate rounds on guard parsing are the largest cost under G-1; these rules make the generated probe and the differential probe the standard before the next two parser builds."
+  "evidence": {
+   "value": "The owner asked to revise the budget; the feature items need an estimated +255 lines (+376 at their budgets) and the runtime is at 2,976 of 3,000 (cat cli/wuwei/*.py | wc -l at efcd9e7). The models override needs a sixth config key.",
+   "time": "Every feature item below waits on it; the bug sweep does not (it fits the 24-line headroom).",
+   "risk": "Unblocks the whole feature queue without five more free-lines rounds.",
+   "size": "A number in six files and one test; no runtime lines."
   },
-  {
-    "id": "shell-stdin",
-    "title": "fix(guards): a shell fed its commands on stdin and a named-fd redirect meet the doors",
-    "goal": "G-2",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 13, "time": 5, "risk": 13, "size": 2},
-    "evidence": {
-      "value": "A stub git on PATH shows bash runs git push origin main for {fd}>x git push origin main, bash <<< 'git push origin main' and echo 'git push origin main' | bash; guards.bash at 9d6701e passes all three, and a generated probe finds 586 holes among 803 shapes that really run the push.",
-      "time": "Open on main since before #1109; G-2 is dated 2026-10-23.",
-      "risk": "Closes the push and ledger door bypass class for stdin-fed shells; the spike shows 0 holes of 803 for one line.",
-      "size": "One runtime line and one regex edit in the spike; tests and fixture rows."
-    },
-    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)", "docs/site/concepts/doors.md (if it lists unreadable shapes)"],
-    "runtime_lines": "+1 estimated (spike), budget 2",
-    "after": ["free-lines-4"],
-    "promise": "A shell that reads its commands from stdin or a file, and a redirect on a named fd, meet the doors. (1) In guards._unwrap, sh, bash, zsh or dash with no -c body (fed by a pipe, a here-string, -s or < file, or given a script path) leaves the unread segment beside its own, so the existing multi-line or unreadable rule refuses the command when its raw text names a door program; a command naming none still passes. (2) In guards.segments, a {name} glued before a redirect operator at the start or after a separator ({fd}>x, {a_b}<x) is dropped the way an fd number is, so the program after it is read. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, and docs/site/concepts/doors.md if it lists the unreadable shapes. Runtime lines: estimate +1 (spike on top of the free-lines prototype: 2,973 to 2,974, 1192 passed), budget 2. Order: after free-lines-4. Acceptance comes from real execution with a stub git on PATH. The builder runs a generated combinatorial probe under real bash: fd spellings ({fd}, {a_b}, {A1}, {_}, 3, 10) x redirect operators x targets x positions (start, end, after ;, after &&, after |, inside ( )), and shells (bash, sh, dash, /bin/bash, env bash, command bash) x flags (none, -s, -e, -x) x feeders (<<< glued and spaced, a pipe, |&, 0<<<) x both quotes; holes must be 0. Rollback: revert the commit. Outside: a script file that holds a door command while the command line names none (bash run.sh: the guard is not a sandbox), and heredocs, which the multi-line rule already refuses. Assumptions: no recorded seat route pipes text naming a door program into a shell (the suite's seat-command corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
-    "acceptance": [
-      "given a stub git on PATH that appends its argv to a log, when bash -c runs each of `{fd}>x git push origin main`, `{a_b}<x git push origin main`, `bash <<< 'git push origin main'`, `echo 'git push origin main' | bash`, `printf %s 'git push origin main' |& sh -s` and `env bash -s <<<\"git push origin main\"`, then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
-      "given the generated probe in the builder's scratch copy (fd spellings x redirect operators x targets x positions, and shells x flags x feeders x quotes), when it runs every command under real bash with the stub git and through guards.bash at the head, then it reports the generated count, the count that ran the push, and 0 holes",
-      "given `bash run.sh`, `echo hi | bash`, `bash -c 'echo hi'`, `echo {a,b}>x` and `diff <(sort a) <(sort b)`, when guards.bash reads them, then they pass (no door program named)",
-      "given the suite's seat-command corpus and tests/fixtures/routes.json, when the suite runs at the head, then every recorded route keeps its verdict"
-    ],
-    "why": "The spike in scratch closed 586 real push-door holes with one line; the item is ready to build behind free-lines-4."
+  "files": [
+   ".specify/memory/constitution.md",
+   "AGENTS.md",
+   "tests/test_setup.py",
+   "docs/design.md",
+   "CONTRIBUTING.md",
+   "docs/site/concepts/philosophy.md",
+   ".claude/wuwei/ vendored copies of the plugin files among them",
+   "tests/test_ledger.py (config keys, with models-record)"
+  ],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A docs and test change, no runtime change. The runtime budget becomes 3,400 lines in constitution VI (amendment line and version 3.1.0 to 3.2.0), AGENTS.md, CONTRIBUTING.md, docs/design.md section 11, docs/site/concepts/philosophy.md and the assertion in tests/test_setup.py:113 (the message names 3400). Config keys go from five to six, naming the sixth, `models` (models-record), in constitution VI and docs/design.md section 11; tests/test_ledger.py:15 changes with models-record, which adds the key. The constitution keeps \"a change that breaks a budget deletes something first\" and adds one line: an item that adds more than 10 runtime lines names the lines it removes where it can, and no item waits on a free-lines round. Reasoning, stated in the PR: the 2026-10-18 backlog estimates +274 runtime lines in total (+9 approved push-door items, +10 bug sweep, +121 features planned now, +134 for the GitLab, Gemini CLI and sandbox builds that follow their spikes), +408 at each item's own budget, so 2,976 + 408 = 3,384; 3,400 covers it with 16 lines to spare, and the GitLab build (+90, budget 130) is expected to justify its own lines or wait and stays a design pressure. Files: the six named and their vendored copies under .claude/wuwei/. Runtime lines: 0. Order: none; runs now beside scratch-remotes. Rollback: revert the commit. Outside: any runtime change. Assumptions: the owner's \"revise the budget\" means raise it to fit the backlog; 3,400 rather than 3,500 because the GitLab estimate (+90) is the least certain and should earn its lines; six keys because a machine-read model override needs a key, and a seventh would need its own case; overturned if the owner names another number.",
+  "acceptance": [
+   "given the branch head, when `python3 -m pytest -q tests/test_setup.py` runs, then test_the_runtime_holds_its_size_budget passes and its assertion reads 3400",
+   "given a scratch copy of the head with 3,401 runtime lines (a padded module), when the same test runs, then it fails naming the budget 3400",
+   "given the branch head, when `grep -rn \"3,000\" .specify/memory/constitution.md AGENTS.md CONTRIBUTING.md docs/design.md docs/site/concepts/philosophy.md` runs, then it finds no runtime budget line, and each file states 3,400"
+  ],
+  "why": "The owner asked for it; it lets the feature queue run without free-lines rounds while keeping a budget a test holds."
+ },
+ {
+  "id": "close-1098",
+  "title": "chore: close #1098, fixed on main by #1103 and #1077",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 3,
+   "risk": 2,
+   "size": 1
   },
-  {
-    "id": "records",
-    "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
-    "goal": "G-2",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 13, "time": 8, "risk": 13, "size": 3},
-    "evidence": {
-      "value": "Two shell steps open the push door on main: `echo '\"x\"' > .wuwei/cache/default-<repo>.json` passes, and after it `git push origin main` passes (scratch probe with the real _default). A generated probe finds 87 holes among 123 commands that really change the ledger or a cache entry under bash.",
-      "time": "The cache flip is a live two-step bypass of the push door and the merge door's CI gap (ci- entry); findings lines 10 and 17 name it open since ci-not-started.",
-      "risk": "Replaces the LEDGER regex that took three gate rounds with one matcher; the spike reaches 0 holes of 196 generated commands.",
-      "size": "+11 lines in the spike, five shapes (glob and brace paths, cache writes, find, cd, git clean)."
-    },
-    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)", "docs/site/concepts/doors.md", "docs/design.md (the ledger door paragraph)"],
-    "runtime_lines": "+12 estimated (spike +11 before narrowing find and cd), budget 18",
-    "after": ["free-lines-4", "shell-stdin"],
-    "promise": "Writes to the ledger and the cache meet the ledger door in the spellings sh expands. (1) One path matcher replaces the LEDGER regex. It reads //, /./, globs (*, ?, [...], where * and ? do not match a leading dot, as in sh) and brace expansion ({a,b}, {a..z}), and matches .wuwei itself, .wuwei/ledger, .wuwei/ledger.jsonl and anything under them, as a redirect target, a writer argument or an edit path. (2) A write to .wuwei/cache (a redirect target, a writer argument other than rm, a python argument, a Write or Edit path) is refused, with text naming the cache: its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file still passes, because the next read fetches it again. (3) find with -delete, -exec or -execdir whose start path the matcher matches is refused; find without them passes. (4) cd or pushd into .wuwei or below, followed in the same command by a writer program, is refused; `cd .wuwei && cat plan.json` passes. (5) git clean with x or X in any short cluster is refused unless every pathspec it names lies outside .wuwei: .wuwei is git-ignored, so git clean -fdx deletes the ledger; git clean -fd passes. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, docs/site/concepts/doors.md and the ledger door lines in docs/design.md. Runtime lines: estimate +12 (spike +11 on top of shell-stdin, before narrowing find and cd), budget 18. Order: after free-lines-4 and shell-stdin (all three edit guards.segments, _unwrap or bash). Acceptance comes from real execution under bash in a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json. The builder runs a generated combinatorial probe: ledger spellings (.wuwei/ledger, .wuwei//ledger, ./.wuwei/./ledger, .wuwei/*, .wuwei/l*, .w*/ledger, .wuwei/[l]edger, .wuwei/{ledger,x}, .wuwei/{l,}edger, .wuwei/{k..m}edger, .{v..x}uwei/ledger, .wuwei/{{l,x},}edger, .wuwei/led?er, .wuwei, .wu*, .[w]uwei, .wuwei/ledger/../ledger, \"$PWD\"/.wuwei/ledger, ~+/.wuwei/ledger, .wuwei/ledger/*.jsonl, quoted and escaped forms) x writers (rm -rf, mv, find -delete, cd && rm, echo >, chmod -R, truncate), and cache spellings x writers (echo >, cp, tee, dd of=); holes must be 0. Rollback: revert the commit. Outside: deleting from an ancestor without naming .wuwei (find . -delete, rm -rf ..): the ledger is hash-chained and synced to wuwei/state, and the guard is a tripwire, not a sandbox; .wuwei/plan.json and verdicts (verdicts are attested by hash). Assumptions: no recorded seat route writes into .wuwei/cache by shell or runs git clean -x (the suite's corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
-    "acceptance": [
-      "given a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json, when bash -c runs each of `rm -rf .wuwei/*`, `rm -rf .wuwei/{l,}edger`, `rm -rf .w*/ledger`, `find .wuwei -delete`, `cd .wuwei && rm -rf ledger`, `git clean -fdx` (in a git repository whose .wuwei is ignored) and `echo 0 > .wuwei/cache/c.json`, then the ledger row or the cache value is gone or changed each time, and given each command, when guards.bash reads it, then it is refused",
-      "given the generated probe in the builder's scratch copy (ledger spellings x writers, cache spellings x writers), when it runs every command under real bash in a fresh folder and through guards.bash at the head, then it reports the generated count, the count that changed the records, and 0 holes",
-      "given `echo '\"x\"' > .wuwei/cache/default-taoq-ai__wuwei.json`, when guards.bash reads it, then it is refused with text naming the cache, and given a Write tool call on .wuwei/cache/ci-x.json, when guards.pre_tool reads it, then it is refused",
-      "given `rm -rf *`, `rm -rf .wuwei/cache`, `rm .wuwei/cache/x`, `cat .wuwei/ledger/x.jsonl`, `cd .wuwei && cat plan.json`, `find .wuwei -name x`, `git clean -fd`, `rm foo.wuwei` and `rm -rf .wuwei-x`, when guards.bash reads them, then they pass"
-    ],
-    "why": "The cache flip is a live two-step bypass of the push door; the spike closes the class at 0 of 196 generated holes, so it is ready behind shell-stdin."
+  "evidence": {
+   "value": "Removes a stale 1.2.0 issue from the open count.",
+   "time": "The issue asks to check current main first.",
+   "risk": "None: a comment and a close.",
+   "size": "One gh call."
   },
-  {
-    "id": "gh-args",
-    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
-    "goal": "G-2",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 5, "time": 3, "risk": 3, "size": 1},
-    "evidence": {
-      "value": "guards.bash at 9d6701e refuses gh pr merge --help, gh pr merge -h, gh pr merge 5 --help, gh pr ready --help, gh pr create --help, git push --help and git push origin main --help; the live door refused `gh pr merge 5 --help` during this pass.",
-      "time": "A false refusal, not a bypass; seats meet it when they read help.",
-      "risk": "Loosens a door, so the parser reading -h and --help must follow pflag exactly (`gh pr merge 5 -t --help` gives --help to -t and merges).",
-      "size": "About three lines in gh_command, _api and the git branch of bash."
-    },
-    "files": ["cli/wuwei/guards.py", "tests/test_guards.py", "tests/fixtures/routes.json", ".claude/wuwei/cli/wuwei/guards.py (vendored)"],
-    "runtime_lines": "+3 estimated, budget 5",
-    "after": ["free-lines-4", "records"],
-    "promise": "A help request passes the doors, and an --input file's head, base and body are read as JSON. (1) gh pr merge, create, new, ready and edit with -h or --help as pflag reads them through guards._flags (anywhere before --, alone or in a short cluster, --help=true) print help and run nothing, so the guard passes them. A word pflag gives to a valued flag is not help: `gh pr merge 5 -t --help` still meets the merge door, and so does `gh pr merge 5 -- --help`. (2) git push with -h or --help, as git's option parser reads them, passes the push door. (3) For gh api --input, when the file parses as a JSON object, head, base and body are read with json.loads, so \\u and \\n escapes decode as gh sends them; a file that is not valid JSON keeps today's reading. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json and the vendored guards.py. Runtime lines: estimate +3, budget 5. Order: after records, because both edit the git branch of guards.bash. Acceptance comes from real execution: real gh against a fake host through gh's http_unix_socket setting shows which requests a help spelling sends, and real git against a local bare remote shows no ref was pushed. The builder runs a generated probe of help spellings (-h, --help, --help=true, --help=false, -dh, -h=x) x subcommands (merge, create, new, ready, edit) x positions (before and after the number, after each valued flag, after --), compared with what real gh sends to the fake host; mismatches must be 0. Probe fixtures that hold JSON escapes are written by code. Rollback: revert the commit. Outside: gh help subcommands other than gh pr, and `--input` read from stdin (still refused as unreadable for graphql). Assumptions: git push --help and -h after positionals show help and push nothing (parse-options); overturned if the bare-remote test shows a push, in which case (2) covers only the spellings shown to push nothing.",
-    "acceptance": [
-      "given real gh configured with http_unix_socket to a fake host that logs every request, when it runs each of `gh pr merge --help`, `gh pr merge 5 --help`, `gh pr ready -h` and `gh pr create --help`, then the fake host logs no write request, and given each command, when guards.bash reads it, then it passes",
-      "given the same fake host, when real gh runs `gh pr merge 5 -t --help` and `gh pr merge 5 -- --help`, then the guard sends each to the merge door (refused while the PR's evidence has gaps)",
-      "given a local bare remote and a clone with a commit on main, when real git runs `git push origin main --help` and `git push origin main -h` from the suite, then the bare remote has no main ref, and guards.bash passes both; `git push origin main` is still refused",
-      "given an --input file written by json.dumps with head 'feature', base 'ma\\u0069n' and a body whose WUWEI-Item line is escaped, when guards._api reads it, then head, base and body equal the decoded strings"
-    ],
-    "why": "A small false-refusal fix seen live in this pass; it waits behind records only because both edit the same branch of guards.bash."
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. Close #1098 with a comment citing efcd9e7: (1) a create whose body names no readable item now says why: guards.py:269-270 (\"a --body-file path WUWEI can read (a literal path, not $VAR)\", e34586d, #1103); (2) `pr create` inside a heredoc no longer reads as a create: a multi-line command naming a door program is refused by guards.py:319 (#1077 for #1068), and guards.segments reads only executed segments. The lead's probe in scratch read `S=b.md; gh pr create --title t --body-file \"$S\"` as a create whose body file is the literal `$S` (the live gap text was not reached: the sandbox has no gh access to the repository). Evidence: the planner records the closing comment link with `wuwei plan run close-1098`. Outside: any code change.",
+  "acceptance": [
+   "given #1098 open, when the planner posts the comment citing guards.py:269-270 and guards.py:319 at efcd9e7 and closes it as completed, then the issue is closed and the plan item carries the comment link as run evidence"
+  ],
+  "why": "Already fixed on main; the issue itself asked for this check."
+ },
+ {
+  "id": "close-999",
+  "title": "chore: close #999, the small-delta rule is on main",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 2,
+   "risk": 2,
+   "size": 1
   },
-  {
-    "id": "merge-evidence",
-    "title": "fix(evidence): owner review reads only owner review rulings, and the CI-not-started read covers docs-only diffs, an unreadable Actions host and pull_request_target",
-    "goal": "G-2",
-    "repo": "taoq-ai/wuwei",
-    "tier": "full",
-    "scores": {"value": 8, "time": 3, "risk": 8, "size": 2},
-    "evidence": {
-      "value": "evidence.owner_approved (evidence.py:437-442) counts any approved ruling at the head, and hook.py:247 and :253 record breaking and exception rulings beside owner review ones, so an approved breaking or exception answer clears the owner review hold on owned paths.",
-      "time": "taoq-ai/wuwei sets owner_paths = [] (.wuwei/config.toml), so the hold bites in other repositories first; the CI follow-ups come from the ci-not-started arch and security gates.",
-      "risk": "Owner review is a safety gap; a docs-only PR held at CI not started on a path-filtered workflow needs an exception today (principles 4 and 7).",
-      "size": "One condition in owner_approved and about three lines around evidence.py:398-402."
-    },
-    "files": ["cli/wuwei/evidence.py", "cli/wuwei/gh.py (if the pull_request_target read lands there)", "tests/test_evidence.py", ".claude/wuwei/cli/wuwei/ (vendored copies)", "docs/site/concepts/evidence.md (if it describes the CI-not-started gap)"],
-    "runtime_lines": "+4 estimated, budget 6",
-    "after": ["free-lines-4"],
-    "promise": "(1) evidence.owner_approved counts a ledger ruling only when it is an owner review ruling (one with no kind); an approved breaking or exception ruling at the head no longer counts as the owner's review on owned paths. An approving GitHub review by the owner at the head still counts. (2) The CI-not-started gap is not raised when the diff holds only docs or specs (the same DOCS, specs/ and openspec/ reading the no-test gap uses) and the rollup is empty. (3) When the Actions read fails (a 403 or any gh error), the gap still shows and its text says the Actions host was unreadable, with the error. (4) A repository whose CI runs only on pull_request_target is read as having CI. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py if the pull_request_target read lands there, tests/test_evidence.py, the vendored copies, and docs/site/concepts/evidence.md if it describes the gap. Runtime lines: estimate +4, budget 6. Order: after free-lines-4. It shares no file with the guard items; if the headroom at its approval is under 6 lines, it frees its own. Rollback: revert the commit. Outside: reading a workflow's path filters (YAML, not stdlib), and the Codex attestation path (#1078). Assumptions: a docs-only change is safe to merge before docs CI registers, because a rollup with any check still holds the merge on running or failing CI; overturned if the owner wants docs CI to hold merges, in which case (2) reads the workflow's paths instead.",
-    "acceptance": [
-      "given an owned path in the diff, a ledger ruling {kind: breaking, approved: true} and one {kind: exception, approved: true} at the head, and no owner review, when evidence.gaps reads the PR, then the owner review gap shows; and given an owner review ruling {approved: true} at the head, when it reads again, then the gap is gone",
-      "given a diff of only docs/site/x.md and specs/a/spec.md, an empty status rollup and a repository that ran a pull_request workflow, when evidence.gaps reads the PR, then no 'CI not started' gap shows; and given a diff with cli/wuwei/x.py, then it shows",
-      "given gh.run raising GhError('HTTP 403') on the Actions read and an empty rollup, when evidence.gaps reads the PR, then a 'CI not started' gap shows whose text names the unreadable Actions host and the error",
-      "given a repository whose only workflow runs are pull_request_target runs and an empty rollup, when evidence.gaps reads the PR, then the 'CI not started' gap shows"
-    ],
-    "why": "An approved breaking or exception answer clears the owner review hold today; the CI follow-ups from the ci-not-started gates share the same function."
-  }
+  "evidence": {
+   "value": "Removes a done proposal from the backlog.",
+   "time": "Low.",
+   "risk": "None.",
+   "size": "One gh call."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. Close #999 with a comment: the owner's rule is implemented as \"after review fixes, a delta of docs or at most 20 lines off risky paths carries the passes\" (charters/_common.md:41-42 at efcd9e7) and in evidence.gate_gaps (evidence.py:300-302: the delta is read by needed(); a quality-only delta of at most TRIVIAL = 20 lines needs no gate, and a delta on a risky, owner or contract path is re-read by security or arch). N is 20 lines; no file-count M was set, which the comment says. Evidence: the comment link via `wuwei plan run close-999`.",
+  "acceptance": [
+   "given #999 open, when the planner posts the comment citing charters/_common.md:41-42 and evidence.py:300-302 at efcd9e7 and closes it, then the issue is closed and the item carries the link"
+  ],
+  "why": "Done on main; keeping it open misstates the backlog."
+ },
+ {
+  "id": "close-1078",
+  "title": "chore: close #1078 on its documented path; the Codex-native probe stays parked",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 5,
+   "time": 8,
+   "risk": 2,
+   "size": 1
+  },
+  "evidence": {
+   "value": "The issue's second expected outcome is on main; closing it with that citation keeps G-2 honest.",
+   "time": "#1078 reaches three days open on 2026-10-19 (G-2 target).",
+   "risk": "Low: the parked codex-attest-probe keeps the open question visible.",
+   "size": "One gh call."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. Close #1078 with a comment citing efcd9e7: the issue's second option holds. (1) docs/site/concepts/codex.md:49-53 says a codex-companion task job is not a seat and its verdict is not counted, and gates run as Claude seats until a Codex-native seat is shown attested; charters/planner.md:35-38 says the same to the planner. (2) The door names the file, not only \"gate missing\": evidence.uncounted (evidence.py:307-325) adds \"verdict <path> not counted: not attested: launch the gate as agent type sentinel-<gate> ...\" beside the missing-gate gap. The comment links the parked codex-attest-probe item as the follow-up for the Codex-native path. Evidence via `wuwei plan run close-1078`. Outside: a session-callable attest command (it would let any seat forge an attest row, against #962). Assumptions: the owner accepts the documented path as the fix; overturned if the owner wants a Codex attest command, which is then a trust: question.",
+  "acceptance": [
+   "given #1078 open, when the planner posts the comment citing codex.md:49-53, planner.md:35-38 and evidence.py:307-325 at efcd9e7 and closes it, then the issue is closed and codex-attest-probe stays parked with its reason"
+  ],
+  "why": "The bug clock runs out tomorrow and the issue's own fallback is already on main."
+ },
+ {
+  "id": "exception-shape",
+  "title": "fix(guards): an exception: question whose ref is not followed by \": <gap>\" is refused with the exact shape",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 5,
+   "risk": 8,
+   "size": 1
+  },
+  "evidence": {
+   "value": "An owner answered Accept on taoqi#124 and nothing was recorded; the gap stayed and nothing said why (#1130).",
+   "time": "Open since 2026-10-18; any exception asked with \"at <sha>.\" loses the owner's ruling.",
+   "risk": "Closes a silent loss of an owner ruling, a trust-path record.",
+   "size": "One regex and one test pair."
+  },
+  "files": [
+   "cli/wuwei/guards.py",
+   "cli/wuwei/hook.py (only if the gap text needs a guard)",
+   "tests/test_guards.py",
+   "tests/test_hook.py",
+   "tests/fixtures/routes.json",
+   ".claude/wuwei/cli/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+1 estimated, budget 2",
+  "after": [],
+  "promise": "In guards.pre_tool (guards.py:372-373), an exception: question passes only when its refs (owner/repo#n at <sha7> [and #m at <sha7>]) are followed by \":\" and a non-empty gap text, the shape hook.exception_refs (hook.py:271-282) reads; otherwise it is refused with the existing \"Use the exact shape\" text. owner review: and breaking: keep their shapes. Files: guards.py, tests, routes.json and the vendored copy. Runtime lines: +1, budget 2. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; it edits the AskUserQuestion branch of guards.pre_tool, which no open item touches, so it runs now beside scratch-remotes. Rollback: revert the commit. Outside: rewording the other owner classes. Assumptions: no recorded route asks an exception: in the \"at <sha>.\" form expecting it to record; overturned if a corpus row moves.",
+  "acceptance": [
+   "given an AskUserQuestion with `exception: o/r#1 at abc1234. Some prose. Accept?`, when guards.pre_tool reads it, then it is refused with text naming the shape \"exception: owner/repo#n at <sha7> ...: <the gap ...>. <question>\"",
+   "given `exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?` answered Accept, when hook.handle runs PostToolUse, then the ledger holds a ruling row with kind exception, pr o/r#1, head abc1234 and gap \"gates missing at head abc1234: quality\"",
+   "given `exception: o/r#1 at abc1234 and #2 at def5678: no test in the diff. Accept?`, when guards.pre_tool reads it, then it passes",
+   "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no route's verdict moves except the new rows"
+  ],
+  "why": "An owner's answer recorded as nothing is the worst kind of silent failure; one regex closes it."
+ },
+ {
+  "id": "breaking-latest",
+  "title": "fix(evidence): a breaking change is read from the latest arch verdict, not any verdict ever",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 5,
+   "risk": 5,
+   "size": 1
+  },
+  "evidence": {
+   "value": "taoqi#124 was held on \"breaking change without an announcement\" after arch re-read Breaking: no (#1129).",
+   "time": "Every item whose arch gate once said yes is held until someone routes around it.",
+   "risk": "A false hold teaches seats to ask for exceptions; the fix keeps the declared-breaking path intact.",
+   "size": "One line in breaking_gaps and two tests."
+  },
+  "files": [
+   "cli/wuwei/evidence.py",
+   "tests/test_evidence.py",
+   ".claude/wuwei/cli/wuwei/evidence.py (vendored)"
+  ],
+  "runtime_lines": "+1 estimated, budget 2",
+  "after": [],
+  "promise": "evidence.breaking_gaps (evidence.py:328-342) reads Breaking from the item's latest arch verdict (the last attested arch verdict in ledger order, which verdicts() already returns oldest first) instead of any verdict ever. A `!` in the title or a BREAKING CHANGE: line still counts on its own. Files: evidence.py, tests/test_evidence.py, the vendored copy. Runtime lines: +1, budget 2. Order: none; runs now. merge-ref, which edits evidence.gaps beside it, starts after it. Rollback: revert the commit. Outside: how the arch gate decides Breaking. Assumptions: ledger order of attest rows is the order the gates ran; overturned if a fixture shows a re-read attested before the verdict it supersedes.",
+  "acceptance": [
+   "given an arch verdict with Breaking: yes at head A and a later arch PASS with Breaking: no at head B (the PR head), when wuwei evidence reads the PR, then it shows no breaking gap",
+   "given an arch verdict with Breaking: no at A and a later one with Breaking: yes at B, when evidence reads the PR, then it shows \"breaking change without an announcement\"",
+   "given a PR titled `fix(x)!: ...` and only arch verdicts saying Breaking: no, when evidence reads it, then the announcement gap still shows"
+  ],
+  "why": "A held merge on a superseded verdict is a false safety gap; the fix is one line."
+ },
+ {
+  "id": "wide-specs",
+  "title": "fix(evidence): the wide-change trigger counts code and spec lines, never prose, and a spec contract takes arch",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 3,
+   "risk": 3,
+   "size": 1
+  },
+  "evidence": {
+   "value": "Rules say docs need no gate, yet a 300-line README change at standard asks arch; a specs-only diff asked arch with no rule saying so (#1131).",
+   "time": "Seen on taoqi#124; recurs on every large docs or spec PR.",
+   "risk": "Rules and code agree; keeps arch on large spec diffs, where it found four real defects on #124.",
+   "size": "Two lines in needed(), a sentence in _common.md and design.md, a test-string update."
+  },
+  "files": [
+   "cli/wuwei/evidence.py",
+   "charters/_common.md",
+   "docs/design.md (the gates row, line 77)",
+   "tests/test_evidence.py",
+   "tests/test_charters.py (the threshold string)",
+   "agents/*.md (built)",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+2 estimated, budget 3",
+  "after": [],
+  "promise": "Take the issue's preferred option and make rules and code agree. (1) In evidence.needed (evidence.py:250-260), the wide trigger counts the changed lines of code and spec files (specs/, openspec/), never prose (.md outside them, LICENSE), so a docs-only diff needs no gate at any size. (2) A change under specs/**/contracts/ or openspec/**/contracts/ takes arch at any tier, like a contract file. (3) charters/_common.md says it: \"a wide change (over 200 lines of code and specs, or 10 code files) adds arch; a spec contract takes arch at any tier\"; docs/design.md line 77 matches; tests/test_charters.py reads the new threshold text. Then `bin/wuwei agents build`. Runtime lines: +2, budget 3. Order: none; runs now (needed() is touched by no open item; codeowners, which edits owned(), starts after it). Rollback: revert the commit. Outside: the quality and security triggers. Assumptions: the owner prefers arch on large spec diffs (the issue says so); overturned if the owner picks \"count code lines only\", a one-line change.",
+  "acceptance": [
+   "given a standard item whose diff is 1,780 lines under specs/ only, when evidence.needed runs, then it returns ('arch',)",
+   "given a standard item whose diff is 300 lines of README.md and docs/site/*.md only, when evidence.needed runs, then it returns ()",
+   "given a light item whose diff adds specs/001-x/contracts/api.yaml, when needed runs, then arch is in the result",
+   "given the head, when `bin/wuwei agents build` runs, then git status shows no change and tests/test_charters.py passes with the new threshold text"
+  ],
+  "why": "The rule and the code disagree today in both directions; two lines settle it the way the issue asks."
+ },
+ {
+  "id": "verdict-symlink",
+  "title": "fix(hook): the worktree verdict copy-in refuses a symlinked target or parent under .wuwei/verdicts",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 3,
+   "risk": 8,
+   "size": 1
+  },
+  "evidence": {
+   "value": "hook._verdict_problem writes through a symlink planted under .wuwei/verdicts/, a write primitive into paths the deny rules protect (#1113).",
+   "time": "Found by sentinel-security on taoqi#100; open since 2026-10-17.",
+   "risk": "Closes a hook write primitive on a trust path.",
+   "size": "Two lines and two tests."
+  },
+  "files": [
+   "cli/wuwei/hook.py",
+   "tests/test_hook.py",
+   "tests/fixtures/routes.json (rerun only)",
+   ".claude/wuwei/cli/wuwei/hook.py (vendored)"
+  ],
+  "runtime_lines": "+2 estimated, budget 3",
+  "after": [],
+  "promise": "In hook._verdict_problem (hook.py:142-159), the copy-in path is refused unless copy.resolve() stays under the resolved verdicts folder and neither the copy nor any parent between it and verdicts/ is a symlink; the write goes to a temporary file beside it and os.replace, so a link planted after the check is replaced, never followed. The refusal names the path and says to remove the link. Files: hook.py, tests/test_hook.py, the vendored copy. Runtime lines: +2, budget 3. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; runs now. verdict-closed, which edits the same function, starts after it. Rollback: revert the commit. Outside: the ledger door itself. Assumptions: worktree verdict paths never legitimately pass through a symlink under verdicts/; overturned if a corpus payload does.",
+  "acceptance": [
+   "given a symlink at .wuwei/verdicts/x/quality-abc1234.md pointing to a file outside verdicts/, when a sentinel hands back naming a worktree verdict with that relative path, then the hook refuses and the link target is unchanged",
+   "given a symlinked parent .wuwei/verdicts/x -> .wuwei/ledger, when the same hand-back runs, then the hook refuses and no file under .wuwei/ledger changes",
+   "given a plain worktree verdict, when the sentinel hands back, then it is copied in and attested as before"
+  ],
+  "why": "A hook that writes through a planted link is a security finding on a trust path; the fix is small."
+ },
+ {
+  "id": "verdict-closed",
+  "title": "fix(verdict): closed findings go under Probes, and a refused verdict names the next free file",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 5,
+   "risk": 3,
+   "size": 1
+  },
+  "evidence": {
+   "value": "Six delta gates wrote \"Previous findings ... all closed.\" under Findings, were refused, and guessed the next path (#1118).",
+   "time": "Every delta round on a fixed PR hits it.",
+   "risk": "Fewer refused verdicts and path mismatches with the brief.",
+   "size": "A charter sentence, one message line, regenerated agents."
+  },
+  "files": [
+   "charters/_gate.md",
+   "cli/wuwei/hook.py (the refusal text, hook.py:170-171)",
+   "tests/test_hook.py",
+   "agents/sentinel-*.md (built)",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "0 estimated (a changed line), budget 1",
+  "after": [
+   "verdict-symlink"
+  ],
+  "promise": "(1) charters/_gate.md rule 6 and the verdict block say: findings closed since your previous verdict go under ## Probes, one line each (\"closed: <finding> at <sha7>\"); ## Findings holds only open findings, or none. (2) The shape refusal in hook._verdict_problem (hook.py:170-171) ends \"Write the corrected verdict to <stem>-2.md beside it (the next free number) in this shape\" instead of \"Rewrite it\", matching the charter's never-edit rule. Then `bin/wuwei agents build`. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after verdict-symlink (same function). Rollback: revert the commit. Outside: loosening FINDING in verdict.py (the shape check stays strict). Assumptions: Probes is where gates already put run evidence, so closed findings fit there; overturned if the goal gate says closures must be machine-read.",
+  "acceptance": [
+   "given a delta verdict with \"Previous findings at e418c1d: all closed.\" under ## Probes and none under ## Findings, when the hook lints it, then it is attested",
+   "given the same line under ## Findings, when the hook lints quality-abc1234.md, then the refusal names quality-abc1234-2.md as the file to write next",
+   "given agents/sentinel-quality.md at the head, when a reader looks for closed findings, then it says they go under Probes"
+  ],
+  "why": "A charter gap made six gates fail their first file; one sentence and one message fix it."
+ },
+ {
+  "id": "door-words-text",
+  "title": "fix(guards): the multi-line refusal names the door word it found, quoted text and heredoc bodies included",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 3,
+   "time": 3,
+   "risk": 2,
+   "size": 1
+  },
+  "evidence": {
+   "value": "Seats lost turns to a refusal that did not say a door name in a heredoc body was the trigger (#1117).",
+   "time": "Recurs whenever a brief that mentions git push or gh pr is written with a heredoc.",
+   "risk": "Text only; no verdict moves.",
+   "size": "One message line and tests."
+  },
+  "files": [
+   "cli/wuwei/guards.py",
+   "tests/test_guards.py",
+   "tests/fixtures/routes.json (rerun only)",
+   ".claude/wuwei/cli/wuwei/guards.py (vendored)"
+  ],
+  "runtime_lines": "0 estimated (a changed line), budget 1",
+  "after": [
+   "gh-args"
+  ],
+  "promise": "The issue's fallback: when the multi-line or unreadable rule refuses (guards.py:319-322), the text names the door words it matched (\"found: gh pr\") and says a door name anywhere in the text counts, a heredoc body or quoted prose included; write such a file with Write. The lead's probe at efcd9e7 shows the issue's other shapes already pass: `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a quoted argument naming git push, `printf ... > brief.md`, and `gh pr create --draft`; the item adds them as regression tests. Files: guards.py, tests, the vendored copy. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after gh-args (both edit guards.bash). Rollback: revert the commit. Outside: reading heredoc bodies as data (a parser change the multi-line rule exists to avoid); a later item if the owner wants it. Assumptions: naming the trigger is enough for seats to route long text through Write; overturned if the retro shows the refusal still costs turns.",
+  "acceptance": [
+   "given `cat > brief.md <<'EOF'` with a body line naming gh pr view, when guards.bash reads it, then it is refused and the text names \"gh pr\" and the Write tool",
+   "given `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a single-line echo of quoted text naming git push into a file, and `gh pr create --draft --title t --body-file b.md`, when guards.bash reads them, then none is refused by the multi-line rule",
+   "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no verdict moves"
+  ],
+  "why": "The remaining part of #1117 is a message; the parser stays as the gates left it."
+ },
+ {
+  "id": "pr-draft-text",
+  "title": "docs(charters): the PR standard says the PR opens as a draft and the shepherd requests the reviewer",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 3,
+   "time": 3,
+   "risk": 3,
+   "size": 1
+  },
+  "evidence": {
+   "value": "charters/_pr.md:20 tells the body writer the gates passed before it opened and to request a reviewer, against builder.md:69-73 (#1132); the guard shows this text as the PR standard note on every create.",
+   "time": "Every builder reads it at gh pr create.",
+   "risk": "Removes a contradiction that invites a reviewer request on a draft.",
+   "size": "Two sentences."
+  },
+  "files": [
+   "charters/_pr.md",
+   ".claude/wuwei/charters/_pr.md (vendored)"
+  ],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "charters/_pr.md:20-22 says: the PR opens as a draft so CI runs; the gates read the draft head; it turns ready once they pass, and the shepherd requests the reviewer then; before merge CI is green and every thread is answered. It no longer tells the body writer to request a reviewer. Files: charters/_pr.md and its vendored copy (guards.PR_STANDARD reads it; agents/ do not include it). Runtime lines: 0. Order: none; runs now. Rollback: revert the commit. Outside: shepherd.md, which already says this.",
+  "acceptance": [
+   "given the head, when `gh pr create --draft` is read by guards.bash once in a session, then the PR standard note it returns says the PR opens as a draft and does not say \"Request a reviewer\"",
+   "given the suite, when it runs at the head, then the vendored-drift test passes"
+  ],
+  "why": "The note every builder sees contradicts the builder charter; two sentences fix it."
+ },
+ {
+  "id": "status-perf",
+  "title": "perf(board): a cold status reads each repository's PR evidence in parallel and says what it is reading",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 5,
+   "time": 2,
+   "risk": 3,
+   "size": 2
+  },
+  "evidence": {
+   "value": "The first plan pass and status took over 120 s with about 90 items and 18 open PRs (#1121, labelled bug).",
+   "time": "Priority low; every new session pays it once.",
+   "risk": "Concurrent cache writes share a temp name today (ws.atomic_write uses the pid alone), so the fix must make them safe.",
+   "size": "A thread pool in board.compute, a thread-unique temp name, a progress line."
+  },
+  "files": [
+   "cli/wuwei/board.py",
+   "cli/wuwei/ws.py (atomic_write temp name)",
+   "tests/test_board.py",
+   "tests/test_ws.py",
+   ".claude/wuwei/cli/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+4 estimated, budget 6",
+  "after": [],
+  "promise": "(1) board.compute reads the evidence of a repository's linked PRs on a concurrent.futures thread pool of at most 8, rows in the same order as today. (2) ws.atomic_write names its temp file with the pid and the thread id, so two threads writing one cache key (spec-, template-, budget-, review-, ci-, login) never share a temp file. (3) When the board is computed cold, it prints one stderr line per repository: \"wuwei: reading <repo>: <n> open PRs\". (4) The zsh error in the issue: bin/wuwei is POSIX sh (bin/wuwei:1) and no skill or charter text holds `==`; the builder reproduces the issue's command under zsh (apt install zsh in its scratch) and, if WUWEI is not the source, answers on the issue that zsh expands a word starting with \"=\" (echo ===) as a command path. Files: board.py, ws.py, tests, the vendored copies. Runtime lines: +4, budget 6. Order: none; runs now. plan-after, which edits board.compute, starts after it. Rollback: revert the commit. Outside: caching beyond today's TTLs. Assumptions: gh calls dominate the cold time; overturned if a cProfile of a cold status on the fake host with 18 PRs shows otherwise, in which case the item fixes what the profile names.",
+  "acceptance": [
+   "given a fake gh where each call sleeps 0.5 s and a plan with 18 items linked to 18 open PRs, when `wuwei status` runs with an empty cache, then it finishes in under a third of the serial time measured at efcd9e7 and prints the same rows in the same order",
+   "given two threads writing the same cache key 200 times each, when they finish, then no exception was raised and the file holds valid JSON",
+   "given a cold board, when status runs, then stderr names each repository read and stdout is unchanged"
+  ],
+  "why": "A bug the owner hit in real use; the parallel read is safe only with the temp-name fix, which the item carries."
+ },
+ {
+  "id": "spike-962",
+  "title": "spike: can PostToolUse confirm an owner answer against the session transcript",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 5,
+   "time": 5,
+   "risk": 13,
+   "size": 1
+  },
+  "evidence": {
+   "value": "Settles whether #962 (forged hook calls recording an owner Yes) is buildable before any runtime is spent.",
+   "time": "hook-transcript, the riskiest item in the queue, waits on it.",
+   "risk": "The design depends on an undocumented transcript format and on the tool_result being written before PostToolUse fires.",
+   "size": "One real AskUserQuestion and reading the payload; no files."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. In a scratch workspace with the plugin's hooks, have one real AskUserQuestion answered and capture the PostToolUse payload (tool_use_id, transcript_path). Record: (a) whether the transcript file already holds the tool_use with that id and a tool_result carrying the same answer when the hook runs; (b) where transcript_path lives (under ~/.claude/projects/ or elsewhere) and whether a Bash or Write call in the session can write there; (c) whether any field marks a harness-originated hook call. Record the outcome with `wuwei plan run spike-962 --reason \"<a, b, c>\"`. Outside: changing the hook. If no owner is at hand to answer, the planner asks a trust: question that is itself the probe question (its answer is recorded either way).",
+  "acceptance": [
+   "given one real AskUserQuestion answered in a scratch workspace, when the PostToolUse payload is captured, then the run evidence states whether the transcript held the matching tool_use and tool_result at hook time, where transcript_path points, and whether a session tool can write that file"
+  ],
+  "why": "The riskiest build in the queue rests on two facts about the harness nobody has checked; one question checks both."
+ },
+ {
+  "id": "models-table",
+  "title": "docs(charters): every seat's model and effort come from one table drawn from Anthropic's guidance, which the planner follows and may depart from with a reason",
+  "goal": "G-3",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 13,
+   "time": 8,
+   "risk": 5,
+   "size": 2
+  },
+  "evidence": {
+   "value": "Every repository running WUWEI gets no model guidance today; the owner runs every seat on Opus 5.5 high, while the report shows goal FIX 1 of 33 and security FIX 24 of 53 here (wuwei report, 2026-10-18).",
+   "time": "Every launch from today can follow it; models-record measures it.",
+   "risk": "Text only: nothing is refused, and the owner can override any row.",
+   "size": "A table and four rules in planner.md, a steward rule, one new docs page and three page edits; no runtime lines."
+  },
+  "files": [
+   "charters/planner.md",
+   "charters/steward.md",
+   "docs/site/concepts/models.md (new)",
+   "docs/design.md (section 3)",
+   "docs/site/concepts/team.md (lines 9, 36-37)",
+   "docs/site/concepts/codex.md (lines 43-45)",
+   "skills/wuwei-watch/SKILL.md (the option, as text)",
+   "tests/test_charters.py",
+   "agents/steward.md (built)",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "Ships in the plugin for every repository running WUWEI. charters/planner.md gains \"Model and effort\" with the default table, and docs/site/concepts/models.md gives the reasons and sources (Anthropic's model table as cached 2026-10-06 and the Claude Code docs read 2026-10-18: sub-agents, hooks, skills, plugin components). Inputs are signals WUWEI already computes: the item tier, risky and owner paths, contract files, and the change-failure-rate rule that raises a tier. Table: lead Opus 5.5 xhigh; builder Opus 5.5 high at full tier or on trust paths, Opus 5.5 medium at standard, Sonnet 5.5 medium at light; sentinel-security Opus 5.5 high, xhigh at full tier or on trust paths; sentinel-arch Opus 5.5 high; sentinel-quality Opus 5.5 high at full tier or on trust paths, Sonnet 5.5 high elsewhere; sentinel-goal Sonnet 5.5 high; shepherd Sonnet 5.5 medium, Opus 5.5 high for a conflict where both sides changed logic; steward Opus 5.5 high; lookups and searches Haiku 5.5 low. Escalation ladder: Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1; escalate one step after a failed fix round or a gate blocker the builder missed; Fable 5.1 is the step for a parked design-problem item (two failed fix rounds) and a one-way decision; where Fable is unavailable (zero data retention), the top step is Opus 5.5 max; step down only on retro evidence (a seat class with 10 merged items and no escaped defect on the lower setting). Diversity: at least one gate per head runs on a different model than the builder, and the weakest tier never sits on the terminal gate for a trust path. Guidance notes from the sources: Opus 5.5 defaults to medium effort, so set effort explicitly; at least high for intelligence-sensitive work, max when correctness matters more than cost, low for simple subagent tasks; before cascading to a cheaper model, measure the most capable model at a lower effort; judge cost per completed item, not per request. Rules: (1) the planner passes `model` and `effort` on each Agent call from the table and writes \"Model: <model> <effort> (<row>)\" as the brief's first line; a departure adds \"Model reason: <one line>\"; nothing is refused. (2) Precedence as Claude Code documents it: the per-call parameter over the agent file's frontmatter over CLAUDE_CODE_SUBAGENT_MODEL over the session model; CLAUDE_CODE_EFFORT_LEVEL beats all for effort, so a workspace that sets it turns effort advice off. (3) The owner's `models` rows in .wuwei/config.toml (models-record) override any table row. (4) Codex keeps its own model choice; the page marks the Codex mapping unmeasured. (5) /wuwei-watch may run on Sonnet 5.5 medium (its frontmatter can set both), offered in the skill text as an option, not a default. steward.md: the retro reads outcomes by seat x model x effort and proposes a table row change with its numbers, as advice. docs/design.md section 3, team.md:9 and :36-37 and codex.md:43-45 point to the table instead of MODELS (MODELS itself goes in models-record). Refinements on the owner's framework, said in the PR: the step-down names a count (10 items) so it is testable, and the planner session's own model is the owner's and the table never names it. Files: as listed. Runtime lines: 0. Order: none; runs now (planner.md, steward.md and these pages are in no open item). retro-followups (steward.md) starts after models-record. Rollback: revert the commit. Outside: frontmatter generation, hook advice, recording and the report (models-record); any refusal on a model. Assumptions: model ids Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 and the effort values low, medium, high, xhigh, max are what the Agent tool accepts; overturned if a launch with them is rejected, in which case the page names the accepted aliases.",
+  "acceptance": [
+   "given charters/planner.md at the head, when a reader looks for model choice, then it holds the table with a row for each seat in agents/allowlist.json, the escalation ladder ending in Fable 5.1 (Opus 5.5 max without it), the diversity rule and the precedence order naming CLAUDE_CODE_SUBAGENT_MODEL and CLAUDE_CODE_EFFORT_LEVEL",
+   "given the head, when tests/test_charters.py runs, then a test finds every role in agents/allowlist.json named in the planner table",
+   "given docs/site/concepts/models.md at the head, when a reader follows its sources, then each names the document and the date it was read",
+   "given docs/site/concepts/team.md and codex.md at the head, when a reader looks for MODELS, then neither names it and both link the table; codex.md marks the Codex mapping unmeasured"
+  ],
+  "why": "The owner asked for a concrete, documented framework shipped to every repository; text carries the table and rules at no runtime cost."
+ },
+ {
+  "id": "models-record",
+  "title": "feat(agents): agent files carry the table's model and effort, the hook advises on a departure and records what ran, and the report shows outcomes by model and effort",
+  "goal": "G-3",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 13,
+   "time": 5,
+   "risk": 5,
+   "size": 3
+  },
+  "evidence": {
+   "value": "The ledger records no model or effort per seat today: seat.started holds role, description, session and agent (hook.py:192-194), attest rows hold no model (hook.py:175-178), and MODELS pins only sentinel-quality to sonnet (agents.py:17-18).",
+   "time": "G-3 needs 14 days of rows; each day without them is lost evidence.",
+   "risk": "One table becomes the source for frontmatter and advice; the hook never denies.",
+   "size": "About 27 runtime lines over agents, hook, ws, setup and report."
+  },
+  "files": [
+   "cli/wuwei/agents.py",
+   "cli/wuwei/hook.py",
+   "cli/wuwei/ws.py (the models key)",
+   "cli/wuwei/setup.py (doctor line)",
+   "cli/wuwei/report.py",
+   "agents/*.md (built)",
+   "tests/test_agents.py",
+   "tests/test_hook.py",
+   "tests/test_report.py",
+   "tests/test_ledger.py (config keys)",
+   "tests/fixtures/routes.json (rerun)",
+   "tests/fixtures/payloads/ (an Agent PostToolUse payload with resolvedModel)",
+   "docs/design.md (sections 10 and 11)",
+   "docs/site/reference.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+27 estimated, budget 40",
+  "after": [
+   "models-table",
+   "budget-3400"
+  ],
+  "promise": "The runtime slice of the model table. (1) One TABLE in agents.py replaces MODELS: per role a default model and effort, and the tier and trust-path rows; `wuwei agents build` writes `model:` and `effort:` frontmatter per role from the defaults. (2) hook.pre_tool, for an Agent call, reads subagent_type and model (the hook input has no effort field) and the item's tier from the plan item the prompt names (raised one step when the cached change-failure budget says so); on a departure from the table it returns additionalContext \"table says <model> <effort> for <role> at <tier>; record a 'Model reason:' line in the brief\". It never denies and never sends updatedInput. (3) hook.post_tool records on seat.started tool_response.resolvedModel, the requested model and effort from tool_input (\"unrecorded\" when absent) and the brief's \"Model reason:\" line; the attest row copies model and effort from the seat.started row with the same agent id. (4) Config: one `models` key in .wuwei/config.toml (a table of \"<role>[ <tier>]\" = \"<model> <effort>\") overrides rows; config keys go from five to six, which budget-3400 amends in constitution VI. (5) `wuwei doctor` names CLAUDE_CODE_EFFORT_LEVEL and CLAUDE_CODE_SUBAGENT_MODEL when set, saying effort or model advice is then off. (6) report.learning shows, per seat x model x effort: launches, fix rounds per item, blocking findings, escapes traced to a passing gate, tokens, and \"model or effort unrecorded on <n> launches\". Codex: recorded as unmeasured. Runtime lines: +27 estimated (TABLE +8, frontmatter +1, advice +6, record +2, config key +2, doctor +1, report +7), budget 40; under 400 changed lines with tests. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after models-table and budget-3400; retro-followups (report.learning) and hook-transcript (hook.post_tool) start after it. Rollback: revert the commit; rows already written keep fields readers ignore. Outside: refusing or rewriting a launch; Codex model fields. Assumptions: the Claude Code PostToolUse payload for Agent carries tool_response.resolvedModel and tool_input.model and effort as the docs say; overturned if a recorded payload shows other names, in which case the builder records what is there and says so.",
+  "acceptance": [
+   "given the head, when `bin/wuwei agents build` runs, then each agents/<role>.md has the table's model: and effort: lines, git status is clean, and agents.py no longer defines MODELS",
+   "given a PreToolUse Agent payload for sentinel-goal with model opus on an item at standard tier, when hook.handle runs, then it returns additionalContext naming \"Sonnet 5.5 high\" and the Model reason line, and no permissionDecision",
+   "given a PreToolUse Agent payload that matches the table, when hook.handle runs, then it returns nothing",
+   "given a PostToolUse Agent payload with tool_response.resolvedModel \"claude-opus-5-5\", tool_input effort \"high\" and a brief holding \"Model reason: conflict in logic\", when hook.handle runs, then seat.started holds that model, effort and reason, and the seat's later attest row holds the same model and effort",
+   "given config.toml with models = {\"builder light\" = \"opus medium\"}, when the hook reads a light builder launch on opus medium, then it gives no advice; and given CLAUDE_CODE_EFFORT_LEVEL=low in the environment, when wuwei doctor runs, then it names the variable and says effort advice is off",
+   "given a ledger with gates on two models, when wuwei report runs, then Learning shows one line per seat x model x effort with launches, fix rounds, blocking findings, escapes and tokens"
+  ],
+  "why": "Without frontmatter, advice and records the table is opinion; this slice makes it the default, nudges on departures and lets the retro move rows on evidence."
+ },
+ {
+  "id": "plan-after",
+  "title": "feat(plan): an item names what it waits on, the board shows it waiting, and the Stop hook leaves it out",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 5,
+   "risk": 5,
+   "size": 2
+  },
+  "evidence": {
+   "value": "Ordering lives in promise prose today (plan add --from drops the candidates' after field, plan.py:72-85), so a planner can launch colliding builders (#637); the Stop hook residue of #1099 is the same gap.",
+   "time": "This pass orders over 20 items with after lists.",
+   "risk": "Prevents parallel builders on one function.",
+   "size": "A stored list, a non-actionable gap, a flag."
+  },
+  "files": [
+   "cli/wuwei/plan.py",
+   "cli/wuwei/board.py",
+   "cli/wuwei/__main__.py",
+   "charters/planner.md",
+   "tests/test_plan.py",
+   "tests/test_board.py",
+   "docs/site/reference.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+6 estimated, budget 9",
+  "after": [
+   "budget-3400",
+   "status-perf"
+  ],
+  "promise": "(1) plan.add and add_from keep an `after` list of item ids or owner/repo#n; `wuwei plan add <id> ... --after a,b` sets it; an unknown item id is refused with its name. (2) board.compute shows an item whose after names an open item or an open PR as \"waiting on <x>\" (a non-actionable gap), so the Stop hook, which shows only actionable gaps, leaves it out. (3) planner.md: never launch a waiting item. (4) Close #1099 in the PR: its live-seat and only-on-change parts are on main (hook.py:78 returns None while a seat runs; hook.py:91-96 shows only lines new since the last reminder) and this item is its remaining part. Runtime lines: +6, budget 9. Order: after budget-3400 and status-perf (board.compute). Rollback: revert the commit; items keep an ignored field. Outside: date conditions (plan park --reason \"until <date>\" covers them).",
+  "acceptance": [
+   "given a candidates file with item b whose after is [\"a\"] and a open, when plan add --from runs and then wuwei status, then b shows \"waiting on a\" marked [waiting]",
+   "given a done, when status runs, then b shows its own gaps",
+   "given --after zz where zz is not in the plan, when plan add runs, then it is refused naming zz and nothing is added",
+   "given b waiting and nothing else open, when the Stop hook runs, then it does not list b"
+  ],
+  "why": "Ordering by prose is what this pass leans on most; storing it costs six lines and closes two issues."
+ },
+ {
+  "id": "goal-met",
+  "title": "feat(plan): a plan pass offers a goal as met when its date passed or its measure is met, and a met goal gets no new items",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 8,
+   "risk": 3,
+   "size": 3
+  },
+  "evidence": {
+   "value": "Both goals are dated 2026-10-23 and G-2's target text was stale (1.2.0) with nothing to prompt a review (#975).",
+   "time": "Five days to both goal dates.",
+   "risk": "goals.md stays the owner's; only a recorded yes marks a goal met.",
+   "size": "A date read, a goal: ruling, a report line."
+  },
+  "files": [
+   "cli/wuwei/__main__.py (plan pass)",
+   "cli/wuwei/hook.py (_answers)",
+   "cli/wuwei/report.py",
+   "charters/planner.md",
+   "charters/lead.md",
+   "tests/test_plan.py",
+   "tests/test_hook.py",
+   "tests/test_report.py",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+9 estimated, budget 13",
+  "after": [
+   "budget-3400",
+   "exception-shape"
+  ],
+  "promise": "(1) `wuwei plan pass` lists each goal in goals.md whose Date has passed and that has no met ruling: \"goal G-n dated <d>: ask the owner 'goal: G-n met? <evidence>'\". (2) An answer of yes to a question starting \"goal: G-n met?\" records a ruling kind goal.met with the goal id; no keeps it open and the next pass offers it again only after its date moves. (3) The report lists met goals; lead.md: a met goal gets no new candidates. goals.md changes only by the owner. Runtime lines: +9, budget 13. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after budget-3400 and exception-shape (hook._answers sits beside exception_refs). hook-transcript starts after it. Rollback: revert the commit. Outside: reading a goal's measure automatically (the planner states the evidence in the question).",
+  "acceptance": [
+   "given goals.md with a goal dated yesterday and no ruling, when wuwei plan pass runs, then it prints the goal: question line once for that goal",
+   "given the owner answers yes to \"goal: G-2 met? ...\", when PostToolUse runs, then a ruling goal.met G-2 is recorded and the report lists G-2 as met",
+   "given the answer no, when the next plan pass runs on the same date, then it does not offer G-2 again"
+  ],
+  "why": "A dated goal with a stale target is what this pass found; the plan should surface it, not the lead by chance."
+ },
+ {
+  "id": "merge-ref",
+  "title": "feat(gates): gates run the item's checks on the merge with the base, and evidence says when the base moved since the gates",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 3,
+   "risk": 8,
+   "size": 2
+  },
+  "evidence": {
+   "value": "ai-stacks#3327 passed three gates at its head, then main's #3342 made Static and a unit test red on the merge ref (#1119).",
+   "time": "Recurs on every busy base.",
+   "risk": "An escape class the gates cannot see today.",
+   "size": "Charter rule plus one evidence note."
+  },
+  "files": [
+   "charters/_gate.md",
+   "charters/builder.md",
+   "cli/wuwei/evidence.py (gaps)",
+   "tests/test_evidence.py",
+   "agents/*.md (built)",
+   "docs/site/concepts/evidence.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+4 estimated, budget 6",
+  "after": [
+   "budget-3400",
+   "breaking-latest",
+   "verdict-closed"
+  ],
+  "promise": "(1) _gate.md and builder.md: run the item's own checks on the merge of the head with the current base as well as the head, in a scratch clone (`git clone --no-checkout` of the repository into the seat's scratch folder, then `git merge-tree --write-tree` and `git archive` of that tree), never in the main clone; report both under Probes. (2) evidence.gaps adds \"base moved since the gates: re-run the item's checks on the merge\" as an actionable gap when the PR's base branch has commits newer than the newest gate verdict's timestamp that touch a file the PR changes. A red required check already holds the merge. Runtime lines: +4, budget 6. Order: after breaking-latest (evidence.gaps beside breaking_gaps) and verdict-closed (_gate.md); merge-dropped and db-recipe start after it. Rollback: revert the commit. Outside: a full re-gate on every base move.",
+  "acceptance": [
+   "given a PR whose gates passed at its head and a base commit after the last verdict that touches one of the PR's files, when wuwei evidence reads it, then it shows \"base moved since the gates\"",
+   "given a base commit after the gates that touches none of the PR's files, when evidence reads it, then no such gap",
+   "given agents/sentinel-quality.md at the head, when a reader looks for the merge, then it says to run the checks on the merge tree in a scratch clone"
+  ],
+  "why": "A real escape class in ai-stacks; the evidence note is small and the charter rule is text."
+ },
+ {
+  "id": "merge-dropped",
+  "title": "feat(evidence): a PR file whose change a merge from the base dropped is a gap",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 13,
+   "time": 3,
+   "risk": 8,
+   "size": 3
+  },
+  "evidence": {
+   "value": "ai-stacks#3253 lost its ADR and three spec hunks and #3291 a contract amendment in merge-main rounds (#1120).",
+   "time": "Silent data loss on any PR that merges its base.",
+   "risk": "Catches a loss no gate reads; false holds are the risk.",
+   "size": "Two compare reads and one comparison, cached by head."
+  },
+  "files": [
+   "cli/wuwei/evidence.py",
+   "cli/wuwei/gh.py (if a compare helper is missing)",
+   "tests/test_evidence.py",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+10 estimated, budget 15",
+  "after": [
+   "merge-ref"
+  ],
+  "promise": "When the PR's commits hold a merge commit whose second parent is on the base, evidence.gaps compares the files the PR changed before that merge (compare base...first parent) with the files it changes at the head (compare base...head). A file in the first set and not the second, whose base version differs from its first-parent version, gives \"merge dropped this PR's change to <file>: restore it or record why\" (actionable); a file whose change landed on the base is not flagged; a rename is paired by its previous name. Reads cached by head sha. Runtime lines: +10, budget 15. Order: after merge-ref (evidence.gaps). codeowners starts after it. Cheapest early learning: the builder first replays ai-stacks#3253's commits through the fake gh as a fixture and shows the four files flagged, then a clean merge flagged none. Rollback: revert the commit. Outside: the push guard (evidence only); rebased branches with no merge commit.",
+  "acceptance": [
+   "given a fixture PR that changed docs/adr/1.md and specs/a.md, then merged main taking main's side for both, when wuwei evidence reads it, then it shows a merge-dropped gap for each file",
+   "given a fixture whose merge kept the PR's change, when evidence reads it, then no such gap",
+   "given a fixture whose change already landed on main through another PR, when evidence reads it, then no such gap",
+   "given a fixture with a renamed file, when evidence reads it, then the rename is not flagged"
+  ],
+  "why": "The highest-value feature in the backlog: it catches silent loss of reviewed work."
+ },
+ {
+  "id": "db-recipe",
+  "title": "docs(charters): a seat gets a private Postgres under its scratch folder, or says the DB suite rests on CI",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 3,
+   "risk": 3,
+   "size": 2
+  },
+  "evidence": {
+   "value": "About ten taoqi seats each worked out Postgres alone; one went outside Boundaries 2 and some gates marked DB suites unmeasured (#1133).",
+   "time": "Any repository with a DB suite.",
+   "risk": "Keeps seats inside their scratch folders.",
+   "size": "A tested recipe page and one charter line each in _gate.md and builder.md."
+  },
+  "files": [
+   "docs/site/concepts/cloud.md (a \"A test database in a seat\" section)",
+   "charters/_gate.md",
+   "charters/builder.md",
+   "agents/*.md (built)",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "0",
+  "after": [
+   "merge-ref"
+  ],
+  "promise": "The builder tests the recipe in this container (Postgres 16 under /usr/lib/postgresql/16) and writes it to docs/site/concepts/cloud.md: initdb -E UTF8 --locale=C.UTF-8 into <scratch>/<role>-<item>/pg; unix_socket_directories='' and listen_addresses=127.0.0.1 on a port derived from the seat and item (5432 + a hash mod 1000); when the scratch path is mode 700 and the server must run as another user, run it as the seat's own user (no postgres user); pg_ctl stop and removal at the end. _gate.md and builder.md each add one line: a probe that needs a database runs a private cluster per that page, or states that the DB suite rests on CI and links the CI run, never \"unmeasured\" without a try. Runtime lines: 0. Order: after merge-ref (both edit _gate.md). Rollback: revert the commit. Outside: a wuwei helper command (text suffices). Assumptions: running the cluster as the seat's own user avoids the 700-mode problem; overturned if initdb refuses to run as root in the container, in which case the page says to use the existing unshare route.",
+  "acceptance": [
+   "given this container, when the builder runs the recipe's commands as written from a seat-named scratch folder, then psql connects over TCP, `SHOW server_encoding` prints UTF8, and teardown leaves the folder empty",
+   "given two seats with different item ids, when each derives its port, then the ports differ",
+   "given agents/builder.md and agents/sentinel-quality.md at the head, when a reader looks for a database, then each names the page and the CI fallback"
+  ],
+  "why": "Seats keep solving this alone and one left its boundary; a tested page fixes it for every repository."
+ },
+ {
+  "id": "retro-followups",
+  "title": "feat(retro): follow-up fixes are paired with the PR they fix and the steward names the gate that missed them",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 3,
+   "risk": 5,
+   "size": 3
+  },
+  "evidence": {
+   "value": "G-2 measures escapes the retro traces to a gate; the report traces only reverts and post-merge findings (report.py:100-110), not follow-up fixes (#957).",
+   "time": "This repository merged many fix-after-fix pairs in the guard series.",
+   "risk": "Makes the G-2 measure real.",
+   "size": "A file-overlap pass over merged PRs and a steward rule."
+  },
+  "files": [
+   "cli/wuwei/report.py",
+   "cli/wuwei/gh.py (PR files, if not already read)",
+   "charters/steward.md",
+   "tests/test_report.py",
+   "agents/steward.md (built)",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+8 estimated, budget 12",
+  "after": [
+   "models-record"
+  ],
+  "promise": "(1) report.learning lists \"follow-up: <repo>#<fix> after #<earlier>\" for each merged fix PR (fix type) whose changed files overlap a PR merged in the 14 days before it, with the gates that passed the earlier one and their model/effort. (2) steward.md: classify each pair as defect, hardening, collision or spec-gap and name the gate for a defect; hardening is not an escape. PR file lists are cached per PR. Runtime lines: +8, budget 12. Order: after models-record (report.learning, steward.md). Rollback: revert the commit. Outside: automatic classification.",
+  "acceptance": [
+   "given a fake host with PR 1 merged changing a.py and fix PR 2 merged five days later changing a.py, when wuwei report runs, then Learning lists the pair with PR 1's passing gates",
+   "given a fix PR changing only files no earlier PR touched in 14 days, when the report runs, then no pair is listed",
+   "given agents/steward.md at the head, when a reader looks for follow-ups, then it names the four classes and says hardening is not an escape"
+  ],
+  "why": "G-2's second measure has no reader today; this is it."
+ },
+ {
+  "id": "export",
+  "title": "feat(report): wuwei report --merged lists merged changes over a range with their evidence, in Markdown or JSON",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 8,
+   "time": 5,
+   "risk": 3,
+   "size": 5
+  },
+  "evidence": {
+   "value": "G-1's measure (merged PRs with gates attested at their head) has no command that prints it; the lead could not read it this pass (#920).",
+   "time": "G-1 is dated 2026-10-23.",
+   "risk": "Read-only.",
+   "size": "A new report mode over existing reads."
+  },
+  "files": [
+   "cli/wuwei/report.py",
+   "cli/wuwei/__main__.py",
+   "tests/test_report.py",
+   "docs/site/reference.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+20 estimated, budget 30",
+  "after": [
+   "budget-3400"
+  ],
+  "promise": "`wuwei report --merged --from <date> --to <date> [--repo <o/r>] [--json]` lists each merged PR: item, PR, merge sha, gates attested at its head (or \"generated\" for a release-please PR), who merged, rulings and exceptions for it, and whether it merged through WUWEI's check or outside; the Markdown ends with the G-1 ratio \"<n> of <m> merged with gates attested at head\". Markdown and JSON come from one list. Runtime lines: +20, budget 30. Order: after budget-3400; compliance-page after it. Rollback: revert the commit. Outside: the compliance page (compliance-page).",
+  "acceptance": [
+   "given a fake host with three merged PRs (one gated through the check, one release-please PR, one merged outside), when `wuwei report --merged --from d1 --to d2` runs, then each is listed with every field and the outside one is flagged",
+   "given the same, when --json runs, then the JSON rows equal the Markdown rows field for field and the ratio reads 2 of 3"
+  ],
+  "why": "Makes G-1 measurable by a command instead of by hand."
+ },
+ {
+  "id": "compliance-page",
+  "title": "docs(site): a compliance page maps the export's fields to ISO/IEC 27001 A.8.32, SOC 2 CC8.1 and ISO/IEC 42001",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 1,
+   "risk": 2,
+   "size": 2
+  },
+  "evidence": {
+   "value": "Second half of #920.",
+   "time": "Low.",
+   "risk": "Claims about standards must be checked against their text.",
+   "size": "One docs page."
+  },
+  "files": [
+   "docs/site/concepts/compliance.md (new)",
+   "mkdocs.yml"
+  ],
+  "runtime_lines": "0",
+  "after": [
+   "export"
+  ],
+  "promise": "A docs page mapping each field of `wuwei report --merged` to the control it evidences: ISO/IEC 27001:2022 Annex A 8.32 (change management), SOC 2 CC8.1, ISO/IEC 42001 clauses for AI system change; each clause is quoted by number and title from a public source the page links, and the page says WUWEI produces evidence, not certification. Runtime lines: 0. Order: after export. Rollback: revert the commit. Outside: legal advice.",
+  "acceptance": [
+   "given the page, when a reader follows each clause link, then the clause number and title match the cited source",
+   "given mkdocs.yml at the head, when the docs build runs, then the page is in the nav and the build passes"
+  ],
+  "why": "Completes #920 once the export exists."
+ },
+ {
+  "id": "codeowners",
+  "title": "feat(evidence): CODEOWNERS paths default the owner paths, and a required review the host demands is a gap",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 2,
+   "risk": 5,
+   "size": 5
+  },
+  "evidence": {
+   "value": "owner_paths is empty here and in most workspaces; the host's own rules are not read (#917).",
+   "time": "Medium.",
+   "risk": "New merge holds; must be cached and fail open to \"unmeasured\", never to clean.",
+   "size": "A CODEOWNERS read, a rulesets read, two gap rules."
+  },
+  "files": [
+   "cli/wuwei/evidence.py (owned, gaps)",
+   "cli/wuwei/gh.py",
+   "tests/test_evidence.py",
+   "docs/site/concepts/evidence.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+14 estimated, budget 20",
+  "after": [
+   "merge-dropped",
+   "wide-specs"
+  ],
+  "promise": "(1) When owner_paths is unset, evidence.owned reads the repository's CODEOWNERS (.github/, root or docs/) and takes the patterns whose owners name the owner's login (cached a day). (2) evidence.gaps reads the required approving review count and code-owner review from the branch's rulesets and protection (cached), and shows \"the host requires <n> approving review(s)\" or \"code owner review required\" as a safety gap until met; an unreadable rule reads \"unmeasured\". Runtime lines: +14, budget 20. Order: after merge-dropped (evidence.gaps) and wide-specs (owned feeds needed). Rollback: revert the commit. Outside: writing rulesets (the doors refuse it). Assumptions: a held merge for a host-required review is breaking for clients (`feat(evidence)!`); overturned if the arch gate reads it as additive.",
+  "acceptance": [
+   "given owner_paths unset and a CODEOWNERS line \"/cli/ @owner\", when needed runs on a diff touching cli/x.py, then the path counts as owned",
+   "given a ruleset requiring one approving review and a PR with none, when evidence reads it, then it shows the required-review gap",
+   "given the rulesets read fails, when evidence reads the PR, then it shows \"required reviews unmeasured\", never no gap"
+  ],
+  "why": "Reads rules the host already holds, inside the budget."
+ },
+ {
+  "id": "gates-status",
+  "title": "feat(ci): a wuwei/gates commit status, posted by the repository's CI from the evidence on wuwei/state, so a required check holds any author",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 2,
+   "risk": 5,
+   "size": 3
+  },
+  "evidence": {
+   "value": "Doors bind only sessions running the plugin; a required status binds any author (#918).",
+   "time": "Low.",
+   "risk": "trust: the status is as strong as the state it reads; needs the owner's answer before build.",
+   "size": "A workflow template, an evidence flag, docs."
+  },
+  "files": [
+   "cli/wuwei/__main__.py (evidence --status)",
+   "cli/wuwei/gh.py (post status)",
+   "cli/wuwei/setup.py (workflow template on init)",
+   ".github/workflows/wuwei-gates.yml (this repository)",
+   "docs/site/concepts/permissions.md",
+   "tests/test_evidence.py",
+   "tests/test_setup.py",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+8 estimated, budget 12",
+  "after": [
+   "budget-3400"
+  ],
+  "promise": "Restated against today's code (the issue predates 1.0: no duties, no `wuwei next`, #916 is gone). Owner question first, class trust: \"Should a CI job post a required wuwei/gates status from the evidence it reads on the wuwei/state branch? Any session that can push wuwei/state can shape that evidence, so the status holds authors outside WUWEI but is not proof against a session. Recommendation: yes, as a tripwire for authors outside the plugin.\" If yes: `wuwei evidence <ref> --status` posts wuwei/gates at the PR head (success only when no safety gap, pending otherwise, never success for a head with no gate verdicts), run by a workflow that checks out wuwei/state; `wuwei init` writes the workflow when asked; the docs give the branch-protection step. The doors keep refusing a status write from a session (guards.py:38). Runtime lines: +8, budget 12. Order: after budget-3400 and the owner's answer. Rollback: delete the workflow; revert the commit.",
+  "acceptance": [
+   "given a PR with no gaps at its head, when the workflow runs `wuwei evidence o/r#n --status` with a fake gh, then one status wuwei/gates success is posted at the head sha",
+   "given a gap, when it runs, then the status is pending with the first gap as its description",
+   "given a session Bash call `gh api -X POST repos/o/r/statuses/<sha>`, when guards.bash reads it, then it is still refused"
+  ],
+  "why": "Extends the doors to authors outside the plugin once the owner accepts its trust limit."
+ },
+ {
+  "id": "hook-transcript",
+  "title": "fix(hook): an owner answer and a seat stop are recorded only when the session transcript shows them",
+  "goal": "G-1",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 2,
+   "risk": 8,
+   "size": 5
+  },
+  "evidence": {
+   "value": "A forged `wuwei hook PostToolUse < forged.json` from a script can record an owner Yes or a seat stop (#962).",
+   "time": "Low until a forger appears; G-1 rests on these records.",
+   "risk": "The riskiest item: a wrong check stops real owner answers from recording.",
+   "size": "A transcript read, a path rule, a file-guard rule."
+  },
+  "files": [
+   "cli/wuwei/hook.py (_answers, subagent_stop)",
+   "cli/wuwei/guards.py (writes under the Claude projects folder)",
+   "tests/test_hook.py",
+   "tests/test_guards.py",
+   "tests/fixtures/payloads/ (recorded transcripts)",
+   "tests/fixtures/routes.json",
+   "docs/design.md (section 12 Deferred)",
+   "SECURITY.md",
+   ".claude/wuwei/ vendored copies"
+  ],
+  "runtime_lines": "+15 estimated, budget 22",
+  "after": [
+   "spike-962",
+   "goal-met",
+   "models-record",
+   "door-words-text"
+  ],
+  "promise": "Owner question first, class trust: \"Records of owner answers and seat stops would trust only what the harness transcript shows; is that the trust model you want, given the transcript format is the harness's and may change? Recommendation: yes, failing to a recorded 'unconfirmed' row, never a silent drop.\" Build per spike-962's findings: PostToolUse records an owner answer only when transcript_path lies under the harness projects folder and holds the AskUserQuestion tool_use with that tool_use_id and a tool_result with the same answer, the last row for that id; else it records answer.unconfirmed with the reason. SubagentStop records a seat stop only when the transcript holds the matching agent. The file and Bash guards refuse writes under the projects folder. design.md section 12 drops the item from Deferred. Runtime lines: +15, budget 22. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after spike-962 and the owner's answer, goal-met (_answers), models-record (post_tool) and door-words-text (guards.bash). Rollback: revert the commit. Outside: a harness signature (none exists).",
+  "acceptance": [
+   "given a forged PostToolUse payload whose transcript_path names a file the session wrote, when hook.handle runs, then no ruling row is recorded and an answer.unconfirmed row names why",
+   "given a recorded real flow (payload and transcript fixture), when hook.handle runs, then the ruling is recorded as today",
+   "given a Bash call appending to a file under ~/.claude/projects/, when guards.bash reads it, then it is refused",
+   "given a forged SubagentStop for an agent id absent from the transcript, when the hook runs, then no seat.stopped row is recorded"
+  ],
+  "why": "Protects the records G-1 rests on, after the spike shows the harness supports it."
+ },
+ {
+  "id": "sandbox-spike",
+  "title": "spike: what Claude Code's sandbox and per-agent settings can restrict for seats",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 5,
+   "time": 2,
+   "risk": 8,
+   "size": 2
+  },
+  "evidence": {
+   "value": "First step #309 itself names.",
+   "time": "Low.",
+   "risk": "A wrong sandbox setting breaks gh and git for every seat; learn before building.",
+   "size": "A read of the harness settings and one scratch trial."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. In a scratch workspace, try Claude Code's sandbox settings (filesystem write roots, network allowlist, per-agent permission settings) for one builder-like seat: writes only to its worktree and scratch folder, network only to the code host, no publishing credentials in its environment. Record which restriction held, which the harness cannot express, and what broke (gh, git push, pip), with `wuwei plan run sandbox-spike --reason \"...\"`. Then the planner asks the owner, class trust:, whether init should write the settings that held (a later build item: init writes them, doctor reports them, SECURITY.md states what cannot be enforced; estimate +14 lines). Outside: changing any file.",
+  "acceptance": [
+   "given a scratch workspace and one seat launched with the trial settings, when it tries a write outside its worktree, a request to a non-code-host URL and gh pr view, then the run evidence records which were blocked and which were not"
+  ],
+  "why": "The cheapest way to learn whether #309 is buildable before it costs lines."
+ },
+ {
+  "id": "watch-alerts",
+  "title": "docs(skills): the watch pass turns alerts from a connected alerting MCP into lead candidates by severity",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 3,
+   "time": 1,
+   "risk": 2,
+   "size": 2
+  },
+  "evidence": {
+   "value": "#415.",
+   "time": "Low.",
+   "risk": "scope: the issue says whether it is wanted is the owner's call.",
+   "size": "Skill and charter text."
+  },
+  "files": [
+   "skills/wuwei-watch/SKILL.md",
+   "charters/lead.md",
+   ".claude/wuwei/ vendored copies",
+   "agents/lead.md (built)"
+  ],
+  "runtime_lines": "0 estimated, budget 2",
+  "after": [],
+  "promise": "Owner question first, class scope: \"Do you want the watch pass to read alerts from an alerting MCP (Sentry, PagerDuty, Datadog, whichever you connect) and turn them into plan candidates? Recommendation: yes, as text only: the skill reads, the lead ranks, nothing is filed automatically.\" If yes: the wuwei-watch skill reads open alerts when an alerting MCP is connected, folds duplicates, names a merge in the alert window as a suspect, and hands them to the lead, which ranks them like issues (a critical alert ranks time criticality 20). No runtime change. Order: none. Rollback: revert the commit. Outside: auto-filing issues; paging.",
+  "acceptance": [
+   "given skills/wuwei-watch/SKILL.md at the head, when a reader looks for alerts, then it says how alerts become candidates and that nothing is filed automatically",
+   "given agents/lead.md at the head, when a reader looks for alerts, then it names them as a discovery source with severity mapped to time criticality"
+  ],
+  "why": "Text-only slice once the owner says it is wanted."
+ },
+ {
+  "id": "gitlab-spike",
+  "title": "spike: map each gh.py function and door to glab, and size GitLab support",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 1,
+   "risk": 3,
+   "size": 2
+  },
+  "evidence": {
+   "value": "First slice of #370.",
+   "time": "Low.",
+   "risk": "The largest runtime estimate in the backlog (+90); size it before spending it.",
+   "size": "A table and a count."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. For each function gh.py exposes and each door route (merge, create, ready, push via API), write the glab or GitLab REST equivalent, what has none, and a line estimate, from glab's docs and a gitlab.com scratch project if reachable. Record it with `wuwei plan run gitlab-spike --reason \"<table link or summary, total lines>\"`. Then the planner asks the owner, class scope:, whether GitLab support is worth its lines and which host (gitlab.com or self-managed). Outside: code.",
+  "acceptance": [
+   "given the spike, when it is recorded, then the run evidence holds the per-function mapping, the gaps and a line estimate for the build"
+  ],
+  "why": "Sizes the biggest item before anyone builds it."
+ },
+ {
+  "id": "gemini-spike",
+  "title": "spike: run one WUWEI day on Gemini CLI, the first harness slice of #441",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 1,
+   "risk": 3,
+   "size": 2
+  },
+  "evidence": {
+   "value": "First concrete slice of the #441 umbrella.",
+   "time": "Low.",
+   "risk": "Learn whether its hooks can carry the doors before building an adapter.",
+   "size": "An install and a mapping."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [],
+  "promise": "A run, not a change. Why Gemini CLI first: its hooks (BeforeTool, AfterTool, SessionStart, and a stop event) take JSON on stdin and can deny a tool call, the same shape as Claude Code and Codex, and it is an npm install here (node 22 is present); Cursor's hooks cover shell and file events but not subagent launches, so seats would not be attested. In a scratch folder: install it, map WUWEI's five hook events and seat launch onto its events, and try `wuwei hook PreToolUse` behind its BeforeTool on a refused command. Record what maps, what does not and the adapter size with `wuwei plan run gemini-spike --reason \"...\"`. #441 stays open as the umbrella; a build item follows, and the harness counts only after a real day runs on it. Assumptions: the hook names above match the installed version; overturned by its own docs at install, which the run records. Outside: code.",
+  "acceptance": [
+   "given Gemini CLI installed in scratch, when a BeforeTool hook runs the WUWEI guard on a command the doors refuse, then the run evidence records whether the call was denied and which WUWEI events have no Gemini counterpart"
+  ],
+  "why": "The umbrella needs one named first harness; this one has the closest hook model."
+ },
+ {
+  "id": "release-sweep",
+  "title": "chore(release): merge the release-please PR that carries the push-door items and the bug sweep",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 8,
+   "time": 5,
+   "risk": 3,
+   "size": 1
+  },
+  "evidence": {
+   "value": "G-2: the sweep ships in a release.",
+   "time": "Due once the sweep merges.",
+   "risk": "None beyond the release PR itself.",
+   "size": "One merge through the door."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [
+   "scratch-remotes",
+   "push-refspecs",
+   "gh-args",
+   "exception-shape",
+   "breaking-latest",
+   "wide-specs",
+   "verdict-symlink",
+   "verdict-closed",
+   "door-words-text",
+   "pr-draft-text",
+   "status-perf",
+   "budget-3400"
+  ],
+  "promise": "A run, not a change. release.yml opens or updates the release-please PR on each push to main; when the items named in after have merged, the shepherd merges that PR through `gh pr merge` so the merge door reads it (evidence reads a release-please PR as generated; #1128 and #1110 went outside the door, which the report flags). Version: 4.0.0 if any commit in it carries `!` (this repository has marked each door that refuses more as `!`, so push-refspecs and exception-shape likely do), else 3.0.2 (fix, perf, docs only). Record the tag with `wuwei plan run release-sweep --reason \"<tag, PR>\"`. Outside: editing the release PR.",
+  "acceptance": [
+   "given the release-please PR open after the sweep merges, when the shepherd merges it with gh pr merge, then the day report lists it as merged through WUWEI's check and the tag v4.0.0 or v3.0.2 exists"
+  ],
+  "why": "G-2 asks for the sweep in a release; this is the cut."
+ },
+ {
+  "id": "release-features",
+  "title": "chore(release): merge the release-please PR that carries the model choice, plan and evidence features",
+  "goal": "G-4",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 5,
+   "time": 2,
+   "risk": 2,
+   "size": 1
+  },
+  "evidence": {
+   "value": "Ships G-3 and the first G-4 features.",
+   "time": "After they merge.",
+   "risk": "None beyond the release PR.",
+   "size": "One merge."
+  },
+  "files": [],
+  "runtime_lines": "0",
+  "after": [
+   "release-sweep",
+   "models-table",
+   "models-record",
+   "plan-after",
+   "goal-met",
+   "merge-ref",
+   "merge-dropped",
+   "db-recipe",
+   "retro-followups",
+   "export",
+   "compliance-page"
+  ],
+  "promise": "A run, not a change. Same route as release-sweep. Version: a minor over the sweep (4.1.0 after 4.0.0, or 3.1.0 after 3.0.2), a major if a commit carries `!`. The next cut after it carries codeowners (likely `!`: new merge holds), gates-status, hook-transcript and watch-alerts, then the GitLab, Gemini CLI and sandbox builds once their spikes and the owner's answers land. Record the tag with `wuwei plan run`.",
+  "acceptance": [
+   "given the release-please PR open after these items merge, when the shepherd merges it through the door, then the tag exists and the report lists the merge through WUWEI's check"
+  ],
+  "why": "Features ship as a minor once they are in."
+ }
 ]
