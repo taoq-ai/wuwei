@@ -425,6 +425,31 @@
    "approved": true
   },
   {
+   "id": "verdict-at-head",
+   "title": "fix(evidence): a verdict at the PR head outranks one attested later at an older head, in gate_gaps and breaking_gaps",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 8.0,
+   "why": "arch gate on #1135 at 21d9ce3 probed it: an arch Breaking: yes at the head followed by a later-attested arch PASS Breaking: no at an older ancestor head shows no gap; gate_gaps on main has the same ledger-order reading (evidence.py:296), so an older-head PASS attested later clears a FIX at the head",
+   "promise": "gate_gaps and breaking_gaps rank verdicts at the PR head above verdicts at older heads, whatever their ledger order: for each gate, the verdicts whose head the PR head starts with are read first, and older-head verdicts only when none is at the head. Fixes spec.md:54 of breaking-latest, which claims a bound that does not hold. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs/design.md:108. Runtime lines: estimate +2, budget 4. Order: after breaking-latest merges. Rollback: revert the commit. Assumptions: a verdict at the current head is the more relevant one; overturned if the owner wants ledger order to rule.",
+   "acceptance": [
+    "given an arch verdict at the PR head saying Breaking: yes (FIX or PASS) and a later-attested arch PASS at an older head saying Breaking: no, when evidence.gaps reads the PR, then the breaking gap holds",
+    "given an arch FIX at the PR head and a later-attested arch PASS at an older head, when gate_gaps reads the PR, then arch is still owed at the head",
+    "given only older-head verdicts, when evidence reads the PR, then today's ledger-order reading is unchanged"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "models-record",
    "title": "feat(agents): agent files carry the table's model and effort, the hook advises on a departure and records what ran, and the report shows outcomes by model and effort",
    "goal": "G-3",
