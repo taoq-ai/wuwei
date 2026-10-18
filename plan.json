@@ -1,31 +1,6 @@
 {
  "items": [
   {
-   "id": "budget-3400",
-   "title": "docs(constitution): the runtime budget is 3,400 lines and config holds six keys, sized to the 2026-10-18 backlog",
-   "goal": "G-4",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 13,
-    "risk": 13,
-    "size": 1
-   },
-   "score": 34.0,
-   "why": "The owner asked for it; it lets the feature queue run without free-lines rounds while keeping a budget a test holds.",
-   "promise": "A docs and test change, no runtime change. The runtime budget becomes 3,400 lines in constitution VI (amendment line and version 3.1.0 to 3.2.0), AGENTS.md, CONTRIBUTING.md, docs/design.md section 11, docs/site/concepts/philosophy.md and the assertion in tests/test_setup.py:113 (the message names 3400). Config keys go from five to six, naming the sixth, `models` (models-record), in constitution VI and docs/design.md section 11; tests/test_ledger.py:15 changes with models-record, which adds the key. The constitution keeps \"a change that breaks a budget deletes something first\" and adds one line: an item that adds more than 10 runtime lines names the lines it removes where it can, and no item waits on a free-lines round. Reasoning, stated in the PR: the 2026-10-18 backlog estimates +274 runtime lines in total (+9 approved push-door items, +10 bug sweep, +121 features planned now, +134 for the GitLab, Gemini CLI and sandbox builds that follow their spikes), +408 at each item's own budget, so 2,976 + 408 = 3,384; 3,400 covers it with 16 lines to spare, and the GitLab build (+90, budget 130) is expected to justify its own lines or wait and stays a design pressure. Files: the six named and their vendored copies under .claude/wuwei/. Runtime lines: 0. Order: none; runs now beside scratch-remotes. Rollback: revert the commit. Outside: any runtime change. Assumptions: the owner's \"revise the budget\" means raise it to fit the backlog; 3,400 rather than 3,500 because the GitLab estimate (+90) is the least certain and should earn its lines; six keys because a machine-read model override needs a key, and a seventh would need its own case; overturned if the owner names another number.",
-   "acceptance": [
-    "given the branch head, when `python3 -m pytest -q tests/test_setup.py` runs, then test_the_runtime_holds_its_size_budget passes and its assertion reads 3400",
-    "given a scratch copy of the head with 3,401 runtime lines (a padded module), when the same test runs, then it fails naming the budget 3400",
-    "given the branch head, when `grep -rn \"3,000\" .specify/memory/constitution.md AGENTS.md CONTRIBUTING.md docs/design.md docs/site/concepts/philosophy.md` runs, then it finds no runtime budget line, and each file states 3,400"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "spike-962",
    "title": "spike: can PostToolUse confirm an owner answer against the session transcript",
    "goal": "G-4",
@@ -75,32 +50,6 @@
    "approved": true
   },
   {
-   "id": "exception-shape",
-   "title": "fix(guards): an exception: question whose ref is not followed by \": <gap>\" is refused with the exact shape",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 21.0,
-   "why": "An owner's answer recorded as nothing is the worst kind of silent failure; one regex closes it.",
-   "promise": "In guards.pre_tool (guards.py:372-373), an exception: question passes only when its refs (owner/repo#n at <sha7> [and #m at <sha7>]) are followed by \":\" and a non-empty gap text, the shape hook.exception_refs (hook.py:271-282) reads; otherwise it is refused with the existing \"Use the exact shape\" text. owner review: and breaking: keep their shapes. Files: guards.py, tests, routes.json and the vendored copy. Runtime lines: +1, budget 2. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; it edits the AskUserQuestion branch of guards.pre_tool, which no open item touches, so it runs now beside scratch-remotes. Rollback: revert the commit. Outside: rewording the other owner classes. Assumptions: no recorded route asks an exception: in the \"at <sha>.\" form expecting it to record; overturned if a corpus row moves.",
-   "acceptance": [
-    "given an AskUserQuestion with `exception: o/r#1 at abc1234. Some prose. Accept?`, when guards.pre_tool reads it, then it is refused with text naming the shape \"exception: owner/repo#n at <sha7> ...: <the gap ...>. <question>\"",
-    "given `exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?` answered Accept, when hook.handle runs PostToolUse, then the ledger holds a ruling row with kind exception, pr o/r#1, head abc1234 and gap \"gates missing at head abc1234: quality\"",
-    "given `exception: o/r#1 at abc1234 and #2 at def5678: no test in the diff. Accept?`, when guards.pre_tool reads it, then it passes",
-    "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no route's verdict moves except the new rows"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "push-refspecs",
    "title": "fix(guards): the push door reads each refspec's destination the way git does, so feature:heads/main, :, --all and globs meet it",
    "goal": "G-2",
@@ -147,31 +96,6 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
-  },
-  {
-   "id": "breaking-latest",
-   "title": "fix(evidence): a breaking change is read from the latest arch verdict, not any verdict ever",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 1
-   },
-   "score": 18.0,
-   "why": "A held merge on a superseded verdict is a false safety gap; the fix is one line.",
-   "promise": "evidence.breaking_gaps (evidence.py:328-342) reads Breaking from the item's latest arch verdict (the last attested arch verdict in ledger order, which verdicts() already returns oldest first) instead of any verdict ever. A `!` in the title or a BREAKING CHANGE: line still counts on its own. Files: evidence.py, tests/test_evidence.py, the vendored copy. Runtime lines: +1, budget 2. Order: none; runs now. merge-ref, which edits evidence.gaps beside it, starts after it. Rollback: revert the commit. Outside: how the arch gate decides Breaking. Assumptions: ledger order of attest rows is the order the gates ran; overturned if a fixture shows a re-read attested before the verdict it supersedes.",
-   "acceptance": [
-    "given an arch verdict with Breaking: yes at head A and a later arch PASS with Breaking: no at head B (the PR head), when wuwei evidence reads the PR, then it shows no breaking gap",
-    "given an arch verdict with Breaking: no at A and a later one with Breaking: yes at B, when evidence reads the PR, then it shows \"breaking change without an announcement\"",
-    "given a PR titled `fix(x)!: ...` and only arch verdicts saying Breaking: no, when evidence reads it, then the announcement gap still shows"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
    "approved": true
   },
   {
@@ -193,31 +117,6 @@
    "acceptance": [
     "given an accepted exception with gap 'e' at a head with a security gap and an owner review gap, when evidence reads the PR, then both gaps still show",
     "given an accepted exception whose gap equals the printed gap text, when evidence reads the PR, then that gap alone is waived"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": false
-  },
-  {
-   "id": "verdict-symlink",
-   "title": "fix(hook): the worktree verdict copy-in refuses a symlinked target or parent under .wuwei/verdicts",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 3,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 16.0,
-   "why": "A hook that writes through a planted link is a security finding on a trust path; the fix is small.",
-   "promise": "In hook._verdict_problem (hook.py:142-159), the copy-in path is refused unless copy.resolve() stays under the resolved verdicts folder and neither the copy nor any parent between it and verdicts/ is a symlink; the write goes to a temporary file beside it and os.replace, so a link planted after the check is replaced, never followed. The refusal names the path and says to remove the link. Files: hook.py, tests/test_hook.py, the vendored copy. Runtime lines: +2, budget 3. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; runs now. verdict-closed, which edits the same function, starts after it. Rollback: revert the commit. Outside: the ledger door itself. Assumptions: worktree verdict paths never legitimately pass through a symlink under verdicts/; overturned if a corpus payload does.",
-   "acceptance": [
-    "given a symlink at .wuwei/verdicts/x/quality-abc1234.md pointing to a file outside verdicts/, when a sentinel hands back naming a worktree verdict with that relative path, then the hook refuses and the link target is unchanged",
-    "given a symlinked parent .wuwei/verdicts/x -> .wuwei/ledger, when the same hand-back runs, then the hook refuses and no file under .wuwei/ledger changes",
-    "given a plain worktree verdict, when the sentinel hands back, then it is copied in and attested as before"
    ],
    "status": "open",
    "added": "2026-10-18",
@@ -244,7 +143,9 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": true
+   "approved": true,
+   "kind": "run",
+   "reason": "release-please PR #1143 (4.0.0) merged as 8c1939e at 2026-10-18 after the owner's breaking: Proceed on #1142 and merge authorization; carries #1134-#1139 and #1142. Still lacks: the push-door items (scratch-remotes, push-refspecs, gh-args) and status-perf, which ride the next cut."
   },
   {
    "id": "session-context-cap",
@@ -268,7 +169,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "verdict-closed",
@@ -290,32 +191,6 @@
     "given a delta verdict with \"Previous findings at e418c1d: all closed.\" under ## Probes and none under ## Findings, when the hook lints it, then it is attested",
     "given the same line under ## Findings, when the hook lints quality-abc1234.md, then the refusal names quality-abc1234-2.md as the file to write next",
     "given agents/sentinel-quality.md at the head, when a reader looks for closed findings, then it says they go under Probes"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
-   "id": "models-table",
-   "title": "docs(charters): every seat's model and effort come from one table drawn from Anthropic's guidance, which the planner follows and may depart from with a reason",
-   "goal": "G-3",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 13.0,
-   "why": "The owner asked for a concrete, documented framework shipped to every repository; text carries the table and rules at no runtime cost.",
-   "promise": "Ships in the plugin for every repository running WUWEI. charters/planner.md gains \"Model and effort\" with the default table, and docs/site/concepts/models.md gives the reasons and sources (Anthropic's model table as cached 2026-10-06 and the Claude Code docs read 2026-10-18: sub-agents, hooks, skills, plugin components). Inputs are signals WUWEI already computes: the item tier, risky and owner paths, contract files, and the change-failure-rate rule that raises a tier. Table: lead Opus 5.5 xhigh; builder Opus 5.5 high at full tier or on trust paths, Opus 5.5 medium at standard, Sonnet 5.5 medium at light; sentinel-security Opus 5.5 high, xhigh at full tier or on trust paths; sentinel-arch Opus 5.5 high; sentinel-quality Opus 5.5 high at full tier or on trust paths, Sonnet 5.5 high elsewhere; sentinel-goal Sonnet 5.5 high; shepherd Sonnet 5.5 medium, Opus 5.5 high for a conflict where both sides changed logic; steward Opus 5.5 high; lookups and searches Haiku 5.5 low. Escalation ladder: Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1; escalate one step after a failed fix round or a gate blocker the builder missed; Fable 5.1 is the step for a parked design-problem item (two failed fix rounds) and a one-way decision; where Fable is unavailable (zero data retention), the top step is Opus 5.5 max; step down only on retro evidence (a seat class with 10 merged items and no escaped defect on the lower setting). Diversity: at least one gate per head runs on a different model than the builder, and the weakest tier never sits on the terminal gate for a trust path. Guidance notes from the sources: Opus 5.5 defaults to medium effort, so set effort explicitly; at least high for intelligence-sensitive work, max when correctness matters more than cost, low for simple subagent tasks; before cascading to a cheaper model, measure the most capable model at a lower effort; judge cost per completed item, not per request. Rules: (1) the planner passes `model` and `effort` on each Agent call from the table and writes \"Model: <model> <effort> (<row>)\" as the brief's first line; a departure adds \"Model reason: <one line>\"; nothing is refused. (2) Precedence as Claude Code documents it: the per-call parameter over the agent file's frontmatter over CLAUDE_CODE_SUBAGENT_MODEL over the session model; CLAUDE_CODE_EFFORT_LEVEL beats all for effort, so a workspace that sets it turns effort advice off. (3) The owner's `models` rows in .wuwei/config.toml (models-record) override any table row. (4) Codex keeps its own model choice; the page marks the Codex mapping unmeasured. (5) /wuwei-watch may run on Sonnet 5.5 medium (its frontmatter can set both), offered in the skill text as an option, not a default. steward.md: the retro reads outcomes by seat x model x effort and proposes a table row change with its numbers, as advice. docs/design.md section 3, team.md:9 and :36-37 and codex.md:43-45 point to the table instead of MODELS (MODELS itself goes in models-record). Refinements on the owner's framework, said in the PR: the step-down names a count (10 items) so it is testable, and the planner session's own model is the owner's and the table never names it. Files: as listed. Runtime lines: 0. Order: none; runs now (planner.md, steward.md and these pages are in no open item). retro-followups (steward.md) starts after models-record. Rollback: revert the commit. Outside: frontmatter generation, hook advice, recording and the report (models-record); any refusal on a model. Assumptions: model ids Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 and the effort values low, medium, high, xhigh, max are what the Agent tool accepts; overturned if a launch with them is rejected, in which case the page names the accepted aliases.",
-   "acceptance": [
-    "given charters/planner.md at the head, when a reader looks for model choice, then it holds the table with a row for each seat in agents/allowlist.json, the escalation ladder ending in Fable 5.1 (Opus 5.5 max without it), the diversity rule and the precedence order naming CLAUDE_CODE_SUBAGENT_MODEL and CLAUDE_CODE_EFFORT_LEVEL",
-    "given the head, when tests/test_charters.py runs, then a test finds every role in agents/allowlist.json named in the planner table",
-    "given docs/site/concepts/models.md at the head, when a reader follows its sources, then each names the document and the date it was read",
-    "given docs/site/concepts/team.md and codex.md at the head, when a reader looks for MODELS, then neither names it and both link the table; codex.md marks the Codex mapping unmeasured"
    ],
    "status": "open",
    "added": "2026-10-18",
@@ -344,7 +219,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "gh-args",
@@ -370,32 +245,6 @@
    ],
    "status": "open",
    "added": "2026-10-17",
-   "approved": true
-  },
-  {
-   "id": "wide-specs",
-   "title": "fix(evidence): the wide-change trigger counts code and spec lines, never prose, and a spec contract takes arch",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 3,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 11.0,
-   "why": "The rule and the code disagree today in both directions; two lines settle it the way the issue asks.",
-   "promise": "Take the issue's preferred option and make rules and code agree. (1) In evidence.needed (evidence.py:250-260), the wide trigger counts the changed lines of code and spec files (specs/, openspec/), never prose (.md outside them, LICENSE), so a docs-only diff needs no gate at any size. (2) A change under specs/**/contracts/ or openspec/**/contracts/ takes arch at any tier, like a contract file. (3) charters/_common.md says it: \"a wide change (over 200 lines of code and specs, or 10 code files) adds arch; a spec contract takes arch at any tier\"; docs/design.md line 77 matches; tests/test_charters.py reads the new threshold text. Then `bin/wuwei agents build`. Runtime lines: +2, budget 3. Order: none; runs now (needed() is touched by no open item; codeowners, which edits owned(), starts after it). Rollback: revert the commit. Outside: the quality and security triggers. Assumptions: the owner prefers arch on large spec diffs (the issue says so); overturned if the owner picks \"count code lines only\", a one-line change.",
-   "acceptance": [
-    "given a standard item whose diff is 1,780 lines under specs/ only, when evidence.needed runs, then it returns ('arch',)",
-    "given a standard item whose diff is 300 lines of README.md and docs/site/*.md only, when evidence.needed runs, then it returns ()",
-    "given a light item whose diff adds specs/001-x/contracts/api.yaml, when needed runs, then arch is in the result",
-    "given the head, when `bin/wuwei agents build` runs, then git status shows no change and tests/test_charters.py passes with the new threshold text"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
    "approved": true
   },
   {
@@ -442,30 +291,6 @@
    "acceptance": [
     "given a standard PR changing 300 lines of charters/builder.md, when needed() reads it, then it takes quality and arch",
     "given a PR changing docs/conf.py by 20 lines with no test, when evidence reads it, then it shows the missing-test gap"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": false
-  },
-  {
-   "id": "pr-draft-text",
-   "title": "docs(charters): the PR standard says the PR opens as a draft and the shepherd requests the reviewer",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 3,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 9.0,
-   "why": "The note every builder sees contradicts the builder charter; two sentences fix it.",
-   "promise": "charters/_pr.md:20-22 says: the PR opens as a draft so CI runs; the gates read the draft head; it turns ready once they pass, and the shepherd requests the reviewer then; before merge CI is green and every thread is answered. It no longer tells the body writer to request a reviewer. Files: charters/_pr.md and its vendored copy (guards.PR_STANDARD reads it; agents/ do not include it). Runtime lines: 0. Order: none; runs now. Rollback: revert the commit. Outside: shepherd.md, which already says this.",
-   "acceptance": [
-    "given the head, when `gh pr create --draft` is read by guards.bash once in a session, then the PR standard note it returns says the PR opens as a draft and does not say \"Request a reviewer\"",
-    "given the suite, when it runs at the head, then the vendored-drift test passes"
    ],
    "status": "open",
    "added": "2026-10-18",
@@ -567,7 +392,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "models-record",
@@ -668,7 +493,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "db-recipe",
@@ -991,6 +816,32 @@
    "reason": "merged as c84913e (#1122): quality, security, arch pass at 783522a, goal pass at 6f40026; owner breaking: approved"
   },
   {
+   "id": "budget-3400",
+   "title": "docs(constitution): the runtime budget is 3,400 lines and config holds six keys, sized to the 2026-10-18 backlog",
+   "goal": "G-4",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 13,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 34.0,
+   "why": "The owner asked for it; it lets the feature queue run without free-lines rounds while keeping a budget a test holds.",
+   "promise": "A docs and test change, no runtime change. The runtime budget becomes 3,400 lines in constitution VI (amendment line and version 3.1.0 to 3.2.0), AGENTS.md, CONTRIBUTING.md, docs/design.md section 11, docs/site/concepts/philosophy.md and the assertion in tests/test_setup.py:113 (the message names 3400). Config keys go from five to six, naming the sixth, `models` (models-record), in constitution VI and docs/design.md section 11; tests/test_ledger.py:15 changes with models-record, which adds the key. The constitution keeps \"a change that breaks a budget deletes something first\" and adds one line: an item that adds more than 10 runtime lines names the lines it removes where it can, and no item waits on a free-lines round. Reasoning, stated in the PR: the 2026-10-18 backlog estimates +274 runtime lines in total (+9 approved push-door items, +10 bug sweep, +121 features planned now, +134 for the GitLab, Gemini CLI and sandbox builds that follow their spikes), +408 at each item's own budget, so 2,976 + 408 = 3,384; 3,400 covers it with 16 lines to spare, and the GitLab build (+90, budget 130) is expected to justify its own lines or wait and stays a design pressure. Files: the six named and their vendored copies under .claude/wuwei/. Runtime lines: 0. Order: none; runs now beside scratch-remotes. Rollback: revert the commit. Outside: any runtime change. Assumptions: the owner's \"revise the budget\" means raise it to fit the backlog; 3,400 rather than 3,500 because the GitLab estimate (+90) is the least certain and should earn its lines; six keys because a machine-read model override needs a key, and a seventh would need its own case; overturned if the owner names another number.",
+   "acceptance": [
+    "given the branch head, when `python3 -m pytest -q tests/test_setup.py` runs, then test_the_runtime_holds_its_size_budget passes and its assertion reads 3400",
+    "given a scratch copy of the head with 3,401 runtime lines (a padded module), when the same test runs, then it fails naming the budget 3400",
+    "given the branch head, when `grep -rn \"3,000\" .specify/memory/constitution.md AGENTS.md CONTRIBUTING.md docs/design.md docs/site/concepts/philosophy.md` runs, then it finds no runtime budget line, and each file states 3,400"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1134"
+  },
+  {
    "id": "codex-attest-probe",
    "title": "probe: does a Codex-native sentinel seat get its verdict attested",
    "goal": "G-1",
@@ -1105,6 +956,59 @@
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
   },
   {
+   "id": "exception-shape",
+   "title": "fix(guards): an exception: question whose ref is not followed by \": <gap>\" is refused with the exact shape",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "An owner's answer recorded as nothing is the worst kind of silent failure; one regex closes it.",
+   "promise": "In guards.pre_tool (guards.py:372-373), an exception: question passes only when its refs (owner/repo#n at <sha7> [and #m at <sha7>]) are followed by \":\" and a non-empty gap text, the shape hook.exception_refs (hook.py:271-282) reads; otherwise it is refused with the existing \"Use the exact shape\" text. owner review: and breaking: keep their shapes. Files: guards.py, tests, routes.json and the vendored copy. Runtime lines: +1, budget 2. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; it edits the AskUserQuestion branch of guards.pre_tool, which no open item touches, so it runs now beside scratch-remotes. Rollback: revert the commit. Outside: rewording the other owner classes. Assumptions: no recorded route asks an exception: in the \"at <sha>.\" form expecting it to record; overturned if a corpus row moves.",
+   "acceptance": [
+    "given an AskUserQuestion with `exception: o/r#1 at abc1234. Some prose. Accept?`, when guards.pre_tool reads it, then it is refused with text naming the shape \"exception: owner/repo#n at <sha7> ...: <the gap ...>. <question>\"",
+    "given `exception: o/r#1 at abc1234: gates missing at head abc1234: quality. Accept?` answered Accept, when hook.handle runs PostToolUse, then the ledger holds a ruling row with kind exception, pr o/r#1, head abc1234 and gap \"gates missing at head abc1234: quality\"",
+    "given `exception: o/r#1 at abc1234 and #2 at def5678: no test in the diff. Accept?`, when guards.pre_tool reads it, then it passes",
+    "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no route's verdict moves except the new rows"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1136"
+  },
+  {
+   "id": "breaking-latest",
+   "title": "fix(evidence): a breaking change is read from the latest arch verdict, not any verdict ever",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 18.0,
+   "why": "A held merge on a superseded verdict is a false safety gap; the fix is one line.",
+   "promise": "evidence.breaking_gaps (evidence.py:328-342) reads Breaking from the item's latest arch verdict (the last attested arch verdict in ledger order, which verdicts() already returns oldest first) instead of any verdict ever. A `!` in the title or a BREAKING CHANGE: line still counts on its own. Files: evidence.py, tests/test_evidence.py, the vendored copy. Runtime lines: +1, budget 2. Order: none; runs now. merge-ref, which edits evidence.gaps beside it, starts after it. Rollback: revert the commit. Outside: how the arch gate decides Breaking. Assumptions: ledger order of attest rows is the order the gates ran; overturned if a fixture shows a re-read attested before the verdict it supersedes.",
+   "acceptance": [
+    "given an arch verdict with Breaking: yes at head A and a later arch PASS with Breaking: no at head B (the PR head), when wuwei evidence reads the PR, then it shows no breaking gap",
+    "given an arch verdict with Breaking: no at A and a later one with Breaking: yes at B, when evidence reads the PR, then it shows \"breaking change without an announcement\"",
+    "given a PR titled `fix(x)!: ...` and only arch verdicts saying Breaking: no, when evidence reads it, then the announcement gap still shows"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1135"
+  },
+  {
    "id": "free-lines-4",
    "title": "refactor: free runtime lines with no behaviour change, and make the dense guard lines readable",
    "goal": "G-2",
@@ -1157,6 +1061,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "verdict-symlink",
+   "title": "fix(hook): the worktree verdict copy-in refuses a symlinked target or parent under .wuwei/verdicts",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "A hook that writes through a planted link is a security finding on a trust path; the fix is small.",
+   "promise": "In hook._verdict_problem (hook.py:142-159), the copy-in path is refused unless copy.resolve() stays under the resolved verdicts folder and neither the copy nor any parent between it and verdicts/ is a symlink; the write goes to a temporary file beside it and os.replace, so a link planted after the check is replaced, never followed. The refusal names the path and says to remove the link. Files: hook.py, tests/test_hook.py, the vendored copy. Runtime lines: +2, budget 3. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: none; runs now. verdict-closed, which edits the same function, starts after it. Rollback: revert the commit. Outside: the ledger door itself. Assumptions: worktree verdict paths never legitimately pass through a symlink under verdicts/; overturned if a corpus payload does.",
+   "acceptance": [
+    "given a symlink at .wuwei/verdicts/x/quality-abc1234.md pointing to a file outside verdicts/, when a sentinel hands back naming a worktree verdict with that relative path, then the hook refuses and the link target is unchanged",
+    "given a symlinked parent .wuwei/verdicts/x -> .wuwei/ledger, when the same hand-back runs, then the hook refuses and no file under .wuwei/ledger changes",
+    "given a plain worktree verdict, when the sentinel hands back, then it is copied in and attested as before"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1137"
   },
   {
    "id": "breaking-proceed",
@@ -1287,6 +1217,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "models-table",
+   "title": "docs(charters): every seat's model and effort come from one table drawn from Anthropic's guidance, which the planner follows and may depart from with a reason",
+   "goal": "G-3",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "The owner asked for a concrete, documented framework shipped to every repository; text carries the table and rules at no runtime cost.",
+   "promise": "Ships in the plugin for every repository running WUWEI. charters/planner.md gains \"Model and effort\" with the default table, and docs/site/concepts/models.md gives the reasons and sources (Anthropic's model table as cached 2026-10-06 and the Claude Code docs read 2026-10-18: sub-agents, hooks, skills, plugin components). Inputs are signals WUWEI already computes: the item tier, risky and owner paths, contract files, and the change-failure-rate rule that raises a tier. Table: lead Opus 5.5 xhigh; builder Opus 5.5 high at full tier or on trust paths, Opus 5.5 medium at standard, Sonnet 5.5 medium at light; sentinel-security Opus 5.5 high, xhigh at full tier or on trust paths; sentinel-arch Opus 5.5 high; sentinel-quality Opus 5.5 high at full tier or on trust paths, Sonnet 5.5 high elsewhere; sentinel-goal Sonnet 5.5 high; shepherd Sonnet 5.5 medium, Opus 5.5 high for a conflict where both sides changed logic; steward Opus 5.5 high; lookups and searches Haiku 5.5 low. Escalation ladder: Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1; escalate one step after a failed fix round or a gate blocker the builder missed; Fable 5.1 is the step for a parked design-problem item (two failed fix rounds) and a one-way decision; where Fable is unavailable (zero data retention), the top step is Opus 5.5 max; step down only on retro evidence (a seat class with 10 merged items and no escaped defect on the lower setting). Diversity: at least one gate per head runs on a different model than the builder, and the weakest tier never sits on the terminal gate for a trust path. Guidance notes from the sources: Opus 5.5 defaults to medium effort, so set effort explicitly; at least high for intelligence-sensitive work, max when correctness matters more than cost, low for simple subagent tasks; before cascading to a cheaper model, measure the most capable model at a lower effort; judge cost per completed item, not per request. Rules: (1) the planner passes `model` and `effort` on each Agent call from the table and writes \"Model: <model> <effort> (<row>)\" as the brief's first line; a departure adds \"Model reason: <one line>\"; nothing is refused. (2) Precedence as Claude Code documents it: the per-call parameter over the agent file's frontmatter over CLAUDE_CODE_SUBAGENT_MODEL over the session model; CLAUDE_CODE_EFFORT_LEVEL beats all for effort, so a workspace that sets it turns effort advice off. (3) The owner's `models` rows in .wuwei/config.toml (models-record) override any table row. (4) Codex keeps its own model choice; the page marks the Codex mapping unmeasured. (5) /wuwei-watch may run on Sonnet 5.5 medium (its frontmatter can set both), offered in the skill text as an option, not a default. steward.md: the retro reads outcomes by seat x model x effort and proposes a table row change with its numbers, as advice. docs/design.md section 3, team.md:9 and :36-37 and codex.md:43-45 point to the table instead of MODELS (MODELS itself goes in models-record). Refinements on the owner's framework, said in the PR: the step-down names a count (10 items) so it is testable, and the planner session's own model is the owner's and the table never names it. Files: as listed. Runtime lines: 0. Order: none; runs now (planner.md, steward.md and these pages are in no open item). retro-followups (steward.md) starts after models-record. Rollback: revert the commit. Outside: frontmatter generation, hook advice, recording and the report (models-record); any refusal on a model. Assumptions: model ids Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 and the effort values low, medium, high, xhigh, max are what the Agent tool accepts; overturned if a launch with them is rejected, in which case the page names the accepted aliases.",
+   "acceptance": [
+    "given charters/planner.md at the head, when a reader looks for model choice, then it holds the table with a row for each seat in agents/allowlist.json, the escalation ladder ending in Fable 5.1 (Opus 5.5 max without it), the diversity rule and the precedence order naming CLAUDE_CODE_SUBAGENT_MODEL and CLAUDE_CODE_EFFORT_LEVEL",
+    "given the head, when tests/test_charters.py runs, then a test finds every role in agents/allowlist.json named in the planner table",
+    "given docs/site/concepts/models.md at the head, when a reader follows its sources, then each names the document and the date it was read",
+    "given docs/site/concepts/team.md and codex.md at the head, when a reader looks for MODELS, then neither names it and both link the table; codex.md marks the Codex mapping unmeasured"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1138"
   },
   {
    "id": "ci-not-started",
@@ -1589,6 +1546,33 @@
    "reason": "merged as taoq-ai/wuwei#1095"
   },
   {
+   "id": "wide-specs",
+   "title": "fix(evidence): the wide-change trigger counts code and spec lines, never prose, and a spec contract takes arch",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "The rule and the code disagree today in both directions; two lines settle it the way the issue asks.",
+   "promise": "Take the issue's preferred option and make rules and code agree. (1) In evidence.needed (evidence.py:250-260), the wide trigger counts the changed lines of code and spec files (specs/, openspec/), never prose (.md outside them, LICENSE), so a docs-only diff needs no gate at any size. (2) A change under specs/**/contracts/ or openspec/**/contracts/ takes arch at any tier, like a contract file. (3) charters/_common.md says it: \"a wide change (over 200 lines of code and specs, or 10 code files) adds arch; a spec contract takes arch at any tier\"; docs/design.md line 77 matches; tests/test_charters.py reads the new threshold text. Then `bin/wuwei agents build`. Runtime lines: +2, budget 3. Order: none; runs now (needed() is touched by no open item; codeowners, which edits owned(), starts after it). Rollback: revert the commit. Outside: the quality and security triggers. Assumptions: the owner prefers arch on large spec diffs (the issue says so); overturned if the owner picks \"count code lines only\", a one-line change.",
+   "acceptance": [
+    "given a standard item whose diff is 1,780 lines under specs/ only, when evidence.needed runs, then it returns ('arch',)",
+    "given a standard item whose diff is 300 lines of README.md and docs/site/*.md only, when evidence.needed runs, then it returns ()",
+    "given a light item whose diff adds specs/001-x/contracts/api.yaml, when needed runs, then arch is in the result",
+    "given the head, when `bin/wuwei agents build` runs, then git status shows no change and tests/test_charters.py passes with the new threshold text"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1142"
+  },
+  {
    "id": "X-2",
    "title": "fix(evidence): a release-please PR is read as generated, so its version bump needs no test or gate",
    "goal": "G-2",
@@ -1785,6 +1769,31 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1096"
+  },
+  {
+   "id": "pr-draft-text",
+   "title": "docs(charters): the PR standard says the PR opens as a draft and the shepherd requests the reviewer",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 3,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 9.0,
+   "why": "The note every builder sees contradicts the builder charter; two sentences fix it.",
+   "promise": "charters/_pr.md:20-22 says: the PR opens as a draft so CI runs; the gates read the draft head; it turns ready once they pass, and the shepherd requests the reviewer then; before merge CI is green and every thread is answered. It no longer tells the body writer to request a reviewer. Files: charters/_pr.md and its vendored copy (guards.PR_STANDARD reads it; agents/ do not include it). Runtime lines: 0. Order: none; runs now. Rollback: revert the commit. Outside: shepherd.md, which already says this.",
+   "acceptance": [
+    "given the head, when `gh pr create --draft` is read by guards.bash once in a session, then the PR standard note it returns says the PR opens as a draft and does not say \"Request a reviewer\"",
+    "given the suite, when it runs at the head, then the vendored-drift test passes"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1139"
   },
   {
    "id": "gate-rules",

@@ -1,0 +1,29 @@
+Verdict: PASS
+Gate: arch
+Item: wide-specs
+PR: taoq-ai/wuwei#1142
+Head: 50c3bcd8c4221d7edaccdcfbbccb68c9b7b623f5
+Confidence: high
+Breaking: yes: `wuwei evidence`, the create and ready doors and the merge now hold PRs that read mergeable on main. (1) Any tier: a file under specs/**/contracts/ or openspec/**/contracts/, or a contract file (OpenAPI, Swagger, .proto, .graphql, .schema.json) under specs/, openspec/ or docs/, takes arch, and so does a later delta that touches one, even 2 lines. Most spec-kit standard PRs will take arch. (2) A root path that starts with LICENSE or NOTICE but is not exactly that name and is not .md/.rst/.adoc/.txt (LICENSE-MIT, LICENSE-APACHE, NOTICE_handler.py) is now code: quality at light and standard, all four gates at full, and a test or a `No test:` line. (3) At standard, a spec-only delta over 200 lines is re-read by arch. Loosened: at standard, prose over 200 lines (.md, .rst, .adoc outside the spec folders other than the files seats load, LICENSE, NOTICE) no longer takes arch. Declared: `!` title, BREAKING CHANGE line, and Announcement https://github.com/taoq-ai/wuwei/pull/1142#issuecomment-6251566330, which exists (created 2026-10-18T15:16:47Z, after the head commit at 15:16:06Z) and states what newly holds, what loosens and the migration. The owner's breaking: confirmation is still to come.
+
+## Findings
+- [low] blocks: no. Announcement accuracy: it says a `LICENSES/` path is now code. But REUSE's `LICENSES/<id>.txt` is .txt, so DOCS still calls it docs (`LICENSES/MIT.txt`: no quality at head, as on main). Only an extensionless or code file under LICENSES/ becomes code. Everything else in the comment matches the probe. A one-word edit to the comment ("`LICENSES/x.py`") would make it exact. It does not change what the owner confirms.
+- [low] cli/wuwei/evidence.py:17 blocks: no. Scope and false hold, from my round-2 note. Anchoring DOCS moves the quality trigger and the `no test in the diff` gap (evidence.py:385), which the promise put outside. The spec records it (Clarifications, Breaking) and the announcement names it, so the owner's breaking: confirmation covers it. The cost: the Rust dual-licence convention (LICENSE-MIT, LICENSE-APACHE) is prose, but a light PR that edits it now needs a quality gate and a `No test:` line, and a full one all four gates. If the owner objects, the refinement is `^(LICENSE|NOTICE|COPYING)(-[\w.-]+)?$` in DOCS and PROSE, which keeps NOTICE_handler.py and LICENSE_check.py as code. That would be a two-way follow-up.
+- [low] blocks: no. Existing PROSE defect, now feeding `wide`: `(open)?specs/` matches `openspecs/`, not `openspec/`, so a 201-line `openspecs/x.py` at standard is code but not wide (main: arch and quality; head: quality). The path is contrived; CI-not-started has the same quirk on main. Candidate: `(specs|openspec)/.+` in PROSE.
+- [low] blocks: no. Closed from 4b535bd: .txt files and the seat-loaded files count toward the wide trigger again (AGENTS.md, CLAUDE.md, charters, SKILL.md, CMakeLists.txt, requirements/prod.txt, notes.txt and LICENSES/MIT.txt at 201 lines take arch, as on main). NOTICE_handler.py takes ('arch', 'quality'). charters/_common.md:40 and docs/design.md:77 say "lines that are not prose". The contract-over-wide mutant is now killed. With `wide` read through PROSE, the `in code` clause is no longer needed: code is a subset of wide except the `openspecs/` quirk above.
+- [low] blocks: no. Kept from earlier rounds, unchanged: a full specs-only diff takes no wide arch; renames out of contracts/ read only the new path; the openspec contracts branch matches no OpenSpec convention; breaking_gaps accepts any `Announcement:` text.
+
+## Probes
+- Delta read: `git diff 4b535bd 50c3bcd`, 4b535bd is an ancestor. evidence.py +3 -4 (DOCS anchored, TEXT removed, wide via PROSE.match); tests +6 rows; charter, design, site, spec text; agents rebuilt.
+- Differential probe of `needed` (probe.py, 56 path classes x 4 sizes, singles and pairs, x 3 tiers, 5298 cases).
+  - Main against 50c3bcd: 1712 moved. The standard drops at 201 lines are prose only (LICENSE, NOTICE.md, README.md, docs/guide.md, SPECS/a/spec.md, packages/x/specs/a.md) plus openspecs/x.py (the PROSE quirk). The gains are the spec and docs contracts at every tier, and quality for LICENSE-MIT, LICENSE-APACHE, LICENSE_check.py and NOTICE_handler.py.
+  - 4b535bd against 50c3bcd: 770 moved, exactly the builder's list plus openspecs/x.py.
+- Mutants (fresh git archive copy each, tests/test_evidence.py, all killed): DOCS end anchor removed (1 failed); wide via DOCS instead of PROSE (7); spec prefixes dropped from wide (5); contract check over wide (1); contracts anchor removed (2); wide reverted to every file (5).
+- Suite at head: `pytest -q` 1713 passed, 2 skipped.
+- Route corpus: sha256 12725ace6adab6f965422e9a2a010d13b93e0897f177fd00bda53b080bfe1cb1, unchanged; `pytest -k route tests/test_guards.py` 350 passed; no route moves. guards.py and hook.py are unchanged.
+- Fitness: runtime `cat cli/wuwei/*.py | wc -l` is 2978 (main 2976, item budget 3, cap 3000). `diff -r -x __pycache__ cli/wuwei .claude/wuwei/cli/wuwei` has no difference and the vendored charter matches. `bin/wuwei agents build` in a copy prints "agents match the charters" and leaves no drift.
+- Announcement: `gh api repos/taoq-ai/wuwei/issues/comments/6251566330` returns the comment; the PR body's Announcement: line names it.
+- Confidence high: every mover is listed and either intended or a contrived quirk, every new guard has a killing test, and the announcement exists at this head.
+
+## Residual risk
+Licence files named LICENSE-* now carry a quality gate and a test line: a small, declared process cost the owner confirms with breaking:. The seat-loaded files are back to taking arch only through size (item seat-files-gated).
