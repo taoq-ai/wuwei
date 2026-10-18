@@ -10,10 +10,12 @@ constitution.
 | A1 | Ambiguity | MEDIUM | promise (2) | Whether a contract file pattern (OpenAPI, `.proto`) inside `specs/` also takes arch | Resolved in Clarifications and Assumptions: yes, the contract rule applies to spec files too |
 | A2 | Ambiguity | LOW | promise (1) | Whether a code file under `specs/` counts twice | Resolved: one filter, each file once |
 | C1 | Coverage | MEDIUM | `gate_gaps` | The delta rule changes through `needed` with no test of its own | Resolved: T003 pins a long docs delta, a 200 and a 201-line spec delta, and a spec contract delta |
+| C3 | Coverage | LOW | `CONTRACT` | Mutants (no `re.I`, no `^` anchor) survived at a7654a8 | Resolved: a mixed-case spec contract row and a top-level `contracts/` code row |
+| B1 | Inconsistency | MEDIUM | PR title, spec | Declared not breaking; arch found new holds | Resolved: `!`, `BREAKING CHANGE:`, a Breaking section with migration |
 | C2 | Coverage | LOW | acceptance 1 | Holds on main already, so it cannot run red | Pinned anyway; noted in SC-001 |
-| U1 | Underspecification | MEDIUM | code under `docs/` | `docs/conf.py` is not code to `needed`, so a 300-line one no longer takes arch through the count of every line (main: arch; head: none) | Resolved as an assumption in spec.md: code keeps its existing meaning; code under `docs/` taking no gate at any size is a candidate item outside the promise |
+| U1 | Inconsistency | MEDIUM | code under `docs/`, `LICENSE`/`NOTICE` prefixes | `wide` built from `code` dropped non-prose files under `docs/` and paths starting `LICENSE` or `NOTICE`, and the contract check missed `docs/openapi.yaml` (security and arch at a7654a8) | Resolved in the fix round: `wide` reads a narrow prose test (`TEXT`), the contract check reads every file; five tests pin it |
 
-No open finding: A1, C1 and U1 (MEDIUM) are resolved; A2 and C2 are LOW and resolved.
+No open finding: A1, B1, C1 and U1 (MEDIUM) are resolved; A2, C2 and C3 are LOW and resolved.
 
 ## Coverage
 
@@ -30,5 +32,5 @@ Stdlib only, test first, no config key, no new door, runtime within the cap. No 
 
 ## Metrics
 
-- Requirements: 4; tasks: 10; coverage 100 percent
+- Requirements: 4; tasks: 13; coverage 100 percent
 - Critical issues: 0; high: 0

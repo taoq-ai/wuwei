@@ -15,6 +15,7 @@ REQUIRED = {'light': ('quality',), 'standard': ('arch', 'quality', 'security'),
             'full': ('arch', 'quality', 'security', 'goal')}
 TEST = re.compile(r'(^|/)(tests?|spec|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$')
 DOCS = re.compile(r'\.(md|rst|txt|adoc)$|(^|/)docs/|^LICENSE|^NOTICE')
+TEXT = re.compile(r'\.(md|rst|txt|adoc)$|^(LICENSE|NOTICE)$')  # prose outside specs/ and openspec/: no wide count
 # What a diff may hold and still skip CI not started: prose, a license, specs; never a .txt, code under docs/ or a file seats load.
 PROSE = re.compile(r'^(?!(.*/)?(AGENTS\.md|CLAUDE\.md|(charters|agents)/[^/]+\.md|skills/[^/]+/SKILL\.md)$)(.+\.(md|rst|adoc)|LICENSE|NOTICE|(open)?specs/.+)$')
 GENERATED = re.compile(r'(^|/)([\w.-]+\.lock|package-lock\.json|pnpm-lock\.yaml|go\.sum)$|\.min\.(js|css)$'
@@ -250,14 +251,14 @@ def verdicts(root, item_id, ref=''):
 
 def needed(root, tier, files):
     """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
-    security comes for risky or owner paths, arch for a contract or a wide change of code and specs; full all four."""
+    security comes for risky or owner paths, arch for a contract or a wide change of all but prose; full all four."""
     code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
             or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
-    wide = [f for f in files if f['path'] in code or f['path'].startswith(('specs/', 'openspec/'))]  # never prose
+    wide = [f for f in files if not TEXT.search(f['path']) or f['path'].startswith(('specs/', 'openspec/')) or f['path'] in code]
     risky = owned(root, code) or any(RISKY.search(p) for p in code)
     if tier == 'full' and code:
         return REQUIRED['full']
-    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in wide)
+    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in files)
              or tier == 'standard' and (lines(wide) > WIDE or len(code) > 10)}
     return tuple(g for g in REQUIRED['standard'] if wants[g])
 

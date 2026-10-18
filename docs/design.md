@@ -106,9 +106,9 @@ day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
-by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
-needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
-head. Both are safety gaps.
+by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
+gate at any tier) needs an `Announcement: <link>` line and then the owner's `breaking:`
+confirmation at the head. Both are safety gaps.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by

@@ -574,6 +574,14 @@ def test_the_diff_decides_which_gates_a_standard_item_needs(root, fake, files, l
     ('standard', {'specs/contracts/api.yaml': 3}, ('arch',)),
     ('full', {'specs/001-x/contracts/api.yaml': 3}, ('arch',)),
     ('light', {'specs/001-x/spec.md': 3, 'docs/contracts/api.md': 3, 'specs/contracts.md': 3}, ()),
+    ('standard', {'docs/conf.py': 300}, ('arch',)),
+    ('standard', {'src/docs/x.py': 300}, ('arch',)),
+    ('standard', {'NOTICE_handler.py': 300}, ('arch',)),
+    ('standard', {'docs/requirements.txt': 300}, ('arch', 'quality', 'security')),
+    ('light', {'docs/openapi.yaml': 3}, ('arch',)),
+    ('light', {'specs/001-x/api.proto': 3}, ('arch',)),
+    ('light', {'specs/001-x/Contracts/api.yaml': 3}, ('arch',)),
+    ('light', {'contracts/Token.sol': 3, 'src/specs/contracts/h.py': 3}, ('quality',)),
 ])
 def test_the_wide_trigger_counts_code_and_spec_lines_and_a_spec_contract_takes_arch(root, tier, files, gates):
     files = [{'path': path, 'additions': n, 'deletions': 0} for path, n in files.items()]

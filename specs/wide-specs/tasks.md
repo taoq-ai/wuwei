@@ -15,3 +15,9 @@
 - [x] T008 [US3] charters/_common.md, docs/design.md, docs/site/concepts/evidence.md
 - [x] T009 `bin/wuwei agents build`, `setup.vendor('.')`
 - [x] T010 Full suite green; runtime 2,978 lines
+
+## Phase 3: Fix round at a7654a8
+
+- [x] T011 Rows for docs/conf.py, src/docs/x.py, NOTICE_handler.py, docs/requirements.txt, docs/openapi.yaml, a mixed-case spec contract, a proto under specs/ and code under contracts/; charter test asserts the verb and tier; run red: 4 failed
+- [x] T012 `TEXT` prose test for `wide`; the contract check reads every file; docs/design.md breaking paragraph names spec contracts; site table names prose
+- [x] T013 Breaking section; class probe main against head; full suite green; runtime 2,979 lines
