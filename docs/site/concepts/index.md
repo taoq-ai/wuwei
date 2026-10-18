@@ -9,6 +9,7 @@ says what each one is, why it is there, and where it lives.
 | [Plan passes and checkpoints](the-day.md) | Days change; a plan you can redo any time stays true | `/wuwei-run`, `/wuwei-close`, `.wuwei/plan.json` |
 | [WSJF and RICE ranking](the-day.md#ranking) | The most valuable work first, with evidence for every score | `wuwei plan add` |
 | [The team and its charters](team.md) | Independent roles catch what one agent misses | `charters/`, `agents/` |
+| [Models and effort](models.md) | Each seat runs on the model and effort its work needs, from one table you can override | `charters/planner.md`, the Agent call |
 | [The evidence contract](evidence.md) | "Done" means something checkable, the same for every PR | `wuwei status`, `wuwei evidence` |
 | [Attested verdicts](evidence.md#attested-verdicts) | A review counts only if a reviewer wrote it and nobody edited it | SubagentStop, the ledger |
 | [Breaking changes](evidence.md#breaking-changes) | Clients you break should hear it from you first, and you decide whether it ships | `Announcement:`, the `breaking:` question |

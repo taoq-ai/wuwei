@@ -143,3 +143,132 @@ def test_the_trigger_set_covers_every_skill_with_near_misses():
         # a near miss is another WUWEI skill's own query: the valuable negative
         others = {q for other, o in triggers.items() if other != skill for q in o['should']}
         assert len(set(queries['should_not']) & others) >= 3, skill
+
+
+MODEL = r'(Fable 5\.1|Opus 5\.5|Sonnet 5\.5|Haiku 5\.5) (low|medium|high|xhigh|max)'
+PATHS = 'risky, owner or contract paths'
+
+
+def _models_section():
+    text = (PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8')
+    assert '## Model and effort' in text
+    return text.split('## Model and effort', 1)[1].split('\n## ', 1)[0]
+
+
+def _model_table():
+    rows = {}
+    for line in _models_section().splitlines():
+        if line.startswith('| ') and not line.startswith(('| ---', '| Seat ')):
+            cells = [cell.strip() for cell in line.strip().strip('|').split('|')]
+            rows[cells[0].strip('`')] = cells[1]
+    return rows
+
+
+def _setting(row, tier, protected):
+    """The (model, effort) a table row gives at a tier, on or off risky, owner or contract paths. The
+    charter says the later setting holds where two apply; a 'for <case>' clause is not a tier rule."""
+    chosen = None
+    for clause in row.split('; '):
+        match = re.fullmatch(MODEL + r'(?: at (.+))?', clause)
+        if not match:
+            assert re.match(MODEL + ' for ', clause), clause
+            continue
+        conditions = (match[3] or '').split(' or ', 1)
+        if match[3] is None or tier in conditions or (protected and f'on {PATHS}' in conditions):
+            chosen = (match[1], match[2])
+    return chosen
+
+
+def test_the_planner_table_names_a_model_and_effort_for_every_seat():
+    rows = _model_table()
+    for role in json.loads((PLUGIN / 'agents' / 'allowlist.json').read_text(encoding='utf-8')):
+        assert role in rows, role
+        assert _setting(rows[role], 'standard', False), role
+    assert rows['lookups and searches'] == 'Haiku 5.5 low'
+
+
+def test_the_planner_table_holds_the_promised_settings():
+    rows = _model_table()
+    want = {('builder', 'light', False): ('Sonnet 5.5', 'medium'), ('builder', 'standard', False): ('Opus 5.5', 'medium'),
+            ('builder', 'light', True): ('Opus 5.5', 'high'), ('builder', 'full', False): ('Opus 5.5', 'high'),
+            ('sentinel-security', 'standard', False): ('Opus 5.5', 'high'), ('sentinel-security', 'standard', True): ('Opus 5.5', 'xhigh'),
+            ('sentinel-security', 'full', False): ('Opus 5.5', 'xhigh'), ('sentinel-arch', 'full', True): ('Opus 5.5', 'high'),
+            ('sentinel-quality', 'light', False): ('Sonnet 5.5', 'high'), ('sentinel-quality', 'standard', True): ('Opus 5.5', 'high'),
+            ('sentinel-quality', 'full', False): ('Opus 5.5', 'high'), ('sentinel-goal', 'full', False): ('Sonnet 5.5', 'high'),
+            ('lead', 'full', False): ('Opus 5.5', 'xhigh'), ('shepherd', 'standard', False): ('Sonnet 5.5', 'medium'),
+            ('steward', 'standard', False): ('Opus 5.5', 'high')}
+    assert {key: _setting(rows[key[0]], key[1], key[2]) for key in want} == want
+    assert 'Opus 5.5 high for a conflict where both sides changed logic' in rows['shepherd']
+
+
+def test_every_head_has_a_gate_on_another_model_and_no_haiku_gate_on_a_protected_path():
+    """Rule 3 and the floor computed over every tier and path the gate rule in _common.md tells apart."""
+    rows, text = _model_table(), ' '.join(_models_section().split())
+    assert 'at least one gate per head runs on a different model than the builder' in text
+    fallback = 'the quality gate takes the other of Opus 5.5 and Sonnet 5.5, at high' in text
+    floor = f'Haiku 5.5 never runs a gate on {PATHS}' in text and 'is an `exception:` for the owner' in text
+    for tier in ('light', 'standard', 'full'):
+        for path in (None, 'risky', 'owner', 'contract'):
+            gates = ['sentinel-quality'] + (['sentinel-security'] if tier == 'standard' and path in ('risky', 'owner') else [])
+            gates += ['sentinel-arch'] if path == 'contract' else []
+            gates = ['sentinel-security', 'sentinel-arch', 'sentinel-quality', 'sentinel-goal'] if tier == 'full' else gates
+            builder = _setting(rows['builder'], tier, path is not None)[0]
+            models = {gate: _setting(rows[gate], tier, path is not None) for gate in gates}
+            if fallback and all(model == builder for model, _ in models.values()):
+                models['sentinel-quality'] = ({'Opus 5.5': 'Sonnet 5.5', 'Sonnet 5.5': 'Opus 5.5'}[builder], 'high')
+            assert any(model != builder for model, _ in models.values()), (tier, path, builder, models)
+            if path:
+                assert floor and all(model != 'Haiku 5.5' for model, _ in models.values()), (tier, path)
+
+
+def test_the_planner_states_the_ladder_the_brief_lines_and_the_precedence():
+    text = ' '.join(_models_section().split())
+    assert 'Haiku 5.5, Sonnet 5.5, Opus 5.5 medium, high, xhigh, then Fable 5.1' in text
+    assert 'the top step is Opus 5.5 max' in text and 'zero data retention' in text
+    assert 'only on retro evidence: 10 merged items on the lower setting with no escaped defect' in text
+    assert "The brief's first line is `Model: <model> <effort> (<row>)`" in text and '`Model reason: <one line>`' in text
+    order = [text.index(word) for word in ("call's `model`", '`model` frontmatter', '`CLAUDE_CODE_SUBAGENT_MODEL`', 'session model')]
+    assert order == sorted(order), order
+    assert '`CLAUDE_CODE_EFFORT_LEVEL` beats every effort setting' in text and 'never refused' in text
+    assert "The owner's `models` rows in `.wuwei/config.toml` override any row here" in text
+    assert 'set it on every call, since Opus 5.5 defaults to medium' in text
+    assert 'Codex' in text and 'unmeasured' in text and 'trust path' not in text
+
+
+def test_the_models_page_names_and_dates_every_source():
+    page = (PLUGIN / 'docs' / 'site' / 'concepts' / 'models.md').read_text(encoding='utf-8')
+    sources = [line for line in page.split('## Sources', 1)[1].splitlines() if line.startswith('- ')]
+    for line in sources:
+        assert re.search(r'\]\(https://[^)]+\)', line) and re.search(r'read 20\d\d-\d\d-\d\d', line), line
+    for doc in ('code.claude.com/docs/en/sub-agents)', 'code.claude.com/docs/en/hooks)', 'code.claude.com/docs/en/skills)',
+                'code.claude.com/docs/en/plugins/components)', 'code.claude.com/docs/en/model-config)',
+                'platform.claude.com/docs/en/models/overview)', 'platform.claude.com/docs/en/build-with-claude/effort)'):
+        assert sum(doc in line for line in sources) == 1, doc
+
+
+def test_the_models_page_maps_each_step_to_a_codex_model_as_the_planners_unmeasured_reading():
+    page = (PLUGIN / 'docs' / 'site' / 'concepts' / 'models.md').read_text(encoding='utf-8')
+    codex = page.split('## On Codex', 1)[1].split('\n## ', 1)[0]
+    for claude, model in (('Fable 5.1', 'gpt-6-astra'), ('Opus 5.5', 'gpt-6.1-sol'), ('Sonnet 5.5', 'gpt-6-luna'),
+                          ('Haiku 5.5', 'gpt-6-luna low')):
+        assert any(line.startswith(f'| {claude} |') and model in line for line in codex.splitlines()), claude
+    text = ' '.join(codex.split())
+    assert "the planner's reading of the Codex catalog" in text and 'not OpenAI guidance' in text
+    assert 'unmeasured' in text and 'ultra' in text
+
+
+def test_the_team_and_codex_pages_and_the_design_link_the_table_instead_of_models():
+    for name in ('docs/site/concepts/team.md', 'docs/site/concepts/codex.md'):
+        text = (PLUGIN / name).read_text(encoding='utf-8')
+        assert 'MODELS' not in text and 'models.md' in text, name
+    assert 'unmeasured' in (PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8')
+    team = (PLUGIN / 'docs' / 'design.md').read_text(encoding='utf-8').split('## 3. The team', 1)[1].split('\n## ', 1)[0]
+    assert 'MODELS' not in team and 'concepts/models.md' in team
+
+
+def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_cheaper():
+    steward = ' '.join((PLUGIN / 'charters' / 'steward.md').read_text(encoding='utf-8').split())
+    assert 'by seat, model and effort' in steward and 'model table' in steward
+    watch = ' '.join((PLUGIN / 'skills' / 'wuwei-watch' / 'SKILL.md').read_text(encoding='utf-8').split())
+    assert 'Sonnet 5.5' in watch and '`effort: medium`' in watch and 'not a default' in watch
+    assert 'mostly reads and records' not in watch
