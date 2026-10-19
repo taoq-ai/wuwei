@@ -308,6 +308,7 @@ def _answers(root, data, response):
 
 
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
+SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
 
 
 def exception_refs(question):
@@ -331,19 +332,24 @@ def _goal(root, ref, repo):
 
 
 def session_start(root, payload):
-    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
+    """Orientation under Claude Code's 10,000-character additionalContext cap; what does not fit is named, not inlined."""
+    cli, charters = str(ws.PLUGIN / 'bin' / 'wuwei'), ws.PLUGIN / 'charters'
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
-    for name in ('goals.md', 'standards.md'):
-        path = Path(root) / ws.DIR / name
-        if path.is_file() and path.read_text(encoding='utf-8').strip():
-            parts.append(f'{name}:\n' + path.read_text(encoding='utf-8').strip()[:3000])
+    read = lambda name: (charters / name).read_text(encoding='utf-8') if (charters / name).is_file() else ''  # noqa: E731
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)', read('_way.md').strip(), '_common.md, Decisions and Done:\n'
+             + ''.join(re.findall(r'^## (?:Decisions|Done)\n.*?(?=^## |\Z)', read('_common.md'), re.S | re.M)).strip(),
+             f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
+             f'and the goals and standards in {Path(root) / ws.DIR}.']
+    left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
     try:
-        parts.append(board.text(board.rows(root), root))
+        found, cut = board.rows(root), 0
+        lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
+        while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
+            lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
+        parts.append('\n'.join(lines + left(cut)))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
-    return context('SessionStart', '\n\n'.join(parts))
+    return context('SessionStart', '\n\n'.join(parts)[:SESSION_CAP])  # only a board with no item left to drop reaches the cut
 
 
 HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'SubagentStop': subagent_stop,

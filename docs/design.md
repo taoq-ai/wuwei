@@ -194,7 +194,7 @@ flow.
 
 | Hook | Role |
 |---|---|
-| SessionStart | the way of working, `_common.md`, the planner charter, goals, standards, the board |
+| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat |

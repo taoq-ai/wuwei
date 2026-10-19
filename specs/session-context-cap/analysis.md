@@ -1,0 +1,30 @@
+# Specification analysis: session-context-cap
+
+Artifacts read: spec.md, plan.md, tasks.md, checklists/requirements.md, against the item's promise
+and acceptance and the constitution.
+
+## Findings
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| A1 | Coverage | MEDIUM (closed) | spec.md Clarifications | The promise keeps "the board"; goals and standards were also inlined and are now left out | Resolved: the run skill reads both at its step 2, the pointer names their folder; recorded as an assumption |
+| A2 | Inconsistency | LOW | spec.md How this fails 2 | The final cut can drop the left-out count when no item line is left to drop | Recorded as residual risk; the cap holds, a test holds it with 30 andon lines, and the sweep shows the cut never fires while an item is left |
+| A3 | Ambiguity | LOW | spec.md Clarifications | "Lowest items" first holds per repository only; the board lists repositories in name order | Resolved: spec says which lines go; a board-wide score order would change board.py, outside the item's files |
+| A4 | Coverage | LOW | plan.md Measurements | Measured with stub host data, not a live board | The gap lines of a live board are longer; the trim reads the real lengths, so only the shown count changes |
+| A5 | Inconsistency | LOW | docs | design.md and hooks.md listed goals and standards as inlined | Resolved: both rows and the first-day line updated |
+| A6 | Coverage | MEDIUM (closed) | plan.md Design | A 9,900 board room was pinned only at some path lengths (quality at d9d48c1) | Resolved in fix round 2: no room constant; the trim measures the final string, and the tests push each board to 9,999 and 10,000 characters |
+
+No open finding above LOW. A1 and A6 were MEDIUM and are closed.
+
+## Coverage
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| FR-001 at most 10,000 characters | yes | T001, T002, T003, T007 | |
+| FR-002 CLI path, planner.md path, the way, Decisions and Done | yes | T001, T005 | |
+| FR-003 left-out count | yes | T002, T006 | |
+| FR-004 runtime budget | yes | T009 | tests/test_setup.py size test |
+
+## Constitution alignment
+
+No conflict: stdlib only, no new door, no config key, test first, runtime budget held.
