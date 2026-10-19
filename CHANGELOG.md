@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.0.0](https://github.com/taoq-ai/wuwei/compare/v3.0.1...v4.0.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **evidence:** a diff touching specs/**/contracts/, openspec/**/contracts/ or a contract file (OpenAPI, Swagger, .proto, .graphql, .schema.json) under specs/, openspec/ or docs/ now takes arch at any tier, and so does a delta after review that touches a spec contract. A spec-only delta over 200 lines is re-read by arch at standard. Prose over 200 lines no longer takes arch. Migration: plan an arch gate for PRs that change a spec contract or a contract file; prose-only PRs need no gate. No config or data changes.
+
+### Bug Fixes
+
+* **evidence:** read a breaking change from the latest arch verdict ([#1135](https://github.com/taoq-ai/wuwei/issues/1135)) ([c85aad8](https://github.com/taoq-ai/wuwei/commit/c85aad8e2bf491b4fe6b327c6b085c14cc9fffe9))
+* **evidence:** the wide-change trigger counts all but prose, and a spec contract takes arch ([#1142](https://github.com/taoq-ai/wuwei/issues/1142)) ([3d2eb29](https://github.com/taoq-ai/wuwei/commit/3d2eb2955fd5975f531dd77a496af628af530862))
+* **guards:** an exception: question whose ref is not followed by ": &lt;gap&gt;" is refused with the exact shape ([#1136](https://github.com/taoq-ai/wuwei/issues/1136)) ([73df252](https://github.com/taoq-ai/wuwei/commit/73df2521ec10ff240d8454a5bdecbe700741f3a0))
+* **hook:** the worktree verdict copy-in refuses a symlinked target or parent ([#1137](https://github.com/taoq-ai/wuwei/issues/1137)) ([a824b82](https://github.com/taoq-ai/wuwei/commit/a824b82f379c576b077c199a16753d0a9cd80e9d))
+
+
+### Documentation
+
+* **charters:** one model and effort table for every seat, drawn from Anthropic's guidance ([#1138](https://github.com/taoq-ai/wuwei/issues/1138)) ([2e088a5](https://github.com/taoq-ai/wuwei/commit/2e088a5f3e989313efb82fb84789636ebfae527e))
+* **charters:** the PR standard says the PR opens as a draft and the shepherd requests the reviewer ([#1139](https://github.com/taoq-ai/wuwei/issues/1139)) ([eeaa1b5](https://github.com/taoq-ai/wuwei/commit/eeaa1b5c7036ad6a7de50daf31d739c105b80209)), closes [#1132](https://github.com/taoq-ai/wuwei/issues/1132)
+* **constitution:** the runtime budget is 3,400 lines and config holds six keys ([#1134](https://github.com/taoq-ai/wuwei/issues/1134)) ([5406856](https://github.com/taoq-ai/wuwei/commit/54068560d2ae813c948644989150b75eec3a37a3))
+
 ## [3.0.1](https://github.com/taoq-ai/wuwei/compare/v3.0.0...v3.0.1) (2026-10-18)
 
 
