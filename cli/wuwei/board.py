@@ -1,6 +1,8 @@
 """The board: each open plan item, its pull request and what it still lacks. Gaps, never commands."""
 
+import concurrent.futures
 import datetime
+import sys
 
 from wuwei import evidence, gh, plan, ws
 
@@ -67,8 +69,11 @@ def compute(root, everything=False):
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]} for i in mine]
             continue
         out += adopted(root, repo, prs, keep)
-        for item in mine:
-            linked = [pr for pr in prs if names(root, pr, repo, item['id'])]
+        print(f'wuwei: reading {repo}: {len(prs)} open PRs', file=sys.stderr)
+        links = [[pr for pr in prs if names(root, pr, repo, item['id'])] for item in mine]
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:  # the host calls dominate a cold board (#1121)
+            read = dict(zip(want := {pr['number'] for linked in links for pr in linked}, pool.map(lambda n: keep(evidence.gaps(root, repo, n)), want)))
+        for item, linked in zip(mine, links):
             done = [pr for pr in merged if names(root, pr, repo, item['id'])]
             if not linked and done:
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
@@ -81,7 +86,7 @@ def compute(root, everything=False):
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
-                            'gaps': keep(evidence.gaps(root, repo, pr['number']))})
+                            'gaps': read[pr['number']]})
     for item in (i for i in open_items if not i.get('repo')):  # a reply has no repository; see replies()
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
