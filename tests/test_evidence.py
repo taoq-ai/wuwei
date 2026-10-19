@@ -1080,6 +1080,8 @@ def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
     ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS')], ANNOUNCE),  # F2: a head off this PR's line
     ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/app#7')], ANNOUNCE),  # F3: another PR
     ([(HEAD, 'yes: drops --format', 'PASS'), (OTHER, 'no', 'PASS', 'acme/other#1')], ANNOUNCE),  # F3: another repo
+    ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'acme/app#7')], ANNOUNCE),  # another PR, on the line
+    ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'acme/app')], []),  # before the draft PR existed
     ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
 ])
 def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
@@ -1171,3 +1173,39 @@ def test_before_its_pr_is_read_a_verdict_counts_on_its_repository(root, fake, pr
     standard(root)
     attest(root, 'quality', pr=pr)
     assert texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD)) == found
+
+
+def imported(root, verdict, head):
+    """A 0.34 verdict as wuwei upgrade attests it: no PR in the row, the head as 0.34 wrote it."""
+    path = root / ws.DIR / 'verdicts' / 'I-1' / f'quality-imported-{verdict}.md'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(verdict_text(gate='quality', verdict=verdict, head=HEAD, pr=''))
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                               'gate': 'quality', 'item': 'I-1', 'head': head, 'verdict': verdict, 'imported': True})
+
+
+@pytest.mark.parametrize('ref', ['acme/app#42', 'acme/app#7', ''])
+def test_an_imported_pass_counts_for_every_pr_of_its_item(root, fake, ref):
+    standard(root)
+    imported(root, 'PASS', HEAD)
+    assert texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD, ref=ref)) == []
+
+
+def test_an_imported_finding_at_a_short_head_holds_against_a_pass_at_that_commit(root, fake):
+    standard(root)
+    fake.ancestors.add((HEAD[:7], HEAD))
+    imported(root, 'FIX', HEAD[:7])
+    attest(root, 'quality', HEAD, 'PASS', name='quality-relaunch.md')
+    assert [t for t in texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+            if t.startswith('gates missing')] == OWED
+
+
+def test_the_walk_asks_the_code_host_about_each_pair_of_heads_once(root, fake):
+    standard(root)
+    mid = 'd' * 40
+    fake.ancestors.update({(OLD, mid), (mid, HEAD), (OLD, HEAD)})
+    attest(root, 'quality', OLD, 'PASS', name='quality-0.md')
+    attest(root, 'quality', mid, 'FIX', name='quality-1.md')
+    found = texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+    asked = [c[1].split('/compare/')[1] for c in fake.calls if c[0] == 'api' and '/compare/' in c[1]]
+    assert found[:1] == OWED and sorted(asked) == sorted([f'{OLD}...{HEAD}', f'{mid}...{HEAD}', f'{OLD}...{mid}'])
