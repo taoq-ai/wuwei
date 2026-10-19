@@ -55,5 +55,12 @@ seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same h
 once WUWEI reads Codex's own transcript (hook-transcript records it as `seat.unconfirmed` until then). Run
 gates as Claude seats.
 
+**Breaking change (hook-transcript, #1172):** before it, a Codex `request_user_input` answer was
+recorded as a ruling by its question and a Codex seat's stop was attested. Now both are recorded as
+`answer.unconfirmed` and `seat.unconfirmed`, because WUWEI cannot yet read Codex's transcript to
+confirm them. Ask owner questions (`owner review:`, `breaking:`, `exception:`, `plan:`, `goal:`) and
+run gates from a Claude Code session, or approve on the code host. The rows name why, so nothing is
+lost silently.
+
 **Why:** the process is the product, not the harness. The same evidence, doors and questions hold
 whichever agent does the work, and a team can run both without two rule books.

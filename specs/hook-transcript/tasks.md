@@ -34,3 +34,13 @@
 - [x] T021 Full suite green; runtime under the 3,400 cap
 - [x] T022 Tests that kill the survivors: a FIFO under the projects folder (H3), a row written from inside the Stop's wait (H11), the agent-id case with the real type (H14)
 - [x] T023 Merge origin/main f63c804 and dc9aad9 (merge commits); differential and full suite at the merged head
+
+## Phase 5: Fix round 1 (the four gates at 018548a)
+
+- [x] T024 Merge origin/main d4a803f (merge commit)
+- [x] T025 Pending answers are confirmed before the handler on PreToolUse and Stop, after it on PostToolUse, inside handle's try; a merge as the next call passes with the ruling (tests/test_hook.py)
+- [x] T026 PostToolUse records `answer.pending`; an error while recording is a hook.error after it; a refused call carries the notes (tests/test_hook.py)
+- [x] T027 ws.PROJECTS falls back to `/dev/null/.claude/projects` when the uid has no passwd entry; the real entry still refuses a ledger write (tests/test_hook.py)
+- [x] T028 The Stop-wait test replaces hook.time with a namespace; the wall-clock test keeps only its lower bound; H11 run 10 times
+- [x] T029 A traversal tool_use_id lands nothing outside .wuwei/cache (X1); a replayed answer records once (prompt rows carry the id)
+- [x] T030 Docs: the two attestation paths that still read payload text, the quoting and eval holes, the pending row; codex.md names the break

@@ -79,9 +79,10 @@ answer row (11 answers, median 8.4 s), so the next call finds the row with secon
    ruling.
 2. A planner that asks and then ends its turn with no Stop (a crash, a killed session) leaves the
    answer pending in `.wuwei/cache`. It is recorded at the session's next planner hook call after
-   a resume (or as `answer.unconfirmed` at its next Stop). A session that never calls again
-   leaves it there unrecorded: the one path to a drop. The transcript still holds the answer, so
-   the owner can be asked again.
+   a resume (or as `answer.unconfirmed` at its next Stop). A session that never calls again keeps
+   the `answer.pending` row PostToolUse wrote (fix round 1), which reads as unconfirmed, so the
+   answer is never dropped silently. The transcript still holds the answer, so the owner can be
+   asked again.
 3. Codex keeps its transcripts elsewhere (`~/.codex/sessions`) in another format. A Codex
    `request_user_input` answer and a Codex SubagentStop are recorded as unconfirmed, so a Codex
    gate's verdict is no longer attested. No real Codex transcript fixture exists to build a
@@ -193,24 +194,29 @@ recorded real launch records `seat.stopped` as today.
   attestation judged on its own.
 - A nested seat (spawnDepth 2) is launched from a seat's transcript, not the session's, so its
   stop is unconfirmed. WUWEI's seats launch none.
-- The item budgets +22 runtime lines; this adds 74 (hook.py +61, guards.py +11, ws.py +2). The
-  deferred confirmation (keep, claim, wait, notes) and the seat launch check were not in the
+- The item budgets +22 runtime lines; this adds 84 (hook.py +68, guards.py +11, ws.py +5). The
+  deferred confirmation (keep, pending row, claim, wait, notes) and the seat launch check were not in the
   estimate; nothing was removed to offset it. Overturned if the planner holds the item to 22, in
   which case the seat-stop check splits out.
-- Under the SemVer rule this is a patch: it refuses records it used to accept from a forged or
-  unreadable payload; real Claude Code flows record the same rows. Overturned if the arch gate
-  rules the Codex change (How this fails 3) breaking.
+- Under the SemVer rule this is a major (fix round 1, from the arch gate at 018548a): Codex
+  answers and stops, and Claude Code users who set `CLAUDE_CONFIG_DIR`, now record as unconfirmed,
+  where codex.md at the base documents them as recorded and attested. The PR title takes a `!`,
+  the body a `BREAKING CHANGE:` line and an `Announcement:` line, and the owner confirms it.
 
 ## What stays open
 
 A process that writes the transcript itself: a script file, a writer the guards do not list
 (`install`, `perl`), a path built at run time, or a symlink made where the guards do not see it.
 The guard reads command text, so it is a tripwire there, not a wall. The sandbox item
-(sandbox-spike) is what can close it. A forger can also replay a real answer or a real seat's
-launch: the rows then repeat what the harness recorded.
+(sandbox-spike) is what can close it. Bash ANSI-C or locale quoting of the `.claude` segment and
+an `eval` around a refused spelling also pass the guard (security gate at 018548a, low). A replayed
+real answer records nothing more (each id once). Attestation still reads payload text on two paths:
+a sentinel's SubagentHandback at PreToolUse, and a SubagentStop that replays a real launch with a
+forged report.
 
 ## Rollback
 
 Revert the commit and re-vendor `.claude/`. Pending entries left in `.wuwei/cache` are ignored by
-the old code. No config key, ledger format or file format changes; `answer.unconfirmed` and
-`seat.unconfirmed` are new row kinds the old code never reads.
+the old code. No config key, ledger format or file format changes; `answer.unconfirmed`,
+`answer.pending` and `seat.unconfirmed` are new row kinds the old code never reads, and the `id`
+on a `prompt` row is a new field it ignores.

@@ -214,12 +214,16 @@ An owner answer and a seat stop count only when the harness wrote them (#962). T
 each session's transcript under the projects folder (`.claude/projects` in the account's home,
 read from the password database, never from `HOME`). An answer counts when that transcript holds the
 AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
-the same answers. Claude Code writes that row after PostToolUse returns, so PostToolUse keeps the
-answer and the planner's next hook call records it; a Stop rereads for up to 1.5 s and then records
-`answer.unconfirmed` with the reason, as PostToolUse does at once for a transcript path outside the
-projects folder. A seat stop counts when the meta file beside the seat's transcript names its type
-and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops are
-recorded as unconfirmed until a reader for Codex's transcript exists. A process that writes the
+the same answers. Claude Code writes that row after PostToolUse returns, so PostToolUse records
+`answer.pending` and keeps the answer, and the planner's next hook call records it before any door
+reads the ledger. A Stop rereads for up to 1.5 s and then records `answer.unconfirmed` with the
+reason, as PostToolUse does at once for a transcript path outside the projects folder. An
+`answer.pending` row that no `prompt` or `answer.unconfirmed` row with its id follows (a session that
+ended before another hook call) reads as unconfirmed. Each answer id is recorded once: a replay
+records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
+type and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops, a
+moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
+recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
 transcript itself stays open (SECURITY.md).
 
 ## 9. Learning
@@ -261,6 +265,9 @@ Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
+- Attestations read from the seat's own transcript (#962): a sentinel's SubagentHandback at
+  PreToolUse still attests from its payload, and a SubagentStop that replays a real launch attests
+  and keeps the report text its payload carries.
 - A shared standards repository for teams; auditing human PRs as first-class items.
 
 ## 13. From 0.x

@@ -117,9 +117,16 @@ as `answer.unconfirmed` or `seat.unconfirmed` with the reason. The guards refuse
 transcript path, which the guards cannot tell from a write (read it with `python3 - < <path>`). What
 stays open: a process that writes the transcript itself, through a script file, a writer the guards
 do not list (`install`, `perl`, `rsync`), a path built at run time, or a symlink made outside the
-guards' sight. That is a forged transcript line, and only the sandbox item closes it. A replayed real
-answer or a real seat's stop repeats what the harness recorded. A harness that keeps transcripts
-elsewhere (`CLAUDE_CONFIG_DIR`, Codex) gets every answer and stop recorded as unconfirmed.
+guards' sight. Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
+(`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
+transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
+since each answer id is recorded once. Attestation still reads payload text on two paths: a
+sentinel's SubagentHandback at PreToolUse attests from its payload with no transcript check, and a
+SubagentStop that replays a real launch (its agent id, meta file and session transcript) attests and
+keeps the report text the payload carries, not the seat's own transcript. A harness that keeps
+transcripts elsewhere (`CLAUDE_CONFIG_DIR`, Codex), or an account with no password-database entry,
+gets every answer and stop recorded as unconfirmed while the guards keep running. An answer the
+planner session never confirms (it ends before another hook call) leaves its `answer.pending` row.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
