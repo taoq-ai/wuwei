@@ -1281,7 +1281,7 @@ FORGED_STOPS = {  # what the forged SubagentStop changes in the real launch's pa
         ws.PROJECTS / '-repo' / STOP['session_id'] / 'subagents' / 'agent-aforged.jsonl')},
     'a meta file the session wrote': forged_meta,
     'another type than the launch': lambda root: {},
-    'a real meta file for another agent id': lambda root: {'agent_id': 'aforged'},
+    'a real meta file for another agent id': lambda root: {'agent_id': 'aforged', 'agent_type': STOP['agent_type']},
     'a session transcript without the launch': lambda root: {'agent_type': STOP['agent_type'], 'transcript_path': str(
         write(ws.PROJECTS / '-repo' / 'x.jsonl', ASK_FLOW))}}
 
@@ -1338,18 +1338,14 @@ def test_the_answer_is_the_last_tool_result_row_for_an_askuserquestion_with_that
 
 
 def test_a_stop_records_an_answer_row_the_harness_writes_within_the_wait(root, monkeypatch):
-    import threading
-    monkeypatch.setattr(hook, 'WAIT', 1.0)
     payload = installed(ASK, ASK_FLOW[:1])
     hook.handle(root, 'PostToolUse', payload)
 
-    def late():
+    def late(seconds):  # the harness writes the row while the Stop waits
         with Path(payload['transcript_path']).open('a') as out:
             out.write(ASK_FLOW[1] + '\n')
-    timer = threading.Timer(0.3, late)
-    timer.start()
+    monkeypatch.setattr(hook.time, 'sleep', late)
     hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
-    timer.join()
     assert len(ws.rows(root, 'ruling')) == 1 and not ws.rows(root, 'answer.unconfirmed')
 
 

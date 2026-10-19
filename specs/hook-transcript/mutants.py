@@ -2,10 +2,12 @@
 
 Each mutant runs alone in a fresh `git archive` copy with both copies of the runtime (cli/ and .claude/wuwei/cli/) edited,
 on the test files that reach the mutated file, with the wall-clock tests (a test body that reads time.monotonic or
-time.perf_counter) deselected. A kill counts only when a behavioural test fails.
+time.perf_counter) deselected, and any test named in DESELECT (a generated probe that a mutant makes quadratic). A kill
+counts only when a behavioural test fails.
 """
 
 import ast
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -87,7 +89,7 @@ for name, (path, old, new) in MUTANTS.items():
         text = copy.read_text(encoding='utf-8')
         assert text.count(old) == 1, (name, copy, old)
         copy.write_text(text.replace(old, new), encoding='utf-8')
-    deselect = [arg for test in wall_clock(tree, TESTS[path]) for arg in ('--deselect', test)]
+    deselect = [arg for test in wall_clock(tree, TESTS[path]) + os.environ.get('DESELECT', '').split() for arg in ('--deselect', test)]
     run = subprocess.run(['/root/.local/bin/pytest', '-q', '-p', 'no:cacheprovider', *TESTS[path], *deselect], cwd=tree, capture_output=True,
                          text=True)
     failed = sorted({line.split('::')[1].split('[')[0].split(' ')[0] for line in run.stdout.splitlines() if line.startswith('FAILED')})
