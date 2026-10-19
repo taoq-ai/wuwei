@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/taoq-ai/wuwei/compare/v4.1.0...v4.2.0) (2026-10-19)
+
+
+### Features
+
+* **agents:** agent files carry the table's model and effort, the hook advises on a departure and records what ran ([#1146](https://github.com/taoq-ai/wuwei/issues/1146)) ([aad19c8](https://github.com/taoq-ai/wuwei/commit/aad19c8ff756d88a7f3abf87fa1877f2da02c05c))
+
 ## [4.1.0](https://github.com/taoq-ai/wuwei/compare/v4.0.0...v4.1.0) (2026-10-19)
 
 
