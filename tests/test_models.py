@@ -164,7 +164,9 @@ def test_an_owner_row_for_the_role_alone_replaces_the_table_at_every_tier(root):
     plan_item(root, 'standard')
     assert 'Sonnet 5.5 medium' in advice(launch(root, 'shepherd', 'opus', 'low'))
     (root / ws.DIR / 'config.toml').write_text('repos = ["acme/app"]\nmodels = {"shepherd" = "opus low"}\n')
-    assert launch(root, 'shepherd', 'opus', 'low') is None
+    for tier in ('light', 'standard', 'full'):
+        plan_item(root, tier)
+        assert launch(root, 'shepherd', 'opus', 'low') is None
 
 
 def test_a_tier_raised_by_the_cached_budget_is_the_one_advised_on(root, fake):
