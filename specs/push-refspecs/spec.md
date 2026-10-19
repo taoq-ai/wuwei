@@ -180,7 +180,7 @@ which git does not read as an option (`git push --repo --mirror origin feature` 
 - A destination `HEAD` (or empty) keeps main's reading: the current branch. Under real
   git 2.43, `feature:HEAD` from a clone on main left main alone, so the guard over-refuses it there;
   the rule is main's and the item does not ask to change it.
-- Runtime lines: 3,199 at the head against 3,178 at main 5a33509 (+21), over the item's budget of
+- Runtime lines: 3,204 at the head against 3,183 at main dc9aad9 (+21), over the item's budget of
   +4 and its ceiling of 6, under the 3,400 cap. Round 1 ended at +5. Round 2 adds 16: the ref read
   `_sources` (10 lines and 2 blank), the `suppress` import, `REF_RULES`, and two lines in
   `git_push` (the refspec list, read once, and the one ref read per push). The lead chose the

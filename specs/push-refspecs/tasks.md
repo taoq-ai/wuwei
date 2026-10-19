@@ -32,6 +32,6 @@
 
 ## Phase 5: Fix round 2 (gates at 9cb834a)
 
-- [x] T019 Merged origin/main 5a33509; tests first: 7 valued rows from main (`--exec`, `--receive-pack`, `--rece`, `--recurse-submodules`, `--recu`), `--tags -n`, `-vd`, the ambiguous `origin`, two later end markers, and a push of 15,000 refspecs in under 1 s; 7 red at 9cb834a
+- [x] T019 Merged origin/main 5a33509, then dc9aad9; tests first: 7 valued rows from main (`--exec`, `--receive-pack`, `--rece`, `--recurse-submodules`, `--recu`), `--tags -n`, `-vd`, the ambiguous `origin`, two later end markers, and a push of 15,000 refspecs in under 1 s; 7 red at 9cb834a
 - [x] T020 `_sources` reads the refs once per push; every candidate of git's ref rules counts; the first end marker only; the current branch read once; green, with rows for root refs, remote-tracking symbolic refs, a worktree id that is not its folder's name, a linked worktree's own HEAD, and a FIFO in the git directory
 - [x] T021 Route corpus read through main, 9cb834a and the head; probe with the round 2 classes; the gates' probe re-run; non-door checks with the new shapes; mutants of each name set member and each candidate

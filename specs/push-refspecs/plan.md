@@ -6,7 +6,8 @@
 ## Technical context
 
 - Stdlib-only Python 3.11+, runtime under `cli/wuwei/`, cap 3,400 lines. Main dc39cae held 3,011; main 6682925 held 3,026;
-  main 7fd8f4b held 3,093; main 5a33509 holds 3,178. The item's budget is +4, ceiling 6; free-lines-5 is no longer a prerequisite.
+  main 7fd8f4b held 3,093; main 5a33509 held 3,178; main dc9aad9 holds 3,183. The item's budget is +4,
+  ceiling 6; free-lines-5 is no longer a prerequisite.
 - `guards.bash` reads git's options before the subcommand (git-globals) and calls
   `git_push(root, rest[i + 1:], here)`; a refusal passes only when `scratch()` reads the remote as
   a git directory in a scratch folder (scratch-remotes).
@@ -71,5 +72,5 @@
   probe ran red before their fix. All 36 run 26 red on main 6682925's guard and green at the head.
 - Simplest: `git_push` changed and one helper added in round 2, `_sources`, the ref read once per
   push; git's rules written as one normalisation, one table of ref rules and one pattern match.
-- Runtime: 3,199 against main 5a33509's 3,178 (+21), over the budget of +4 and the ceiling of 6,
+- Runtime: 3,204 against main dc9aad9's 3,183 (+21), over the budget of +4 and the ceiling of 6,
   under the cap of 3,400; round 2's 16 lines are the ref read (spec Assumptions).
