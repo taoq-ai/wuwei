@@ -45,6 +45,10 @@ role's lines of `.wuwei/standards.md`.
 
 - Goals in `.wuwei/goals.md` set the direction. Each plan pass ends with the plan as a view
   (`wuwei plan view`, #990) and one `plan:` question, Approve or Change; new items wait for it.
+- A plan pass offers each goal past its date with no ruling as `goal: G-n met? <evidence>`. A yes
+  records the goal as met (the report lists it, and it gets no new items); a no waits until its
+  date moves. A ruling holds while the goal keeps the Outcome it answered, so a goal rewritten in
+  place is asked again. `goals.md` changes only by the owner.
 - A plan pass (`/wuwei-run`, `wuwei plan pass`) adds, drops or re-ranks items in a running queue.
   Any number per day. The lead returns only ready candidates (promise, acceptance scenarios,
   repository, files) and red-teams the plan (the riskiest item and the cheapest early test of it).
@@ -63,7 +67,10 @@ Owner questions start with their class: `one-way:`, `scope:`, `goal:`, `trust:`,
 `owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`,
 `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. Any other
 question is refused back to the model. A `one-way:` answer becomes an ADR in the repository. An
-accepted exception drops that gap at that head and adds a follow-up item that closes it.
+accepted exception drops that gap at that head and adds a follow-up item that closes it. The
+accepted gap must equal the printed gap text (case, spacing, end marks and a printed `[waiting]`
+aside), or equal the gates a gate gap names (`security` for `gates missing at head <sha7>:
+security`); a part of either waives nothing.
 
 ## 6. The evidence contract
 
@@ -108,8 +115,10 @@ exception. An unreadable Actions host shows the gap with `(Actions host unreadab
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
 by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
-gate at any tier) needs an `Announcement: <link>` line and then the owner's `breaking:`
-confirmation at the head. Both are safety gaps.
+gate at any tier) needs an `Announcement: <url>` line and then the owner's `breaking:`
+confirmation at the head. Both are safety gaps. The line holds one http(s) URL alone, without
+brackets, of a communication that already exists: a PR or issue comment, or a published release
+note or migration guide. A changelog entry written at release does not count.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by

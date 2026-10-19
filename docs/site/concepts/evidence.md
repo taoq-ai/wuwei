@@ -74,8 +74,9 @@ file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier s
 
 Before such a change merges it needs evidence, in order:
 
-1. An `Announcement: <link>` line: the client communication, release note, migration guide or press
-   release.
+1. An `Announcement: <url>` line: one http(s) URL alone on the line, without brackets. It points at
+   a client communication that already exists: a PR or issue comment, or a published release note
+   or migration guide. A changelog entry written at release does not count.
 2. Your confirmation, asked once the announcement exists:
    `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. It binds to that
    head; a change after it asks again.
@@ -148,7 +149,8 @@ fit this change. The audit still sees every misfit, and the process learns from 
 
 For a safety gap only, you can accept one gap at one head as an exception (see [decisions](decisions.md#exceptions)). The
 gap disappears from that head's evidence, the exception stays on the record, and a follow-up item
-in the plan closes it later.
+in the plan closes it later. Only the gap the exception names exactly disappears; a part of a gap
+waives nothing.
 
 ## When evidence cannot be read
 

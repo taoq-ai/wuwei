@@ -1,5 +1,6 @@
 import pytest
 import hashlib
+import time
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
@@ -277,6 +278,93 @@ def test_an_owner_exception_covers_one_gap_at_one_head(root, fake):
     fake.prs['42'] = make_pr(files=('src/app.py',), head=OLD)
     attest(root, 'quality', head=OLD)
     assert 'no test in the diff' in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+SECURITY, OWNER = 'gates missing at head aaaaaaa: security', 'owner review needed (owner_paths: infra/main.tf)'
+
+
+def owned_pr(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    attest(root, 'quality')
+
+
+def except_gap(root, text, head=HEAD[:7]):
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': head, 'gap': text, 'approved': True})
+
+
+def test_a_short_or_partial_exception_waives_nothing(root, fake):
+    owned_pr(root, fake)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    for text in ('e', 'E', ' e ', 'securit', 'security gate', 'owner review', 'owner review needed', 'gates missing',
+                 'gates missing at head aaaaaaa', 'gates missing at head aaaaaaa: security, quality', SECURITY + ' and arch',
+                 OWNER[:-1], 'owner_paths: infra/main.tf', 'infra/main.tf', 'a', '.', '?', '', None, 7, ['e']):
+        except_gap(root, text)
+    except_gap(root, 'quality')  # quality is not missing, so its name waives nothing either
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+
+
+def test_an_exception_naming_the_printed_gap_waives_that_gap_alone(root, fake):
+    from wuwei import report
+    owned_pr(root, fake)
+    except_gap(root, 'Gates  missing at head aaaaaaa:\tsecurity. ', head=OLD[:7])  # another head waives nothing
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#41', 'head': HEAD[:7], 'gap': SECURITY, 'approved': True})
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': HEAD[:7], 'gap': OWNER, 'approved': False})
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    except_gap(root, 'Gates  missing at head aaaaaaa:\tsecurity. ')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [OWNER]
+    except_gap(root, OWNER + ' [waiting]')  # as wuwei evidence prints a waiting gap
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    assert f'- exception: acme/app#42 at aaaaaaa: {OWNER} [waiting]' in report.day(root)
+
+
+def test_a_ruling_without_a_head_or_of_another_kind_waives_nothing_and_marks_after_waiting_fold(root, fake):
+    owned_pr(root, fake)
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'gap': SECURITY, 'approved': True})
+    ws.record(root, 'ruling', {'kind': 'breaking', 'pr': 'acme/app#42', 'head': HEAD[:7], 'gap': SECURITY, 'approved': True})
+    except_gap(root, 'gates missing at head aaaaaaa: [waiting]security')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    except_gap(root, OWNER + ' [waiting]!')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY]
+
+
+def test_an_exception_naming_its_gate_list_exactly_waives_that_gate_gap(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'src/app.py', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: x')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality, security', OWNER]
+    for text in ('security', 'quality', 'arch', 'security, quality', 'quality, security, arch', 'quality security'):
+        except_gap(root, text)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality, security', OWNER]
+    except_gap(root, 'Quality,  Security.')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [OWNER]
+
+
+def test_no_generated_accepted_gap_waives_a_gap_it_does_not_name(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('probe', Path(__file__).parents[1] / 'specs' / 'excepted-exact' / 'probe.py')
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    gaps, accepted = probe.pairs()
+    found, wrong = [evidence.gap(g) for g in gaps], []
+    for a in accepted:
+        monkeypatch.setattr(ws, 'rows', lambda root, kind, a=a: [{'data': {'kind': 'exception', 'pr': 'acme/app#42',
+                                                                          'head': HEAD[:7], 'gap': a, 'approved': True}}])
+        left = {g['text'] for g in evidence.excepted('.', 'acme/app#42', HEAD, found)}
+        wrong += [(a, g) for g in gaps if (g not in left) != probe.names(a, g)]
+    assert len(accepted) > 9000 and wrong == []
+
+
+def test_a_delta_review_exception_names_its_gate(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate, OLD)
+    except_gap(root, 'security')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by quality)']
+    except_gap(root, 'quality')
+    assert evidence.gaps(root, 'acme/app', 42) == []
 
 
 def test_an_error_budget_overrun_raises_the_tier(root, fake):
@@ -922,8 +1010,64 @@ def breaking(root, fake, *said, title='feat: change 42'):
 
 
 OTHER = 'c' * 40  # a head that is no ancestor of the PR head
-ANNOUNCE = ['breaking change without an announcement: add "Announcement: <link to the client communication, '
-            'release note or migration guide>"']
+ANNOUNCE = ['breaking change without an announcement: add "Announcement: <http(s) URL of the published client '
+            'communication, release note or migration guide>", the URL alone on its line, without brackets']
+CONFIRM = ['breaking change needs the owner\'s confirmation: ask "breaking: acme/app#42 at aaaaaaa: <what breaks>. '
+           'Announced at <link>. Proceed?"']
+
+
+@pytest.mark.parametrize('line, found', [
+    ('Announcement: https://github.com/o/r/issues/1#issuecomment-1', CONFIRM),
+    ('Announcement: http://status.acme.test/2026-10-15-export-v1', CONFIRM),
+    ('Announcement:https://acme.test/n', CONFIRM),
+    ('Announcement: \t https://acme.test/n \t', CONFIRM),
+    ('Announcement: https://acme.test/n\r\nmore', CONFIRM),  # a CRLF body
+    ('Announcement: CHANGELOG.md\nAnnouncement: https://acme.test/n', CONFIRM),  # a URL line among others
+    ('Announcement: CHANGELOG.md (placeholder)', ANNOUNCE),
+    ('Announcement: CHANGELOG.md', ANNOUNCE),  # a bare path
+    ('Announcement: docs/migration.md', ANNOUNCE),
+    ('Announcement: see CHANGELOG', ANNOUNCE),
+    ('Announcement: TBD at release', ANNOUNCE),
+    ('Announcement: see https://acme.test/n', ANNOUNCE),  # a URL inside prose
+    ('Announcement: https://acme.test/n (written at release)', ANNOUNCE),
+    ('Announcement: https://acme.test/a https://acme.test/b', ANNOUNCE),
+    ('Announcement: [the note](https://acme.test/n)', ANNOUNCE),
+    ('Announcement: <https://acme.test/n>', ANNOUNCE),
+    ('Announcement: ftp://files.acme.test/notes.txt', ANNOUNCE),  # a non-http scheme
+    ('Announcement: file:///home/x/notes.md', ANNOUNCE),
+    ('Announcement: javascript:alert(1)', ANNOUNCE),
+    ('Announcement: HTTPS://acme.test/n', ANNOUNCE),
+    ('Announcement: www.acme.test/n', ANNOUNCE),
+    ('Announcement: https://', ANNOUNCE),
+    ('Announcement: https:// acme.test/n', ANNOUNCE),
+    ('Announcement: https:///n', ANNOUNCE),
+    ('Announcement:', ANNOUNCE),  # whitespace and blanks
+    ('Announcement: \t ', ANNOUNCE),
+    ('Announcement:\nhttps://acme.test/n', ANNOUNCE),
+    ('Announcement: https://acme.test/n', ANNOUNCE),
+    ('Announcement: https://acme.test/n ', ANNOUNCE),
+    ('  Announcement: https://acme.test/n', ANNOUNCE),
+    ('> Announcement: https://acme.test/n', ANNOUNCE),
+    ('announcement: https://acme.test/n', ANNOUNCE),
+])
+def test_an_announcement_counts_only_as_one_http_url_alone_on_its_line(root, fake, line, found):
+    standard(root)
+    fake.prs['42'] = {**make_pr(body=f'WUWEI-Item: I-1\n{line}'), 'title': 'feat!: drop the v1 export'}
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found
+
+
+def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
+    head = 'WUWEI-Item: I-1\nAnnouncement: https://'
+    body = head + 'a' * (65536 - len(head) - 2) + ' x'  # a host run that never reaches the end of the line
+    standard(root)
+    fake.prs['42'] = {**make_pr(body=body), 'title': 'feat!: drop the v1 export'}
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    started = time.perf_counter()
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ANNOUNCE
+    assert time.perf_counter() - started < 1
 
 
 @pytest.mark.parametrize('said, found', [
