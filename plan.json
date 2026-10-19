@@ -50,6 +50,29 @@
    "approved": false
   },
   {
+   "id": "spec-key-encoding",
+   "title": "fix(evidence): the spec cache key encodes the file list unambiguously",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 24.0,
+   "why": "#1167 merged at cc6d07f with the security gate's blocking finding open (.wuwei/verdicts/1161/security-cc6d07f.md): the file-list digest joins paths with a newline and a git path can hold one, so two file lists at one head share a cache key and the merge door can read a clean spec result for a diff that carries an open spec gap; 16 hex is short.",
+   "promise": "The spec cache key hashes json.dumps(sorted(files)) and keeps 32 hex. Files: cli/wuwei/evidence.py, its vendored copy, tests/test_evidence.py. Runtime estimate 0, budget 2. evidence.py is an owner path.",
+   "acceptance": [
+    "given a first read whose diff holds one path 'specs/8-stacked/spec.md\\nsrc/app.py', then a retarget at the same head whose diff holds those as two paths with an unchecked tasks.md, when the merge door reads it, then it denies naming specs/8-stacked"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "spike-962",
    "title": "spike: can PostToolUse confirm an owner answer against the session transcript",
    "goal": "G-4",
