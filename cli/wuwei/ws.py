@@ -223,6 +223,15 @@ def cache_get(root, name, max_age):
     return None
 
 
+def cache_prune(root, max_age, *patterns):
+    for path in (p for pattern in patterns for p in (Path(root) / DIR / 'cache').glob(f'{pattern}.json')):
+        try:
+            if now().timestamp() - path.stat().st_mtime > max_age:
+                path.unlink()
+        except OSError:
+            pass
+
+
 def cache_put(root, name, value):
     atomic_write(Path(root) / DIR / 'cache' / f'{name}.json', json.dumps(value))
     return value

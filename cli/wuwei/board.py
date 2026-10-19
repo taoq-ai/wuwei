@@ -62,7 +62,9 @@ def compute(root, everything=False):
         mine = [item for item in open_items if item.get('repo') == repo]
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
-            prs = evidence._cached(root, 'prs-' + repo.replace('/', '__'), lambda: gh.open_prs(repo), TTL)
+            slug = repo.replace('/', '__')  # a list read also drops PR and compare entries a day old (#1161)
+            prs = evidence._cached(root, 'prs-' + slug, lambda: ws.cache_prune(root, 86400, f'pr-{slug}-*', f'cmp-{slug}-*')
+                                   or gh.open_prs(repo), TTL)
             merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
