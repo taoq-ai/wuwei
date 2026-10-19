@@ -75,6 +75,30 @@
    "reason": "Read from this session's real plan question (tool_use toolu_01BykhNnzNaG4s2ozvGdRfzC, 2026-10-18). (a) The transcript row with the matching tool_result is stamped 13:56:09.296Z and sits before the hook_success and hook_additional_context rows; the ledger prompt row is stamped 13:56:09 (second resolution), so the order at hook time is not shown. Claude Code docs (hooks.md) say the transcript is written asynchronously and may lag: unmeasured until a hook reads the file at hook time and logs whether the id is present. (b) transcript_path is /root/.claude/projects/-home-user-wuwei/<session>.jsonl, mode 600 owned by root; the session runs as root and guards.py names no projects-dir rule, so a Bash or Write call can write it today. (c) Per hooks.md the payload carries only common fields (session_id, transcript_path, cwd, hook_event_name, tool fields); no field marks a harness-originated call. Still lacks: (a) at hook time, via a probe hook that logs presence before returning."
   },
   {
+   "id": "required-checks",
+   "title": "fix(evidence): a required status check that never ran on the head is a gap, so the merge door holds a PR GitHub reports blocked",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 23.0,
+   "why": "2026-10-19: release PRs #1156 and #1157 merged with main's required checks (test (3.11), test (3.12), ziran-audit) never run on their heads; release-please pushes with the workflow token, which starts no workflow, and enforce_admins is false, so an admin merge went through while GitHub reported mergeable_state blocked. wuwei evidence said no gaps because it reads only the checks that reported.",
+   "promise": "evidence reads the base branch's required status checks (branch protection or rulesets, through REST) and the PR's mergeable_state; a required check with no run on the head is a safety gap naming the check, and mergeable_state blocked with no reason WUWEI can name is a gap that says so. An unreadable protection read fails closed for the merge door. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py, tests, the vendored copy, docs. Runtime estimate +8, budget 10. AGENTS.md: the evidence.py route differential.",
+   "acceptance": [
+    "given a PR whose head has CodeQL green and no run of a required check test (3.11), when wuwei evidence reads it, then it shows a safety gap naming test (3.11) and the merge door refuses",
+    "given every required check green on the head, then evidence reads as on main"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "ready-door-ref",
    "title": "fix(guards): the ready door reads gates for the PR it turns ready, so a PASS for another PR of the item no longer counts there",
    "goal": "G-2",
