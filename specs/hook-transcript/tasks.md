@@ -32,3 +32,5 @@
 - [x] T019 Real-entry probe: every forge shape run under bash against the hook entry at main and the head; the entry reads no projects folder its caller names (tests/test_hook.py, HOME and CLAUDE_CONFIG_DIR)
 - [x] T020 Mutants of each new condition, both copies, one at a time, wall-clock tests deselected (mutants.py), with tests added for the last answer row, the tool name and a row written within the wait
 - [x] T021 Full suite green; runtime under the 3,400 cap
+- [x] T022 Tests that kill the survivors: a FIFO under the projects folder (H3), a row written from inside the Stop's wait (H11), the agent-id case with the real type (H14)
+- [x] T023 Merge origin/main f63c804 and dc9aad9 (merge commits); differential and full suite at the merged head

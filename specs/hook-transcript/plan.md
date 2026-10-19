@@ -14,8 +14,8 @@ launch. The guards refuse writes under the harness's projects folder.
 Python 3.11 stdlib (`pathlib.Path.resolve(strict=True)`, `is_relative_to`, `pwd`). Tests in
 tests/test_hook.py, tests/test_guards.py and the tests that answer owner questions or stop seats
 (test_breaking, test_codex, test_models, test_plan, test_report, test_view), with two conftest
-helpers that write the transcript rows a real flow has. Runtime cap 3,400 lines; base 5a33509 is
-at 3,178.
+helpers that write the transcript rows a real flow has. Runtime cap 3,400 lines; base 5a33509 was
+at 3,178 and main dc9aad9 is at 3,183.
 
 ## Constitution Check
 
@@ -25,7 +25,7 @@ at 3,178.
   the trust ruling names; no new class of door.
 - IV. The owner decides only what matters: the trust model is the owner's ruling of 2026-10-19.
 - V. Test first: the new tests ran red on base code (223 in test_hook.py, 255 in test_guards.py).
-- VI. Budgets: no config key; runtime 3,178 to 3,251 (see Lines).
+- VI. Budgets: no config key; runtime +73 (see Lines).
 - VII. Security first: never simplify away a trust-boundary check; the transcript check is one.
 
 ## Design
@@ -63,8 +63,8 @@ at 3,178.
 ## Lines
 
 hook.py +60 (the transcript reader, the deferred confirmation with its claim and wait, the seat
-launch check, the docstrings), guards.py +11, ws.py +2: runtime 3,178 to 3,251, under the 3,400
-cap. The item's budget is 22. See the spec's Assumptions.
+launch check, the docstrings), guards.py +11, ws.py +2: +73, runtime 3,183 to 3,256 on main
+dc9aad9, under the 3,400 cap. The item's budget is 22. See the spec's Assumptions.
 
 ## Guard testing (AGENTS.md)
 

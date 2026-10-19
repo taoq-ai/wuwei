@@ -193,6 +193,10 @@ recorded real launch records `seat.stopped` as today.
   attestation judged on its own.
 - A nested seat (spawnDepth 2) is launched from a seat's transcript, not the session's, so its
   stop is unconfirmed. WUWEI's seats launch none.
+- The item budgets +22 runtime lines; this adds 73 (hook.py +60, guards.py +11, ws.py +2). The
+  deferred confirmation (keep, claim, wait, notes) and the seat launch check were not in the
+  estimate; nothing was removed to offset it. Overturned if the planner holds the item to 22, in
+  which case the seat-stop check splits out.
 - Under the SemVer rule this is a patch: it refuses records it used to accept from a forged or
   unreadable payload; real Claude Code flows record the same rows. Overturned if the arch gate
   rules the Codex change (How this fails 3) breaking.
