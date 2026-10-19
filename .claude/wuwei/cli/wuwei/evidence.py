@@ -50,6 +50,7 @@ RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins rele
 VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
+GATES = re.compile(r'(?:gates missing at head \w+: |no gate passed at head \w+ \(a delta review by )([\w, ]+)')  # a gate gap's gates
 DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
@@ -431,12 +432,13 @@ def gaps(root, repo, number):
 
 
 def excepted(root, ref, head, found):
-    """Drop the gaps the owner accepted at this head; each acceptance is an exception on the record."""
-    accepted = [row['data'].get('gap', '') for row in ws.rows(root, 'ruling')
-                if row['data'].get('kind') == 'exception' and row['data'].get('approved')
-                and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')]
-    near = lambda a, g: a.casefold() in g.casefold() or g.casefold() in a.casefold()  # noqa: E731
-    return [g for g in found if not any(a and near(a, g['text']) for a in accepted)]
+    """Drop each gap the owner accepted at this head by its exact text or its gate gap's exact gates, never by a part
+    of either (case, spacing, end marks and a printed [waiting] aside); each acceptance is an exception on the record."""
+    norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
+    accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
+                and row['data'].get('kind') == 'exception' and row['data'].get('approved')
+                and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}
+    return [g for g in found if not {norm(g['text']), norm((GATES.match(g['text']) or ('', ''))[1])} & accepted]
 
 
 def owner_approved(root, repo, pr):
