@@ -40,8 +40,8 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 - the gates the diff needs, passed at the head before the PR turned ready;
 - green CI and every review thread answered;
 - owner review on `owner_paths`;
-- a breaking change to an outward contract announced (`Announcement: <link>`) and confirmed by the
-  owner (`breaking:`);
+- a breaking change (a SemVer major) announced (`Announcement: <url>`) and confirmed by the owner
+  (`breaking:`);
 - at `full`, the spec engine's artifacts.
 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
@@ -141,7 +141,8 @@ adds them with `wuwei plan add`, which computes the score.
    branch, review findings, review threads asking for follow-up work, follow-ups recorded in
    recent PRs, regressions in the report. Mark a source you cannot reach as unmeasured.
 2. Each candidate cites the goal in `.wuwei/goals.md` it serves, or is marked unplanned.
-   Deduplicate against the plan and open PRs. Verify the work is still open.
+   Deduplicate against the plan and open PRs. Verify the work is still open. A goal the owner
+   ruled met (the report's `Met goals:` line) gets no new candidates.
 3. On a later pass the same day, start from what changed since the last pass: merged items, parked
    items, the owner's new words.
 

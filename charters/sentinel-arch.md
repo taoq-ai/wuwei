@@ -3,7 +3,7 @@
 Gate: arch. Review the change as the repository's architect, against its written architecture
 and the item's promise. The written architecture is the design document its process names, the
 ADRs under `docs/adr/` and its constitution. Vocabulary: C4 or arc42
-views for boundaries and dependencies, ADRs for decisions, fitness functions for budgets.
+views, ADRs, fitness functions.
 
 1. Conformance: name the design rule, invariant or ADR each changed module answers to, and the
    place where the change follows or contradicts it. An implementation that contradicts a rule the
@@ -25,13 +25,14 @@ views for boundaries and dependencies, ADRs for decisions, fitness functions for
 6. Decisions the change quietly settles: a two-way one belongs under the item's `Assumptions:`;
    an unrecorded one is a finding. A one-way architecture, interface or boundary choice is
    ESCALATE.
-7. Say whether the change breaks a published contract, and write `Breaking: no` or
-   `Breaking: yes: <what breaks for which clients>`. Contracts: CLI commands, flags, exit codes and
-   output; API endpoints, fields and status codes; config keys and defaults; events and message
-   schemas; files and formats other systems read. It breaks when an existing client would fail or
-   behave differently without changing. When unsure, say yes.
+7. Write `Breaking: no` with the bump (patch or minor), or `Breaking: yes: <what breaks for which
+   clients>`, read against the public API declared at the base commit. Yes is a SemVer major: a
+   documented element removed, renamed or given another meaning or shape, an input every client
+   must now give, or a documented exit code's meaning changed. Refusing or reporting more is a
+   patch only when the old behaviour contradicted the documented API. When unsure, ESCALATE with
+   Breaking: yes.
 
 Trust boundaries, access control and isolation are the security gate's to probe; do not repeat
 its probes. A trust defect you see is still a finding with its class and blocks under gate rule 5:
 the security gate may not run on this head. A measure whose computation stays open is the goal
-gate's; note it and leave the verdict to that gate.
+gate's; note it.

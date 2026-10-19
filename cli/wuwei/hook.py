@@ -9,7 +9,7 @@ import re
 import sys
 import time
 
-from wuwei import board, evidence, guards, plan, sync, verdict, ws
+from wuwei import board, evidence, guards, plan, sync, verdict, view, ws
 
 
 def transcript(payload):
@@ -144,6 +144,8 @@ def _verdict_problem(root, payload, role):
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
     verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
+    free = lambda p: next(n for i in range(2, 999) if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md')  # noqa: E731
+                          not in {q.name for q in p.parent.iterdir()})  # the next <stem>-N.md beside p that no file or link holds
     try:
         path = path.resolve()
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
@@ -151,7 +153,7 @@ def _verdict_problem(root, payload, role):
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
-                return f'{copy} already holds another verdict: write yours beside it as {copy.stem}-2.md.'
+                return f'{copy} already holds another verdict: write yours beside it as {free(copy)}.'
             ws.atomic_write(copy, body)
             path = copy
         path.relative_to(verdicts)
@@ -163,13 +165,12 @@ def _verdict_problem(root, payload, role):
     if any(row.get('sha256') == sha for row in earlier):
         return None
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
-        return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and '
-                f'theirs still counts as recorded. Write yours to {path.stem}-2.md beside it (the next free '
-                'number) and end with its Verdict file: line.')
+        return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
+                f'counts as recorded. Write yours to {free(path)} beside it (the next free number) and end with its Verdict file: line.')
     parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
-                + '\nRewrite it in this shape:\n' + verdict.FORMAT)
+                + f'\nWrite the corrected verdict to {free(path)} beside it (the next free number) in this shape:\n' + verdict.FORMAT)
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
@@ -260,6 +261,10 @@ def _answers(root, data, response):
             else:
                 ws.record(root, 'plan.change', {'answer': answer})
                 notes.append('WUWEI: the owner asked for a change: apply it, show the view again and re-ask.')
+        if (goal := re.match(r'\s*goal: *(G-[0-9]+) met\?', question, re.I)) and answer:  # what the plan pass asks (#975)
+            name, outcome = goal[1].upper(), {k.upper(): v[0] for k, v in view.goals(root).items()}.get(goal[1].upper(), '')  # the goal answered
+            ws.record(root, 'ruling', {'kind': 'goal.met', 'goal': name, 'outcome': outcome, 'approved': yes, 'question': question, 'answer': answer})
+            notes.append(f'WUWEI: goal {name} recorded as ' + ('met.' if yes else 'open; the plan pass offers it again once its date moves.'))
         if question.lower().startswith('one-way:') and answer:
             notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
                          "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
