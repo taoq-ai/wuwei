@@ -124,10 +124,13 @@ Error budget: when a repository's 28-day change failure rate (reverts over merge
 merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
 the diff. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A gate's
-verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for that
-PR (for its repository before the PR is read); a finding holds from any PR of the item and displaces
-a pass. A pass clears a finding only from a strict descendant of its head, so a pass at the same or
-an older head clears nothing. Gaps are
+verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
+PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
+`wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
+the item in that repository counts. A finding holds from any PR of the item and displaces a pass.
+A later pass at the same or an older head never clears a finding: only a pass from a strict
+descendant of its head does. An arch `Breaking: no` clears a yes the same way, and only for this
+PR or its repository alone. Gaps are
 actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass. A PR read
 after it merged lists what it lacked as `post-merge:` gaps, and the report counts a finding attested
 after the merge as an escape.
