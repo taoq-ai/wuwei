@@ -1,0 +1,29 @@
+Verdict: PASS
+Gate: arch
+Item: push-refspecs
+PR: taoq-ai/wuwei#1155
+Head: b16d799d3d522d11111fe796b483258e57a57968
+Confidence: high
+Breaking: no (patch)
+
+## Findings
+- [low] cli/wuwei/guards.py:146 blocks: no. The head comment cites remote.c for "the last colon splits a refspec"; that split is parse_refspec in refspec.c (remote.c holds count_refspec_match). Comment accuracy only.
+- [low] blocks: no. Known limits the PR lists as candidates are not in SECURITY.md's "Not read" list: (a) `git checkout main && git push origin HEAD` passes, because HEAD is read at call time (true on main too, not a regression); (b) a local symbolic ref to refs/heads/main pushed with no colon (refs written before the call). The list already names config set before the call. Adding these two is a docs follow-up, outside this item.
+- [low] blocks: no. fnmatchcase also reads `?` and `[..]`, which git's match_name_with_pattern does not. git's check_refname_format refuses `?` and `[` in a refspec, so the only difference is over-refusal of pushes git would fail anyway (`refs/heads/mai?`; the PR's VAL sweep shows git exit 128).
+
+## Probes
+- Conformance: design.md section on doors (line 155) and doors.md History row say a push to or deletion of the default branch is refused. The head brings git_push in line with that rule for the spellings git 2.43 reads. Both docs get the same clause (destinations main, heads/main, refs/heads/main after the last colon; `:`, --all, --branches, a glob whose destination can match). SECURITY.md describes no refspec reading, so it has nothing to contradict. Vendored copy: `diff` of cli/wuwei/guards.py against .claude/wuwei/cli/wuwei/guards.py at the head shows they match.
+- Design, one place: `grep -n "git_push\|refspec\|rpartition" cli/wuwei/*.py` shows git_push is the only reader of refspecs. Its one caller is guards.bash line 367, which is unchanged. scratch() reads only args[0] as the remote, and its plain-word class `[\w./=@:+-]` keeps `*` and quotes out. No second parser, no new helper, no new import: fnmatchcase was already imported at line 5. Every rule has a comment naming git's behaviour. The `[x] * bool` idiom matches the file's own style (`['clean'] * (...)`, `[tokens[i+1]] * (not ...)`). Longest new line is 135 characters; the file already has lines up to 160.
+- Coupling: git_push still depends only on deny, PUSHED, current_branch, origin and _default. No new edge, no cycle.
+- Glob assumption (destination alone): this is the two-way choice, and it is recorded. It is in the spec Assumptions and Clarifications, the analysis (A1) and the PR body Assumptions, each with what would overturn it (the owner wants such pushes to pass, which needs local refs read at call time). The reasoning holds. A source pattern cannot rule out reaching main without reading local refs, because any destination pattern that matches refs/heads/main is reached by some local ref (`refs/heads/f/*:refs/heads/*` through f/main, which the probe builds and real git moved). A command can also create that ref earlier in the same line. The cost falls on the safe side (360 glob refusals with git exit 0 and main unmoved), it is cheap to reverse, and acceptance 3's `refs/heads/f/*:refs/heads/f/*` still passes. I agree with it.
+- Fitness: runtime is 3,027 lines at the head against 3,026 at base 5fe8347 (`cat cli/wuwei/*.py | wc -l` in both archives), +1 against the item budget of +4 and the cap of 3,400 (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Stdlib only.
+- Route differential (head's routes.json read by base's guards in a git archive copy, `pytest tests/test_guards.py -k route`): sha256 9e099867...a7901b0 at base (257 routes), 3c80e7c1...7aff3c at head (269). 0 of base's 257 rows move. 8 added rows move pass to push: feature:heads/main, `:`, `--all origin`, `origin --all`, `'refs/heads/*:refs/heads/*'`, heads/main, `:/fix:main`, `--mirr`. The 4 acceptance-3 rows pass on both. No refusal names another PR or repository.
+- Generated probe re-run (specs/push-refspecs/probe.py copied to my scripts folder, `python3 -I`, real bash, stub git exec'ing git 2.43.0) at the head: 6,398 generated, 6,370 ran the door program (git push), 0 holes, 1,037 moved main, 3,178 passed the guard, 926 refusals with git exit 0 and main unmoved. Same as the PR.
+- Mutants, each in its own fresh git archive copy, applied to both guards.py copies, run with `pytest tests/test_guards.py -k "refspec or reads_at_and_tags or every_route_reads"`: first colon (34 fail), no `@` (2), glob normalised as a name (1, `refs/*:refs/*`), `--tags` keeps HEAD (2), `--mirror` in full only (4), no `heads/` strip (6), no `:` rule (3), no `--all` (6). 8 of 8 killed.
+- Full suite at the head (`pytest -q`): 1973 passed, 2 skipped.
+- Breaking: the public surface is the hook's decisions and their reason text. Every reason text is unchanged. The new refusals cover pushes the documented door already said it refuses (a push that reaches the default branch), so this is a fix of behaviour that contradicted the docs. The one lifted refusal (`git push --tags origin` from a clone on main) pushes no branch. No CLI flag, exit code, config key or file format changes. Reading: patch.
+- Owner review: cli/wuwei/guards.py is in owner_paths, so the owner must review at this head before merge (Done rule, not an arch finding).
+- Confidence high: I re-ran the probe, the routes, the mutants and the suite myself at the head and got the builder's numbers. What would lower it: a destination spelling the probe does not generate, or a git version other than 2.43 with different refspec rules.
+
+## Residual risk
+Config-steered pushes (git-globals), refs written before the call and HEAD read at call time after a `git checkout main &&` stay open, all outside this item. The guard follows git 2.43's rules, and a later git (with --branches as a real option) may add spellings.
