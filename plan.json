@@ -318,6 +318,30 @@
    "approved": false
   },
   {
+   "id": "goal-held",
+   "title": "feat(report): the report lists goals held by a no, and a goal-met answer for a goal goals.md does not hold records nothing",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "Arch gate on goal-met (#1145, arch-0039ce2.md and arch-edf2739.md) left low notes: a goal held by a no shows nowhere, so an owner who answered no has no signal; a yes to a goal goals.md does not hold records an empty Outcome, so a goal later added with no Outcome line starts out met (hook.py:264); a past-day report shows today's met set.",
+   "promise": "The report prints `Held goals:` next to `Met goals:` for goals a no holds until their date moves. The hook records no goal.met ruling when goals.md does not hold the goal. Files: cli/wuwei/report.py, cli/wuwei/hook.py, tests, the vendored copy. Runtime estimate +3, budget 4.",
+   "acceptance": [
+    "given a no to `goal: G-2 met?`, when the report runs that day, then it prints `Held goals: G-2.`",
+    "given a yes to `goal: G-9 met?` and no G-9 in goals.md, when the hook reads it, then no ruling is written, and a G-9 added later is offered when its date passes"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "merge-ref",
    "title": "feat(gates): gates run the item's checks on the merge with the base, and evidence says when the base moved since the gates",
    "goal": "G-2",
@@ -610,31 +634,6 @@
     "given this container, when the builder runs the recipe's commands as written from a seat-named scratch folder, then psql connects over TCP, `SHOW server_encoding` prints UTF8, and teardown leaves the folder empty",
     "given two seats with different item ids, when each derives its port, then the ports differ",
     "given agents/builder.md and agents/sentinel-quality.md at the head, when a reader looks for a database, then each names the page and the CI fallback"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
-   "id": "goal-met",
-   "title": "feat(plan): a plan pass offers a goal as met when its date passed or its measure is met, and a met goal gets no new items",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 8,
-    "risk": 3,
-    "size": 3
-   },
-   "score": 5.33,
-   "why": "A dated goal with a stale target is what this pass found; the plan should surface it, not the lead by chance.",
-   "promise": "(1) `wuwei plan pass` lists each goal in goals.md whose Date has passed and that has no met ruling: \"goal G-n dated <d>: ask the owner 'goal: G-n met? <evidence>'\". (2) An answer of yes to a question starting \"goal: G-n met?\" records a ruling kind goal.met with the goal id; no keeps it open and the next pass offers it again only after its date moves. (3) The report lists met goals; lead.md: a met goal gets no new candidates. goals.md changes only by the owner. Runtime lines: +9, budget 13. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after budget-3400 and exception-shape (hook._answers sits beside exception_refs). hook-transcript starts after it. Rollback: revert the commit. Outside: reading a goal's measure automatically (the planner states the evidence in the question).",
-   "acceptance": [
-    "given goals.md with a goal dated yesterday and no ruling, when wuwei plan pass runs, then it prints the goal: question line once for that goal",
-    "given the owner answers yes to \"goal: G-2 met? ...\", when PostToolUse runs, then a ruling goal.met G-2 is recorded and the report lists G-2 as met",
-    "given the answer no, when the next plan pass runs on the same date, then it does not offer G-2 again"
    ],
    "status": "open",
    "added": "2026-10-18",
@@ -2236,6 +2235,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1082"
+  },
+  {
+   "id": "goal-met",
+   "title": "feat(plan): a plan pass offers a goal as met when its date passed or its measure is met, and a met goal gets no new items",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 3
+   },
+   "score": 5.33,
+   "why": "A dated goal with a stale target is what this pass found; the plan should surface it, not the lead by chance.",
+   "promise": "(1) `wuwei plan pass` lists each goal in goals.md whose Date has passed and that has no met ruling: \"goal G-n dated <d>: ask the owner 'goal: G-n met? <evidence>'\". (2) An answer of yes to a question starting \"goal: G-n met?\" records a ruling kind goal.met with the goal id; no keeps it open and the next pass offers it again only after its date moves. (3) The report lists met goals; lead.md: a met goal gets no new candidates. goals.md changes only by the owner. Runtime lines: +9, budget 13. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after budget-3400 and exception-shape (hook._answers sits beside exception_refs). hook-transcript starts after it. Rollback: revert the commit. Outside: reading a goal's measure automatically (the planner states the evidence in the question).",
+   "acceptance": [
+    "given goals.md with a goal dated yesterday and no ruling, when wuwei plan pass runs, then it prints the goal: question line once for that goal",
+    "given the owner answers yes to \"goal: G-2 met? ...\", when PostToolUse runs, then a ruling goal.met G-2 is recorded and the report lists G-2 as met",
+    "given the answer no, when the next plan pass runs on the same date, then it does not offer G-2 again"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1145 (9610bee) after goal, quality and security passed at 0039ce2 and arch passed the fix round at edf2739; evidence showed no gaps"
   },
   {
    "id": "status-perf",
