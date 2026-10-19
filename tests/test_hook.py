@@ -1099,3 +1099,43 @@ def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
     assert REPORT_1160 in note and 'second round done' in note
+
+
+def broken_install(tmp_path, break_it):
+    """A copy of the plugin, broken by break_it, and a launcher that runs it in a workspace."""
+    import os
+    import shutil
+    import subprocess
+    plugin = tmp_path / 'plugin'
+    for name in ('bin', 'cli', '.claude-plugin'):
+        shutil.copytree(ws.PLUGIN / name, plugin / name, ignore=shutil.ignore_patterns('__pycache__'))
+    break_it(plugin)
+    env = {k: v for k, v in os.environ.items() if k != 'CLAUDE_CODE_REMOTE'}
+    write = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / ws.DIR / 'ledger' / 'x.jsonl'), 'content': 'x'}}
+    return lambda *argv, payload=write: subprocess.run(
+        [str(plugin / 'bin' / 'wuwei'), *argv], input=json.dumps({'cwd': str(tmp_path), **payload}),
+        capture_output=True, text=True, env=env, cwd=tmp_path)
+
+
+@pytest.mark.parametrize('break_it', [
+    lambda plugin: (plugin / '.claude-plugin' / 'plugin.json').unlink(),  # argparse's description reads the version
+    lambda plugin: (plugin / 'cli' / 'wuwei' / 'ws.py').write_text(  # a module that raises at import (#1172)
+        "raise KeyError('getpwuid(): uid not found: 4242')\n" + (ws.PLUGIN / 'cli' / 'wuwei' / 'ws.py').read_text()),
+], ids=('no-plugin-json', 'import-error'))
+def test_a_hook_entry_that_fails_before_it_can_judge_keeps_the_door_shut(root, tmp_path, break_it):
+    run = broken_install(tmp_path, break_it)
+    done = run('hook', 'PreToolUse')
+    assert done.returncode == 2 and done.stdout == ''  # exit 2 is the only exit Claude Code reads as a refusal
+    assert done.stderr.startswith('wuwei hook PreToolUse: ')
+    assert 'FileNotFoundError' in done.stderr or 'KeyError' in done.stderr
+    assert run('hook', 'Stop').returncode == 1  # every other hook fails open, as on main
+    assert run('--version').returncode == 1  # other commands keep their exit codes
+
+
+def test_a_working_install_keeps_its_hook_exit_codes(root, tmp_path):
+    run = broken_install(tmp_path, lambda plugin: None)
+    done = run('hook', 'PreToolUse')
+    assert done.returncode == 0 and json.loads(done.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert run('hook', 'PreToolUse', payload={'tool_name': 'Read', 'tool_input': {'file_path': 'x'}}).returncode == 0
+    assert run('hook', 'PreToolUse', payload={}).returncode == 0
+    assert run('hook').returncode == 2 and run('nonesuch').returncode == 2  # argparse's own usage errors
