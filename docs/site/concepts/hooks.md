@@ -24,7 +24,8 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 **Why the transcript:** a hand-made hook call could otherwise write a ruling or a seat stop the owner never gave.
 An answer or stop the transcript does not show is recorded as `answer.unconfirmed` or
 `seat.unconfirmed` with the reason, at once or at the session's Stop. A session that ends before it
-confirms an answer leaves the answer's `answer.pending` row, which reads as unconfirmed.
+confirms an answer leaves the answer's `answer.pending` row, which reads as unconfirmed. An error while
+the next call confirms an answer is a `hook.error`; the doors still judge that call.
 
 In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
 see [cloud sessions](cloud.md).

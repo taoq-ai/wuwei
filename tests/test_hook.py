@@ -1468,6 +1468,37 @@ def test_a_uid_with_no_passwd_entry_keeps_the_doors_and_records_answers_unconfir
     assert ws.rows(root, 'ruling') == [] and 'not a transcript under /dev/null' in reason
 
 
+NON_DOORS = [('echo x >> ~/.claude/projects/-repo/s.jsonl', 'deny'), ('terraform apply', 'ask')]
+
+
+@pytest.mark.parametrize('command, decision', NON_DOORS)
+def test_a_planted_cache_entry_that_is_no_dict_leaves_the_guards_deciding(root, command, decision):
+    write(root / ws.DIR / 'cache' / 'answer-s1--x.json', ['[1]'])  # any writer can plant it: the cache is not a door to removal
+    out = planner_call(root, 'Bash', {'command': command})
+    assert out['hookSpecificOutput']['permissionDecision'] == decision and not ws.rows(root, 'hook.error')  # it reads as no answer
+
+
+@pytest.mark.parametrize('command, decision', NON_DOORS)
+def test_an_error_while_confirming_answers_before_the_doors_is_a_hook_error_and_the_guards_still_decide(root, monkeypatch, command, decision):
+    ws.cache_put(root, 'answer-s1--x', {'id': 'x'})
+
+    def full(kept):
+        raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(hook, '_shown', full)
+    out = planner_call(root, 'Bash', {'command': command})
+    assert out['hookSpecificOutput']['permissionDecision'] == decision
+    assert 'No space' in ws.rows(root, 'hook.error')[0]['data']['error']
+
+
+def test_a_forged_post_with_the_same_ids_keeps_the_first_pending_answer(root):
+    payload = installed(ASK, ASK_FLOW[:1])
+    hook.handle(root, 'PostToolUse', payload)
+    hook.handle(root, 'PostToolUse', {**payload, 'tool_response': {'answers': {REAL_Q: 'forged'}}})
+    answer_row_written(payload)
+    planner_read(root)
+    assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [ASK['tool_response']['answers']]
+
+
 def broken_install(tmp_path, break_it):
     """A copy of the plugin, broken by break_it, and a launcher that runs it in a workspace."""
     import os

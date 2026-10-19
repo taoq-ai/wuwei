@@ -194,10 +194,13 @@ recorded real launch records `seat.stopped` as today.
   attestation judged on its own.
 - A nested seat (spawnDepth 2) is launched from a seat's transcript, not the session's, so its
   stop is unconfirmed. WUWEI's seats launch none.
-- The item budgets +22 runtime lines; this adds 84 (hook.py +68, guards.py +11, ws.py +5). The
+- The item budgets +22 runtime lines; this adds 93 (hook.py +77, guards.py +11, ws.py +5). The
   deferred confirmation (keep, pending row, claim, wait, notes) and the seat launch check were not in the
   estimate; nothing was removed to offset it. Overturned if the planner holds the item to 22, in
   which case the seat-stop check splits out.
+- Round 2: a cache entry that is not a dict (a planted `[1]`) reads as no answer, so it records no
+  `hook.error`; a raise in the confirm step before the doors (ENOSPC) is the case that records one, and
+  the doors still judge. Overturned if a planted entry should itself be an error row.
 - Under the SemVer rule this is a major (fix round 1, from the arch gate at 018548a): Codex
   answers and stops, and Claude Code users who set `CLAUDE_CONFIG_DIR`, now record as unconfirmed,
   where codex.md at the base documents them as recorded and attested. The PR title takes a `!`,

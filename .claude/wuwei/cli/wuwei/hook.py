@@ -278,7 +278,8 @@ def post_tool(root, payload):
             return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
         ws.record(root, 'answer.pending', kept)  # never a silent drop: with no later prompt or answer.unconfirmed it reads as unconfirmed
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), kept['id']))  # no \ in an f-string on 3.11
-        ws.cache_put(root, 'answer-' + name, kept)
+        if ws.cache_get(root, 'answer-' + name, 7 * 86400) is None:  # the first entry for these ids stays: a forged repeat cannot replace it
+            ws.cache_put(root, 'answer-' + name, kept)
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         if named := sorted(evidence.refs(json.dumps(data))):
@@ -333,7 +334,7 @@ def _confirm(root, payload, final):
     PostToolUse returns), or at a Stop, after up to WAIT seconds, as answer.unconfirmed. A racing hook skips one claimed."""
     notes, end, session = [], time.monotonic() + WAIT * final, re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
-        kept = ws.cache_get(root, path.stem, 7 * 86400) or {}
+        kept = entry if isinstance(entry := ws.cache_get(root, path.stem, 7 * 86400), dict) else {}  # a planted [1] reads as nothing
         while (why := _shown(kept)) and time.monotonic() < end:
             time.sleep(0.1)
         if why and not final:
@@ -494,18 +495,16 @@ def deliver(root, event, payload, out, said):
 def handle(root, event, payload):
     if (handler := HANDLERS.get(event)) is None:
         return None
-    planner = not payload.get('agent_id') and event in ('PreToolUse', 'PostToolUse', 'Stop')
-    try:  # answers are recorded before a door reads the ledger, and at PostToolUse after it kept its own
+    planner, said = not payload.get('agent_id') and event in ('PreToolUse', 'PostToolUse', 'Stop'), []
+    try:  # answers are recorded before a door reads the ledger; when that fails the doors still judge
         said = _confirm(root, payload, event == 'Stop') if planner and event != 'PostToolUse' else []
+    except Exception as exc:
+        _failed(root, event, exc)
+    try:  # at PostToolUse the answers are recorded after it kept its own
         out = handler(root, codex(payload))
         said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []
-    except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
-        message = f'{type(exc).__name__}: {exc}'[:300]
-        print(f'wuwei hook {event}: {message}', file=sys.stderr)
-        try:
-            ws.record(root, 'hook.error', {'event': event, 'error': message})
-        except Exception:
-            pass
+    except Exception as exc:  # a door that cannot judge stays shut
+        message = _failed(root, event, exc)
         if event == 'PreToolUse' and door(payload):
             return {'hookSpecificOutput': {'hookEventName': event, 'permissionDecision': 'deny', 'permissionDecisionReason':
                     f'WUWEI: this call names a door and the hook failed while checking it ({message}); fix the cause and retry.'}}
@@ -515,6 +514,16 @@ def handle(root, event, payload):
     except Exception as exc:
         print(f'wuwei hook {event}: report delivery failed: {exc}'[:300], file=sys.stderr)
         return out
+
+
+def _failed(root, event, exc):  # fail open: work goes on, the audit records why
+    message = f'{type(exc).__name__}: {exc}'[:300]
+    print(f'wuwei hook {event}: {message}', file=sys.stderr)
+    try:
+        ws.record(root, 'hook.error', {'event': event, 'error': message})
+    except Exception:
+        pass
+    return message
 
 
 def door(payload):

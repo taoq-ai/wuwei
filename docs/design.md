@@ -220,8 +220,8 @@ each session's transcript under the projects folder (`.claude/projects` in the a
 read from the password database, never from `HOME`). An answer counts when that transcript holds the
 AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
 the same answers. Claude Code writes that row after PostToolUse returns, so PostToolUse records
-`answer.pending` and keeps the answer, and the planner's next hook call records it before any door
-reads the ledger. A Stop rereads for up to 1.5 s and then records `answer.unconfirmed` with the
+`answer.pending` and keeps the first answer for its ids, and the planner's next hook call records it before
+any door reads the ledger. An error in that step records `hook.error` and the doors still judge the call. A Stop rereads for up to 1.5 s and then records `answer.unconfirmed` with the
 reason, as PostToolUse does at once for a transcript path outside the projects folder. An
 `answer.pending` row that no `prompt` or `answer.unconfirmed` row with its id follows (a session that
 ended before another hook call) reads as unconfirmed. Each answer id is recorded once: a replay
