@@ -31,7 +31,8 @@ it never denies and never sends `updatedInput`.
    "<model> <effort>"`. A row for the role and tier, else for the role, replaces the table's
    settings. Every "five keys" statement says six.
 5. `wuwei doctor` names `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL` when set and
-   says effort or model advice is then off; the hook skips that half of the comparison.
+   says effort or model advice is then off; the hook skips that half of the comparison. The row is
+   a `note`, so the doctor's exit code stays as on main (fix round 2).
 6. The report's Learning section has one line per seat x model x effort: launches, fix rounds per
    item, blocking findings, escapes traced to a passing gate, tokens, and a line
    "model or effort unrecorded on <n> launches".
@@ -53,7 +54,8 @@ The acceptance scenarios, restated:
    effort.
 5. Given `models = {"builder light" = "opus medium"}`, when the hook reads a light builder launch
    on opus medium, then it gives no advice. Given `CLAUDE_CODE_EFFORT_LEVEL=low`, when
-   `wuwei doctor` runs, then it names the variable and says effort advice is off.
+   `wuwei doctor` runs, then it names the variable, says effort advice is off, and exits as it
+   would without the variable.
 6. Given a ledger with gates on two models, when `wuwei report` runs, then Learning shows one line
    per seat x model x effort with launches, fix rounds, blocking findings, escapes and tokens.
 
@@ -129,7 +131,8 @@ Acceptance 4, the attest joined to its own launch by agent id, and a Codex spawn
 
 ### US4: the owner's rows and the sixth key (P1)
 
-Acceptance 5, `wuwei config models` parsing, and `retired()` not naming `models`.
+Acceptance 5, `wuwei config models` parsing, and `retired()` not naming `models`. A malformed
+`models` row (a list, a table, one word) that names Haiku for a gate still brings the floor note.
 
 ### US5: the doctor and the report (P1)
 
@@ -143,7 +146,8 @@ Acceptance 5 (second half) and 6.
 - FR-003: `seat.started` holds `model`, `asked`, `effort`, `reason`, `item`; `attest` holds `model`, `effort`, `blocking`.
 - FR-004: `ws.DEFAULTS` holds `models`; `config`, `write_config`, `set_config` and `retired`
   handle it.
-- FR-005: `setup.doctor` names the two environment variables when set.
+- FR-005: `setup.doctor` names the two environment variables when set, in `note` rows that leave
+  the exit code alone.
 - FR-006: `report.learning` prints the seat x model x effort lines and the unrecorded count.
 - FR-007: runtime stays at 3,400 or fewer. The item's budget was 40 lines; it lands at 59 (plan.md,
   Lines), recorded for the planner.

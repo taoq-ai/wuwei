@@ -14,7 +14,7 @@ H, R, W, S, A = 'cli/wuwei/hook.py', 'cli/wuwei/report.py', 'cli/wuwei/ws.py', '
 MUTANTS = [
     ('M1 never advise', H, 'if not floor and (reason or any(', 'if True or (reason or any('),
     ('M2 a reason line ignored', H, 'if not floor and (reason or', 'if not floor and (False and reason or'),
-    ('M3 no Haiku floor', H, "floor = role.startswith('sentinel-') and 'haiku' in (fam(model), fam(allowed[0][0]))", 'floor = False'),
+    ('M3 no Haiku floor', H, "floor = role.startswith('sentinel-') and (fam(model) == 'haiku' or 'haiku' in named.lower())", 'floor = False'),
     ('M4 effort ignored', H, "s.rsplit(' ', 1)[1] == effort)", 'True)'),
     ('M5 model ignored', H, "fam(s.rsplit(' ', 1)[0]) == fam(model))", 'True)'),
     ('M6 owner rows ignored', H, "if (own := rows.get(f'{role} {tier}') or rows.get(role))", 'if (own := None)'),
@@ -41,7 +41,7 @@ MUTANTS = [
     ('M28 a launch with no model compared to opus', H, "str(data.get('model') or table[''].rsplit(' ', 1)[0])", "str(data.get('model') or 'opus')"),
     ('M29 asked model not recorded', H, "'asked': str(data.get('model') or 'unrecorded')", "'asked': 'unrecorded'"),
     ('M30 reason not recorded', H, "'reason': reason, 'item': item", "'reason': None, 'item': item"),
-    ('M31 a models row covers the floor', H, "'haiku' in (fam(model), fam(allowed[0][0]))", "fam(model) == 'haiku'"),
+    ('M31 a models row covers the floor', H, " or 'haiku' in named.lower())", ')'),
     ('M32 a fit covers the floor', H, 'if not floor and (reason or any(', 'if (not floor and reason or any('),
     ('M33 attest joins any launch', H, "if r['data'].get('agent') == payload.get('agent_id')), {})", 'if True), {})'),
     ('M34 fix rounds not divided by items', R, '(on_items - len(items)) / len(items) if items', '(on_items - len(items)) if items'),
@@ -52,6 +52,10 @@ MUTANTS = [
     ('M39 floor on every role', H, "floor = role.startswith('sentinel-') and ", 'floor = '),
     ('M40 Task launches not advised', H, "or {}) if payload.get('tool_name') in ('Agent', 'Task')", "or {}) if payload.get('tool_name') == 'Agent'"),
     ('M41 attest rows without blocking not counted', R, 'int(r["data"].get("verdict") != "PASS")', '0'),
+    ('M42 the doctor variable row a warning', S, "rows += [(var, 'note',", "rows += [(var, 'warn',"),
+    ('M43 a Haiku row in capitals covers the floor', H, "'haiku' in named.lower()", "'haiku' in named"),
+    ('M44 a malformed row covers the floor', H, "isinstance(raw := ws.raw_config(root).get('models'), dict)", "isinstance(raw := rows, dict)"),
+    ('M45 the call model covers the floor', H, "(fam(model) == 'haiku' or", '(False or'),
 ]
 TESTS = ['tests/test_models.py', 'tests/test_ledger.py', 'tests/test_report.py', 'tests/test_setup.py', 'tests/test_hook.py']
 

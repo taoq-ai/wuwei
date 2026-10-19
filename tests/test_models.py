@@ -137,6 +137,13 @@ def test_a_haiku_gate_is_advised_even_with_a_reason_or_a_models_row(root, monkey
     assert FLOOR in advice(launch(root, 'sentinel-quality', 'haiku', 'low'))
 
 
+@pytest.mark.parametrize('row', ['["claude-haiku-5-5", "low"]', '{model = "haiku", effort = "low"}', '["haiku"]', '"Haiku"'])
+def test_a_malformed_models_row_cannot_silence_the_haiku_floor(root, row):
+    plan_item(root, 'standard')
+    (root / ws.DIR / 'config.toml').write_text(f'models = {{"sentinel-quality" = {row}}}\n')  # a seat can write any TOML here
+    assert FLOOR in advice(launch(root, 'sentinel-quality', 'claude-sonnet-5-5', 'high'))  # the table's own setting
+
+
 def test_the_haiku_floor_is_for_gates_only(root):
     plan_item(root, 'standard')
     assert launch(root, 'builder', 'haiku', 'low', prompt='Item: I-1\nModel reason: a typo fix') is None
@@ -336,7 +343,23 @@ def test_the_doctor_names_a_variable_that_turns_advice_off(tmp_path, monkeypatch
     assert not any(name.startswith('CLAUDE_CODE_') for name, _, _ in setup.doctor(tmp_path))
     monkeypatch.setenv(variable, 'low')
     rows = {name: (status, detail) for name, status, detail in setup.doctor(tmp_path)}
-    assert rows[variable][0] == 'warn' and f'{half} advice is off' in rows[variable][1] and 'low' in rows[variable][1]
+    assert rows[variable][0] == 'note' and f'{half} advice is off' in rows[variable][1] and 'low' in rows[variable][1]
+
+
+@pytest.mark.parametrize('variable', ['CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL'])
+@pytest.mark.parametrize('others', ['ok', 'warn', 'fail'])
+def test_the_doctor_prints_the_variable_and_keeps_its_exit_code(tmp_path, monkeypatch, capsys, variable, others):
+    from wuwei import __main__
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
+    setup.init(tmp_path)
+    real = setup.doctor  # the variable's real row beside one row of the given status
+    monkeypatch.setattr(setup, 'doctor', lambda root: [('other', others, 'x')] + [r for r in real(root) if r[0] == variable])
+    monkeypatch.setattr(__main__.ws, 'find', lambda: tmp_path)
+    unset = __main__.main(['doctor'])
+    monkeypatch.setenv(variable, 'low')
+    assert __main__.main(['doctor']) == unset == {'ok': 0, 'warn': 1, 'fail': 2}[others]
+    assert f'{variable}: set to low' in capsys.readouterr().out
 
 
 def test_learning_shows_each_seat_by_model_and_effort(root, fake):

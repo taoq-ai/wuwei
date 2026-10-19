@@ -89,7 +89,8 @@ def advise(root, data):
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
     fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
     model, effort = str(data.get('model') or table[''].rsplit(' ', 1)[0]), effort or table[''].rsplit(' ', 1)[1]
-    floor = role.startswith('sentinel-') and 'haiku' in (fam(model), fam(allowed[0][0]))  # no reason or row covers it
+    named = str([raw.get(k) for k in (f'{role} {tier}', role)] if isinstance(raw := ws.raw_config(root).get('models'), dict) else '')
+    floor = role.startswith('sentinel-') and (fam(model) == 'haiku' or 'haiku' in named.lower())  # a row, even one config() drops
     if not floor and (reason or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
                                     (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed)):
         return None

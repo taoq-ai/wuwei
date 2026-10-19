@@ -29,3 +29,10 @@
 - [x] T019 Route corpus and payload differential at main and head with the corpus sha256 (specs/models-record/route_diff.py)
 - [x] T020 40 mutants (M1 to M41; M17 went with the `seat.stopped` effort), each applied to both copies of `cli/` by re-vendoring `.claude/`, in fresh copies: 40 killed, each by a test in tests/test_models.py, 0 survived (specs/models-record/mutants.py)
 - [x] T021 Malformed launch inputs never refuse and never raise (tests/test_models.py)
+
+## Fix round 2
+
+- [x] T022 Merge main (5fe8347); the one conflict is the import line in hook.py (agents and view)
+- [x] T023 The doctor's variable rows are `note` rows and keep the exit code (tests/test_models.py, cli/wuwei/setup.py)
+- [x] T024 A malformed `models` row naming Haiku for a gate brings the floor note (tests/test_models.py, cli/wuwei/hook.py)
+- [x] T025 Docs: README.md, docs/site/concepts/models.md; mutants and route differential re-run on the merged tree

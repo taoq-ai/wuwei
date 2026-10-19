@@ -118,7 +118,8 @@ departure the planner can record with a reason: breaking it is an `exception:` f
   `models = {"builder light" = "opus medium"}`. A row for a role and tier wins over one for the
   role alone. A `models` row that puts Haiku 5.5 on a gate does not break the floor: only your
   `exception:` answer does.
-- `wuwei doctor` names `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL` when they are set.
+- `wuwei doctor` names `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL` in a `note` row when
+  they are set. A note never changes the doctor's exit code.
   With the first set, the hook leaves effort out of its note; with the second, the model.
 - `/wuwei-watch` may run on Sonnet 5.5 at medium effort through its own frontmatter. The skill offers
   that as an option, not a default.
