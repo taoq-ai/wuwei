@@ -85,7 +85,7 @@ security`); a part of either waives nothing.
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
 | The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
-| CI green, threads answered, a reviewer requested | every PR |
+| CI green (every check the base branch requires ran), threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |
 
@@ -117,11 +117,16 @@ exception. An unreadable Actions host shows the gap with `(Actions host unreadab
 
 Required checks: the checks the base branch requires, by branch protection (the branch read) and by
 the rulesets for the branch, cached 15 minutes per repository and branch. A required check with no
-check run and no status of that name on the head reads `required check not run at <sha7>: <names>`,
-an actionable safety gap, with or without auto-merge (a push with the workflow token starts no
-workflow, #1156). A failed or malformed read shows `required checks unreadable on <branch>: <error>`,
-waiting, and is not cached. A PR GitHub reports `mergeable_state` blocked with no other safety gap
-reads `GitHub reports the merge blocked for a reason WUWEI cannot name`.
+check run and no status of that name on the head, once CI has settled, reads `required check not run
+at <sha7>: <names>`, an actionable safety gap, with or without auto-merge (a push with the workflow
+token starts no workflow, #1156). While CI runs it reads `required check not run yet`, waiting, and
+arming auto-merge passes (GitHub creates a job's check run only once it is queued). A release PR's
+gap points at the way through: a `RELEASE_PAT` secret for release-please (contents and
+pull-requests write), meanwhile a close and reopen or an owner exception. A failed or malformed
+read shows `required checks unreadable on <branch>: <error>`, waiting, and is not cached. A PR
+GitHub reports `mergeable_state` blocked with no other safety gap reads `GitHub reports the merge
+blocked for a reason WUWEI cannot name`, waiting; it holds a direct merge, and arming auto-merge
+passes, since GitHub's auto-merge waits on that hold.
 
 Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
 declared public API. The public API and
@@ -157,8 +162,8 @@ missing PR, and `wuwei plan done` closes it with the final evidence.
 
 Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or
 `ccr/auto_merge` in any spelling of method, path, host or `{owner}/{repo}`, a GitHub MCP merge
-tool; arming auto-merge passes while only CI runs); a PR opened ready for review (`gh pr create`,
-`gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
+tool; arming auto-merge passes while only CI runs or only GitHub's own merge hold is left); a PR
+opened ready for review (`gh pr create`, `gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
 needs pass at the branch head, while a draft (`--draft`, `-F draft=true`, MCP `draft` true) opens so
 CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP
 `update_pull_request` with `draft` false) and a reviewer request on a draft (`gh pr edit

@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from urllib.parse import quote
 
 
 class GhError(Exception):
@@ -146,11 +147,12 @@ def releases(repo):
 
 
 def rules(repo, branch):
-    return pages(f'repos/{repo}/rules/branches/{branch}')
+    return pages(f'repos/{repo}/rules/branches/{quote(branch, safe="/")}')  # a branch a#b is never read as a
 
 
 def required_checks(repo, branch):  # protection then rulesets, each once; the branch read needs read access only, no 404 when unprotected
-    return list(dict.fromkeys(run(['api', f'repos/{repo}/branches/{branch}'])['protection']['required_status_checks']['contexts'] + [
+    found = run(['api', f'repos/{repo}/branches/{quote(branch, safe="/")}'])['protection']['required_status_checks']['contexts']
+    return list(dict.fromkeys(found + [
         c['context'] for r in rules(repo, branch) if r['type'] == 'required_status_checks' for c in r['parameters']['required_status_checks']]))
 
 

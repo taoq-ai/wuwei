@@ -50,6 +50,7 @@ RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins rele
 VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
+AUTO = re.compile(r'^(CI running$|required checks? not run yet at |GitHub reports the merge blocked)')  # GitHub's auto-merge waits on these
 GATES = re.compile(r'(?:gates missing at head \w+: |no gate passed at head \w+ \(a delta review by )([\w, ]+)')  # a gate gap's gates
 DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
@@ -441,17 +442,20 @@ def gaps(root, repo, number, listed=None):
         except (gh.GhError, AttributeError, TypeError) as exc:  # an unreadable Actions host shows the gap, never a pass
             ci, why = True, f' (Actions host unreadable: {exc})'
         found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
+        settled = all(c.get('status', 'COMPLETED') == 'COMPLETED' and c.get('state') not in ('PENDING', 'EXPECTED') for c in rollup or ())
         try:  # a check the base (protection, rulesets) requires with no run at the head; kept by repo and branch; unreadable holds
             key = f'required-{repo.replace("/", "__")}-{hashlib.sha256(pr["baseRefName"].encode()).hexdigest()[:16]}'
             want = _cached(root, key, lambda: gh.required_checks(repo, pr['baseRefName']), PR_TTL)
-            if missing := [c for c in want if c not in {c.get('name') or c.get('context') for c in rollup or ()}]:
-                found.append(gap(f'required check{"s" if len(missing) > 1 else ""} not run at {head[:7]}: {", ".join(missing)}'))
+            if missing := [c for c in want if c not in {c.get('name') or c.get('context') for c in rollup or ()}]:  # a job's run
+                found.append(gap(f'required check{"s" if len(missing) > 1 else ""} not run{"" if settled else " yet"} at {head[:7]}: '
+                                 f'{", ".join(missing)}' + (' (release-please pushed with the workflow token, which starts no workflow: '
+                                 'close and reopen the PR, or give release-please a token)' if generated and settled else ''),
+                                 actionable=settled))  # is created once it is queued: wait while CI runs
         except (gh.GhError, KeyError, TypeError, AttributeError) as exc:
             found.append(gap(f'required checks unreadable on {pr["baseRefName"]}: {exc}', actionable=False))
         author = (pr.get('author') or {}).get('login', '')
         threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, author)
-        if sig and not hit and rollup and all(c.get('status', 'COMPLETED') == 'COMPLETED' and c.get('state') not in (
-                'PENDING', 'EXPECTED') for c in rollup):  # written on a miss only, so its age is the read's; CI settled
+        if sig and not hit and rollup and settled:  # written on a miss only, so its age is the read's; CI settled
             ws.cache_put(root, name, {'sig': sig, 'pr': pr, 'threads': threads})
         if threads:
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
@@ -471,7 +475,7 @@ def gaps(root, repo, number, listed=None):
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
         if pr.get('mergeableState') == 'blocked' and not blocking(found):  # GitHub holds it for a reason no gap names
-            found.append(gap('GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR'))
+            found.append(gap('GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR', False))
         if pr.get('state') == 'MERGED':  # what it lacked when it merged is an escape for the retro (#1050)
             return [dict(g, text='post-merge: ' + g['text']) for g in blocking(found)]
         return excepted(root, ref, head, found)

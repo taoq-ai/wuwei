@@ -1469,11 +1469,52 @@ def test_github_blocked_with_no_gap_wuwei_can_name_is_a_gap(root, fake, state, o
     if other == 'safety':
         fake.prs['42']['statusCheckRollup'][0]['conclusion'] = 'FAILURE'
     found = evidence.gaps(root, 'acme/app', 42)
-    assert (evidence.gap(BLOCKED) in found) == shown
+    assert (evidence.gap(BLOCKED, actionable=False) in found) == shown  # a review hold is not the team's to act on
     assert (f'- {BLOCKED}' in denied(root)) == shown
     assert len(evidence.blocking(found)) == (1 if shown or other == 'safety' else 0)
+    assert (denied(root, auto=True) == '') == (other != 'safety')  # GitHub's auto-merge waits on its own hold
 
 
 def test_the_pr_read_carries_github_mergeable_state(root, fake):
     fake.prs['42'] = {**make_pr(), 'mergeableState': 'blocked'}
     assert gh.pr('acme/app', 42)['mergeableState'] == 'blocked'
+
+
+def test_a_required_check_not_yet_created_while_ci_runs_waits_and_lets_auto_merge_arm(root, fake):
+    complete(root, fake)  # a needs: job: GitHub creates its check run only once the job is queued
+    fake.prs['42']['statusCheckRollup'].append({'name': 'build', 'conclusion': '', 'status': 'IN_PROGRESS'})
+    fake.protection['main'] = ['test (3.11)']
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert [(g['text'], g['kind'], g['actionable']) for g in found] == [
+        ('CI running', 'safety', False), ('required check not run yet at aaaaaaa: test (3.11)', 'safety', False)]
+    assert denied(root, auto=True) == ''
+    assert denied(root).endswith('- CI running\n- required check not run yet at aaaaaaa: test (3.11)')
+
+
+def test_a_required_check_on_the_second_page_of_rules_is_read(root, fake, monkeypatch):
+    complete(root, fake)
+    rule = {'type': 'required_status_checks', 'parameters': {'required_status_checks': [{'context': 'ziran-audit'}]}}
+    monkeypatch.setattr(gh, 'run', lambda args, timeout=30, run=gh.run: (
+        [{'type': 'deletion'}] * 100 if args[1].endswith('page=1') else [rule]) if '/rules/branches/' in args[1] else run(args, timeout))
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required check not run at aaaaaaa: ziran-audit']
+
+
+@pytest.mark.parametrize('status, shown', [
+    ('COMPLETED', 'required check not run at aaaaaaa: ziran-audit (release-please pushed with the workflow token, which starts no '
+                  'workflow: close and reopen the PR, or give release-please a token)'),
+    ('IN_PROGRESS', 'required check not run yet at aaaaaaa: ziran-audit')])  # while CI runs the check may still come
+def test_a_release_pr_with_no_required_run_names_the_way_through(root, fake, status, shown):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    fake.protection['main'] = ['ziran-audit']
+    release_gaps(root, fake)
+    fake.prs['42']['statusCheckRollup'][0]['status'] = status
+    forget(root)
+    assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith('required')] == [shown]
+
+
+def test_the_base_branch_name_is_encoded_in_the_required_reads(root, fake):
+    complete(root, fake)
+    fake.prs['42']['baseRefName'] = 'a#b'
+    evidence.gaps(root, 'acme/app', 42)
+    assert ['api', 'repos/acme/app/branches/a%23b'] in fake.calls
+    assert ['api', 'repos/acme/app/rules/branches/a%23b?per_page=100&page=1'] in fake.calls
