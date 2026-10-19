@@ -134,8 +134,9 @@ PR, for its repository alone, or when it names no PR (an imported 0.34 verdict).
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
 the item in that repository counts. A finding holds from any PR of the item and displaces a pass.
 A later pass at an older head never clears a finding. At the same head it clears a FIX only by
-naming that file on a `Supersedes:` line; otherwise only a pass from a strict descendant does. An arch `Breaking: no` clears a yes the same way, and only for this
-PR or its repository alone. Gaps are
+naming that file on a `Supersedes:` line; otherwise only a pass from a strict descendant does. An arch `Breaking: no` clears a yes
+only from a strict descendant of that yes's head, and only for this PR or its repository alone;
+`Supersedes:` does not apply to it. Gaps are
 actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass. A PR read
 after it merged lists what it lacked as `post-merge:` gaps, and the report counts a finding attested
 after the merge as an escape.

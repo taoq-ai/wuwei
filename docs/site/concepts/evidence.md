@@ -160,7 +160,9 @@ ancestor of the PR head. A pass counts only for this PR, for its repository alon
 named (an imported 0.34 verdict); a finding holds from any PR of the item. A later pass at an older
 head never clears a finding. At the same head it clears a FIX only when it names that file on a
 `Supersedes: <item>/<file>` line, for a finding closed outside the diff; an ESCALATE stays the
-owner's. Otherwise only a pass at a newer head on the PR's line clears it. The
+owner's. Otherwise only a pass at a newer head on the PR's line clears it. `Supersedes:` clears
+gates only: an arch `Breaking: no` clears a `Breaking: yes` only from a newer head on the PR's line,
+for this PR or its repository alone. The
 create and ready doors read no PR yet, so there a pass for any PR of the item in that repository
 counts. A gate whose only pass named another PR reads missing: re-run it with
 `PR: <owner/repo>#<n>`. A seat that writes over another seat's verdict is sent back to

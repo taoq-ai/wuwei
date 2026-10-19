@@ -1245,6 +1245,7 @@ def test_the_walk_asks_the_code_host_about_each_pair_of_heads_once(root, fake):
     (HEAD, 'I-1/quality-fix.md', 'acme/app', []),  # written before the draft PR existed
     (HEAD, '', 'acme/app#42', OWED),  # the same pass without Supersedes clears nothing
     (HEAD, 'I-2/quality-fix.md', 'acme/app#42', OWED),  # nor one naming another item's file of that name
+    (HEAD, 'XI-1/quality-fix.md', 'acme/app#42', OWED),  # nor one whose item only ends in this item's id
     (OLD, 'I-1/quality-fix.md', 'acme/app#42', OWED),  # a pass at an older head never clears, named or not
     (HEAD, 'I-1/quality-fix.md', 'acme/app#7', OWED),  # nor a pass for another PR of the item
 ])
@@ -1255,3 +1256,12 @@ def test_a_pass_clears_a_finding_at_its_head_only_by_naming_it(root, fake, head,
     attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
     attest(root, 'quality', head, 'PASS', name='quality-pass.md', pr=pr, extra=f'Supersedes: {supersedes}\n' if supersedes else '')
     assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate'))] == found
+
+
+def test_a_later_fix_at_its_head_does_not_replace_a_held_escalate(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    attest(root, 'quality', HEAD, 'ESCALATE', name='quality-esc.md')
+    attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
+    attest(root, 'quality', HEAD, 'PASS', name='quality-pass.md', extra='Supersedes: I-1/quality-fix.md\n')
+    assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate'))] == OWED
