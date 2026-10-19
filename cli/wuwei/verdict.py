@@ -12,6 +12,7 @@ PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: medium   (exactly one word: low, medium or high; give the reason under Probes)
 Breaking: no   (arch gate only; or "yes: <what breaks for which clients>")
+Supersedes: <item>/<FIX file at this head>   (PASS only: finding closed outside the diff)
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
@@ -30,6 +31,7 @@ def parse(text, strict=False):
     result = {'verdict': _field(text, 'Verdict').upper(), 'gate': _field(text, 'Gate').lower(),
               'item': _field(text, 'Item'), 'head': _field(text, 'Head').lower(),
               'confidence': _field(text, 'Confidence').lower(),
+              'supersedes': [p for p in re.split(r'[\s,]+', _field(text, 'Supersedes')) if p],
               'repo': '', 'pr': None, 'findings': [], 'errors': errors}
     if result['verdict'] not in VERDICTS:
         errors.append('Verdict: must be PASS, FIX or ESCALATE')

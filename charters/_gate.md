@@ -57,6 +57,7 @@ PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: medium
 Breaking: no   (arch only; or "yes: <what breaks for which clients>")
+Supersedes: <item>/<FIX file at this head>   (PASS only: finding closed outside the diff)
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>

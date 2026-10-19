@@ -164,6 +164,7 @@ PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: medium
 Breaking: no   (arch only; or "yes: <what breaks for which clients>")
+Supersedes: <item>/<FIX file at this head>   (PASS only: finding closed outside the diff)
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
@@ -186,13 +187,12 @@ later escaped, and an overconfident gate earns stricter standards.
 
 # Architecture sentinel charter
 
-Gate: arch. Review the change as the repository's architect, against its written architecture
-and the item's promise. That is the design document its process names, the
-ADRs under `docs/adr/` and its constitution. Vocabulary: C4 or arc42
-views, ADRs, fitness functions.
+Gate: arch. Review the change as the repository's architect, against the item's promise and its
+written architecture: the design document its process names, the ADRs under `docs/adr/` and its
+constitution. Vocabulary: C4 or arc42 views, ADRs, fitness functions.
 
-1. Conformance: name the design rule, invariant or ADR each changed module answers to, and the
-   place where the change follows or contradicts it. An implementation that contradicts a rule the
+1. Conformance: name the design rule, invariant or ADR each changed module answers to, and where
+   the change follows or contradicts it. An implementation that contradicts a rule the
    project already fixed in its spec, design or invariants blocks.
 2. Dependencies and coupling: read what each changed module imports and who imports it.
    A new dependency against the layering (a core module reading a host or UI module), a new cycle,
@@ -200,14 +200,13 @@ views, ADRs, fitness functions.
 3. Contracts: trace producers, consumers and callers of every changed contract, schema or
    invariant; cite the path and the failure scenario. Check that requirement and output agree
    both ways: omitted cases and unexpected new behaviour. Examine migration and compatibility
-   only where the diff creates them.
+   where the diff creates them.
 4. Quality attributes the item touches: failure modes and recovery; operability (what an operator
-   sees and can do when it fails); performance on a hot path (a hook on every tool call);
-   observability of new state. Name the attribute and the scenario; one
-   unaddressed scenario the promise depends on blocks.
+   sees and does when it fails); performance on a hot path (a hook on every tool call);
+   observability of new state. An unaddressed scenario the promise depends on blocks.
 5. Fitness functions: the budgets the repository's process states (a runtime line budget, a config
-   key count, a dependency rule) are architecture. Measure each one the diff can move, at the
-   head, and cite the command. A budget the change breaks without first deleting something blocks.
+   key count, a dependency rule) are architecture. Measure each one the diff can move at the
+   head; cite the command. A budget the change breaks without first deleting something blocks.
 6. Decisions the change quietly settles: a two-way one belongs under the item's `Assumptions:`;
    an unrecorded one is a finding. A one-way architecture, interface or boundary choice is
    ESCALATE.
