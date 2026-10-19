@@ -20,7 +20,8 @@ next. State that git or the code host already holds is never copied into WUWEI's
 
 The doors in design section 6 are the closed list of refusals; adding one is a design change.
 Everything else passes and is recorded. A door that cannot read its evidence stays shut; every
-other hook fails open and records why.
+other hook fails open and records why. The one exception is the launcher: a PreToolUse
+hook that fails before it can judge refuses every PreToolUse call, since only exit 2 blocks one.
 
 ### IV. The owner decides only what matters
 

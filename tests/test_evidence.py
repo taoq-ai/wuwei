@@ -467,6 +467,33 @@ def test_a_retarget_at_the_same_head_reads_the_spec_of_the_new_file_list(root, f
     assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
 
 
+def test_a_path_holding_a_newline_does_not_share_a_spec_key_with_two_paths(root, fake):
+    """A git path may hold a newline, so the file-list digest must not join paths on one."""
+    from wuwei import guards
+    light(root, 'full')
+    files = speckit(fake)
+    fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md\nsrc/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md', 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
+
+
+def test_a_wuwei_upgrade_reads_the_spec_again(root, fake, monkeypatch):
+    """A new version may add or tighten a spec rule, so a result an older version cached is not reused."""
+    from wuwei import guards
+    light(root, 'full')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.files['specs/7-rate-limits/tasks.md'] = '- [ ] T1\n'
+    monkeypatch.setattr(ws, 'version', lambda: '999.0.0')
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'tasks.md has 1 unchecked item' in found['reason'], found
+
+
 def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
     standard(root)
     fake.paths.add('openspec')

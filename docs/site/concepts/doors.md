@@ -15,7 +15,10 @@ back. Everything else passes and is recorded. Adding a door is a design change, 
 | Infrastructure | asked, not refused: terraform, tofu, pulumi, kubectl and helm writes go to the harness's own prompt | a one-way door you decide |
 
 A door that cannot read its evidence stays shut. Every other hook fails open: if a hook breaks,
-the work goes on and `hook.error` is recorded.
+the work goes on and `hook.error` is recorded. The one exception: if the PreToolUse hook fails before
+it can judge (an import, its arguments, the version read), every PreToolUse call is refused. An account
+with no password-database entry is not such a failure: the doors still judge, and owner answers and
+seat stops are recorded as unconfirmed.
 
 ## How strongly a door holds
 
