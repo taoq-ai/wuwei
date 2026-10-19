@@ -115,6 +115,14 @@ holds more than prose (`.md`, `.rst`, `.adoc`), `LICENSE`, `NOTICE`, `specs/` an
 day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR it skips until an
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
+Required checks: the checks the base branch requires, by branch protection (the branch read) and by
+the rulesets for the branch, cached 15 minutes per repository and branch. A required check with no
+check run and no status of that name on the head reads `required check not run at <sha7>: <names>`,
+an actionable safety gap, with or without auto-merge (a push with the workflow token starts no
+workflow, #1156). A failed or malformed read shows `required checks unreadable on <branch>: <error>`,
+waiting, and is not cached. A PR GitHub reports `mergeable_state` blocked with no other safety gap
+reads `GitHub reports the merge blocked for a reason WUWEI cannot name`.
+
 Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
 declared public API. The public API and
 the classification are declared once, in

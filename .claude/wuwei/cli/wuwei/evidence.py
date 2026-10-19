@@ -54,6 +54,8 @@ GATES = re.compile(r'(?:gates missing at head \w+: |no gate passed at head \w+ \
 DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
+SHA = re.compile(r'[0-9a-f]{40}')
+PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
 
 
 def gap(text, actionable=True, owner=False):
@@ -128,9 +130,6 @@ def release(repo, pr):
 def _cached(root, name, read, max_age=86400):
     value = ws.cache_get(root, name, max_age)
     return ws.cache_put(root, name, read()) if value is None else value
-
-
-SHA = re.compile(r'[0-9a-f]{40}')
 
 
 def compare(root, repo, older, newer):
@@ -398,9 +397,6 @@ def ci_gaps(rollup, review=()):
     return found + ([gap('CI failing: ' + ', '.join(failed))] if failed else [gap('CI running', actionable=False)] if running else [])
 
 
-PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
-
-
 def gaps(root, repo, number, listed=None):
     """What a PR lacks. Given its open-list summary, the host reads (the PR, its spec artifacts, its threads) come from the
     cache while its head and update time hold and its CI had settled, so a warm board reads only what moved (#1161)."""
@@ -445,6 +441,13 @@ def gaps(root, repo, number, listed=None):
         except (gh.GhError, AttributeError, TypeError) as exc:  # an unreadable Actions host shows the gap, never a pass
             ci, why = True, f' (Actions host unreadable: {exc})'
         found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
+        try:  # a check the base (protection, rulesets) requires with no run at the head; kept by repo and branch; unreadable holds
+            key = f'required-{repo.replace("/", "__")}-{hashlib.sha256(pr["baseRefName"].encode()).hexdigest()[:16]}'
+            want = _cached(root, key, lambda: gh.required_checks(repo, pr['baseRefName']), PR_TTL)
+            if missing := [c for c in want if c not in {c.get('name') or c.get('context') for c in rollup or ()}]:
+                found.append(gap(f'required check{"s" if len(missing) > 1 else ""} not run at {head[:7]}: {", ".join(missing)}'))
+        except (gh.GhError, KeyError, TypeError, AttributeError) as exc:
+            found.append(gap(f'required checks unreadable on {pr["baseRefName"]}: {exc}', actionable=False))
         author = (pr.get('author') or {}).get('login', '')
         threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, author)
         if sig and not hit and rollup and all(c.get('status', 'COMPLETED') == 'COMPLETED' and c.get('state') not in (
@@ -467,6 +470,8 @@ def gaps(root, repo, number, listed=None):
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
+        if pr.get('mergeableState') == 'blocked' and not blocking(found):  # GitHub holds it for a reason no gap names
+            found.append(gap('GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR'))
         if pr.get('state') == 'MERGED':  # what it lacked when it merged is an escape for the retro (#1050)
             return [dict(g, text='post-merge: ' + g['text']) for g in blocking(found)]
         return excepted(root, ref, head, found)

@@ -54,7 +54,7 @@ def pr(repo, number):
     head = data['head']['sha']
     checks = run(['api', f'repos/{repo}/commits/{head}/check-runs?per_page=100']).get('check_runs', [])
     statuses = run(['api', f'repos/{repo}/commits/{head}/status']).get('statuses', [])
-    return {**_summary(data),
+    return {**_summary(data), 'mergeableState': data.get('mergeable_state'),
             'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0),
                        'patch': f.get('patch'), 'renamed': f.get('previous_filename') or ''} for f in pages(f'{base}/files')],
             'statusCheckRollup': [{'name': c['name'], 'status': (c.get('status') or '').upper(),
@@ -146,7 +146,12 @@ def releases(repo):
 
 
 def rules(repo, branch):
-    return run(['api', f'repos/{repo}/rules/branches/{branch}'])
+    return pages(f'repos/{repo}/rules/branches/{branch}')
+
+
+def required_checks(repo, branch):  # protection then rulesets, each once; the branch read needs read access only, no 404 when unprotected
+    return list(dict.fromkeys(run(['api', f'repos/{repo}/branches/{branch}'])['protection']['required_status_checks']['contexts'] + [
+        c['context'] for r in rules(repo, branch) if r['type'] == 'required_status_checks' for c in r['parameters']['required_status_checks']]))
 
 
 def file(repo, path, ref=None):
