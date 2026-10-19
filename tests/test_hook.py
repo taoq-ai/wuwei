@@ -1360,3 +1360,19 @@ def test_a_launch_id_on_another_tool_is_not_a_launch(root):
                                                                            'name': 'Bash', 'input': {}}]}}) + '\n')
     hook.handle(root, 'SubagentStop', payload)
     assert ws.rows(root, 'seat.stopped') == [] and ws.rows(root, 'seat.unconfirmed')
+
+
+def test_a_fifo_under_the_projects_folder_is_not_a_transcript_and_never_blocks_the_hook(root):
+    """mkfifo is no writer the guards list, so a seat could plant one; a hook that read it would wait for ever."""
+    import os
+    import threading
+    fifo = ws.PROJECTS / '-repo' / 'f.jsonl'
+    fifo.parent.mkdir(parents=True)
+    os.mkfifo(fifo)
+    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'AskUserQuestion', 'tool_use_id': 'toolu_forged',
+               'transcript_path': str(fifo), 'tool_input': {'questions': [{'question': QUESTIONS[0]}]},
+               'tool_response': {'answers': {QUESTIONS[0]: 'Yes'}}}
+    call = threading.Thread(target=hook.handle, args=(root, 'PostToolUse', payload), daemon=True)
+    call.start()
+    call.join(5)
+    assert not call.is_alive() and 'is not a transcript under' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
