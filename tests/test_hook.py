@@ -1137,6 +1137,7 @@ def test_the_real_flow_records_the_answer_on_the_planner_call_after_the_harness_
     planner_read(root)
     hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
     assert len(ws.rows(root, 'ruling')) == 1 and len(ws.rows(root, 'prompt')) == 1 and not ws.rows(root, 'answer.unconfirmed')
+    assert not list((root / ws.DIR / 'cache').glob('answer-*'))  # claimed once: no later call rereads the transcript for it
 
 
 def test_an_answer_the_transcript_already_holds_is_recorded_at_post_tool_with_its_notes(root):
@@ -1242,6 +1243,8 @@ def test_two_racing_planner_calls_record_an_answer_once(root, monkeypatch):
     Path(payload['transcript_path']).write_text(''.join(line + '\n' for line in ASK_FLOW))
     real = hook.transcript_rows
     monkeypatch.setattr(hook, 'transcript_rows', lambda *a: (time.sleep(0.2), real(*a))[1])  # both read before either claims
+    answers = hook._answers
+    monkeypatch.setattr(hook, '_answers', lambda *a: (time.sleep(0.2), answers(*a))[1])  # and both pass the id check before either records
     calls = [threading.Thread(target=planner_read, args=(root,)) for _ in range(2)]
     for call in calls:
         call.start()
