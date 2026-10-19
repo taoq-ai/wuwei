@@ -148,30 +148,6 @@
    "approved": true
   },
   {
-   "id": "forge-door",
-   "title": "fix(guards): a hook call written as a readable command (python -m wuwei hook, python -c naming wuwei with hook or record, a filled-in hook word) meets the forged-hook door",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 20,
-    "size": 3
-   },
-   "score": 17.67,
-   "why": "Security gate on goal-met (#1145, verdict security-0039ce2.md) ran 13 shapes under real bash at main 8c1939e: 7 pass the guard and write a valid ruling row with no chain break, including `PYTHONPATH=<cli> python3 -m wuwei hook PostToolUse < payload.json`, `python3 -c '...ws.record(...)'`, `python3 forge.py`, `sh forge.sh` and `x=hook; <bin> $x PostToolUse`. A forged owner review approval satisfies evidence.owner_approved. guards.py:331 refuses a hand-made hook call only when the program is named wuwei.",
-   "promise": "The forged-hook door refuses the readable ways a seat runs WUWEI's hook entry or ws.record by hand: python -m wuwei hook in any spelling and wrapper the guard unwraps, python code given by -c, a pipe or a here-document that names the wuwei module beside hook or record, the package or its __main__.py run by path, and a hook word the shell fills in from a variable, glob or substitution. Out of scope by the owner's ruling (2026-10-19, scope: Accept narrowed scope): a script file run by path, eval, code built from a variable, setsid/flock/find -exec and env with a variable program; SECURITY.md lists them and hook-transcript owns them. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy, SECURITY.md. Runtime budget 8. AGENTS.md Testing the guards in full.",
-   "acceptance": [
-    "given the readable shapes from the goal-met security verdict (python3 -m wuwei hook with PYTHONPATH, under env, python3 -c calling hook.main or ws.record, an indirect hook word), when guards.bash reads each from a seat, then each is refused and no ruling row is written",
-    "given a generated probe of runner x spelling x position classes under real bash with stub wuwei and python, then every in-scope command that ran the hook entry is refused (holes 0), and pytest, wuwei status, wuwei evidence and the repository's specs/ probe scripts still pass"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": false
-  },
-  {
    "id": "yes-word",
    "title": "fix(hook): an owner answer reads as yes only when its first word is a yes word, so Yesterday or Proceed to keep it open never approves",
    "goal": "G-2",
@@ -1178,6 +1154,31 @@
    "added": "2026-10-17",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1112"
+  },
+  {
+   "id": "forge-door",
+   "title": "fix(guards): a hook call written as a readable command (python -m wuwei hook, python -c naming wuwei with hook or record, a filled-in hook word) meets the forged-hook door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 20,
+    "size": 3
+   },
+   "score": 17.67,
+   "why": "Security gate on goal-met (#1145, verdict security-0039ce2.md) ran 13 shapes under real bash at main 8c1939e: 7 pass the guard and write a valid ruling row with no chain break, including `PYTHONPATH=<cli> python3 -m wuwei hook PostToolUse < payload.json`, `python3 -c '...ws.record(...)'`, `python3 forge.py`, `sh forge.sh` and `x=hook; <bin> $x PostToolUse`. A forged owner review approval satisfies evidence.owner_approved. guards.py:331 refuses a hand-made hook call only when the program is named wuwei.",
+   "promise": "The forged-hook door refuses the readable ways a seat runs WUWEI's hook entry or ws.record by hand: python -m wuwei hook in any spelling and wrapper the guard unwraps, python code given by -c, a pipe or a here-document that names the wuwei module beside hook or record, the package or its __main__.py run by path, and a hook word the shell fills in from a variable, glob or substitution. Out of scope by the owner's ruling (2026-10-19, scope: Accept narrowed scope): a script file run by path, eval, code built from a variable, setsid/flock/find -exec and env with a variable program; SECURITY.md lists them and hook-transcript owns them. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy, SECURITY.md. Runtime budget 8. AGENTS.md Testing the guards in full.",
+   "acceptance": [
+    "given the readable shapes from the goal-met security verdict (python3 -m wuwei hook with PYTHONPATH, under env, python3 -c calling hook.main or ws.record, an indirect hook word), when guards.bash reads each from a seat, then each is refused and no ruling row is written",
+    "given a generated probe of runner x spelling x position classes under real bash with stub wuwei and python, then every in-scope command that ran the hook entry is refused (holes 0), and pytest, wuwei status, wuwei evidence and the repository's specs/ probe scripts still pass"
+   ],
+   "status": "parked",
+   "added": "2026-10-18",
+   "approved": false,
+   "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
   },
   {
    "id": "excepted-exact",
