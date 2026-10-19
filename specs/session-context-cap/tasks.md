@@ -38,7 +38,7 @@
 - [x] T022 The sweep: 40 items over title paddings 0 to 190 in steps of 10, two root lengths (the tmp path and one 120 characters deeper), with and without a newline in the titles; at each of the 80 points the board is also pushed to exactly 9,999 and 10,000 characters (tests/test_charters.py)
 - [x] T023 An andon reason holding `- item-00, ...` keeps the board header and is not counted, with and without the final cut (tests/test_charters.py)
 - [x] T024 One and two left-out items read "1 more item" and "2 more items"; a board at 9,999 characters keeps every item (tests/test_charters.py)
-- [x] T025 Run the new tests red on 9422fdf's hook.py: 81 failed (80 sweep points, the andon test), 5 passed
+- [x] T025 Run the new tests red on 9422fdf's hook.py: 82 failed (80 sweep points, the andon test, the singular and plural test), 4 passed
 - [x] T026 Remove the 9,900 room: the trim measures the final string against SESSION_CAP and drops whole items in the board.text item shape (cli/wuwei/hook.py)
 - [x] T027 Mutants in fresh copies, both hook.py copies: specs/session-context-cap/mutants.py at 9eba49f
 - [x] T028 Route differential at main 6682925 and the head, and the measurements, at 9eba49f
