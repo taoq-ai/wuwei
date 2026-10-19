@@ -54,7 +54,7 @@
    "title": "fix(evidence): the spec cache key encodes the file list unambiguously",
    "goal": "G-1",
    "repo": "taoq-ai/wuwei",
-   "tier": "full",
+   "tier": "standard",
    "framework": "wsjf",
    "scores": {
     "value": 8,
