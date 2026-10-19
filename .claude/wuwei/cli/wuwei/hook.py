@@ -273,7 +273,7 @@ def post_tool(root, payload):
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
-                 'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
+                'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
         if transcript_rows(kept['path'], kept['id'] or '\0') is None:
             return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
         ws.cache_put(root, f"answer-{re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))}--{re.sub(r'[^\w-]', '', kept['id'])}", kept)

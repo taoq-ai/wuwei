@@ -1,7 +1,7 @@
 """hook-transcript mutants: python3 -I mutants.py <sha> <empty scratch folder> [name ...]
 
 Each mutant runs alone in a fresh `git archive` copy with both copies of the runtime (cli/ and .claude/wuwei/cli/) edited,
-on the hook, guards, Codex and models tests, with the wall-clock tests (a test body that reads time.monotonic or
+on the test files that reach the mutated file, with the wall-clock tests (a test body that reads time.monotonic or
 time.perf_counter) deselected. A kill counts only when a behavioural test fails.
 """
 
@@ -60,12 +60,13 @@ MUTANTS = {
     'G10 find after a wrapper': (G, "READ = {'git', 'gh', 'wuwei', 'sed', 'find'}", "READ = {'git', 'gh', 'wuwei', 'sed'}"),
     'G11 all of .claude': (G, "    return records(path, ('projects',), cap, '.claude')", "    return records(path, None, cap, '.claude')"),
 }
-TESTS = ['tests/test_hook.py', 'tests/test_guards.py', 'tests/test_codex.py', 'tests/test_models.py']
+TESTS = {H: ['tests/test_hook.py', 'tests/test_codex.py', 'tests/test_models.py'], W: ['tests/test_hook.py', 'tests/test_codex.py'],
+         G: ['tests/test_guards.py', 'tests/test_hook.py']}  # the tests that reach the mutated file
 
 
-def wall_clock(tree):
+def wall_clock(tree, tests):
     found = []
-    for name in TESTS:
+    for name in tests:
         for node in ast.parse((tree / name).read_text(encoding='utf-8')).body:
             if isinstance(node, ast.FunctionDef) and node.name.startswith('test_') and any(
                     isinstance(n, ast.Attribute) and n.attr in ('monotonic', 'perf_counter') for n in ast.walk(node)):
@@ -86,8 +87,8 @@ for name, (path, old, new) in MUTANTS.items():
         text = copy.read_text(encoding='utf-8')
         assert text.count(old) == 1, (name, copy, old)
         copy.write_text(text.replace(old, new), encoding='utf-8')
-    deselect = [arg for test in wall_clock(tree) for arg in ('--deselect', test)]
-    run = subprocess.run(['/root/.local/bin/pytest', '-q', '-p', 'no:cacheprovider', *TESTS, *deselect], cwd=tree, capture_output=True,
+    deselect = [arg for test in wall_clock(tree, TESTS[path]) for arg in ('--deselect', test)]
+    run = subprocess.run(['/root/.local/bin/pytest', '-q', '-p', 'no:cacheprovider', *TESTS[path], *deselect], cwd=tree, capture_output=True,
                          text=True)
     failed = sorted({line.split('::')[1].split('[')[0].split(' ')[0] for line in run.stdout.splitlines() if line.startswith('FAILED')})
     print(f'{name}: {"killed" if failed else "SURVIVED"} by {len(failed)}: {", ".join(failed[:4])}', flush=True)

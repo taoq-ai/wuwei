@@ -14,7 +14,8 @@ breaking, exception or goal ruling, a plan approval, a seat stop and the verdict
 rides on it. forge-door showed many command shapes that reach the entry past the guard.
 
 After this change the hook trusts only what the harness wrote. Claude Code keeps each session's
-transcript under its projects folder (`~/.claude/projects/`, or `$CLAUDE_CONFIG_DIR/projects`).
+transcript under its projects folder, `~/.claude/projects/`. The hook reads the home from the
+password database, never from `HOME` or `CLAUDE_CONFIG_DIR`, which a hand-made call sets.
 
 - An owner answer counts only when that transcript holds the AskUserQuestion tool_use with the
   payload's `tool_use_id`, and the last tool_result row for that id carries the same answers. A
@@ -36,6 +37,11 @@ The acceptance scenarios, restated:
 2. A recorded real flow (payload and transcript fixture) records the ruling as today.
 3. A Bash call appending to a file under `~/.claude/projects/` is refused by `guards.bash`.
 4. A forged SubagentStop for an agent id absent from the transcript records no `seat.stopped`.
+
+Added from the write probe: `find -delete` after a wrapper (`env A=1`, `nice`, `timeout`) passed,
+because the wrapper unwrap lands only on a program a door reads. `find` joins that list, which
+closes the same hole for the ledger and the cache (`env A=1 find .wuwei/ledger -delete` passes at
+main).
 
 Added by the caller: every forge-door shape (`python -m wuwei hook`, the package by path with
 `/`, `/.`, `//`, `/./`, `/../`, the `cd`, `env -C` and `sudo -D` wrappers, fullwidth names, tilde
@@ -60,7 +66,8 @@ since the docs say the transcript may lag, and then records `answer.unconfirmed`
 that already holds the row (the fixture, or a harness that writes it first) is recorded in the
 same PostToolUse call, as today. The notes that follow an answer ("plan approved; start the
 work", the ADR note, an exception's follow-up item) reach the planner on the call that records
-it.
+it. In this session's transcript, the planner's next tool call came 3.5 s to 149 s after the
+answer row (11 answers, median 8.4 s), so the next call finds the row with seconds to spare.
 
 ## How this fails
 
@@ -71,9 +78,10 @@ it.
    reason), not silent, and the fix is a reader change. The owner accepted this risk in the trust
    ruling.
 2. A planner that asks and then ends its turn with no Stop (a crash, a killed session) leaves the
-   answer pending. It is recorded at the session's next hook call after a resume, and pending
-   entries expire from the cache after 7 days without a row. Then nothing records it: the one
-   path to a drop. The transcript still holds the answer, so the owner can be asked again.
+   answer pending in `.wuwei/cache`. It is recorded at the session's next planner hook call after
+   a resume (or as `answer.unconfirmed` at its next Stop). A session that never calls again
+   leaves it there unrecorded: the one path to a drop. The transcript still holds the answer, so
+   the owner can be asked again.
 3. Codex keeps its transcripts elsewhere (`~/.codex/sessions`) in another format. A Codex
    `request_user_input` answer and a Codex SubagentStop are recorded as unconfirmed, so a Codex
    gate's verdict is no longer attested. No real Codex transcript fixture exists to build a
@@ -87,9 +95,10 @@ it.
   sandbox-spike next". Record an owner answer or a seat stop only when the session transcript
   shows it; otherwise write `answer.unconfirmed` or `seat.unconfirmed` with the reason, never a
   silent drop. A seat-written script can still forge transcript lines; sandbox-spike follows.
-- Q: Which folder is the harness projects folder? A: `$CLAUDE_CONFIG_DIR/projects` when the
-  variable is set, else `~/.claude/projects`, resolved with links. The hook is a child of the
-  harness and inherits its environment.
+- Q: Which folder is the harness projects folder? A: `.claude/projects` in the account's home
+  as the password database names it, resolved with links. Not `HOME` or `CLAUDE_CONFIG_DIR`: the
+  real-entry probe showed that a hand-made call sets its own environment, so a folder read from
+  it would be the forger's.
 - Q: What does "the last row for that id" mean? A: Of the rows whose content holds a tool_result
   for the id, the last one; its `toolUseResult.answers` must equal the payload's answers. The
   hook rows that name the id (`hook_success`, `hook_additional_context`) hold no tool_result.
@@ -105,8 +114,7 @@ it.
   launch, before the seat runs.
 - Q: Where do the guards read the projects folder? A: As a path that names `.claude` followed by
   `projects` (or `.claude` itself), in every spelling the ledger rule reads, and after `cd`,
-  `pushd`, `-C`, `--chdir` or `-D` into it. A `CLAUDE_CONFIG_DIR` with another name is not read by
-  the guards (SECURITY.md says so); the hook's check still holds there.
+  `pushd`, `-C`, `--chdir` or `-D` into it.
 - Q: Is a `python` command that only reads a transcript refused? A: Yes, as for the ledger: the
   guard cannot tell a python read from a write. The refusal names the open read routes (the Read
   tool, `cat`, `grep`, `python3 - < <path>`).
@@ -144,7 +152,9 @@ recorded real launch records `seat.stopped` as today.
 
 ## Requirements
 
-- FR-001: `ws.PROJECTS` is `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`.
+- FR-001: `ws.PROJECTS` is `.claude/projects` in the password database's home for the uid.
+- FR-008: `find` is a program the wrapper unwrap reads, so `env A=1 find <records> -delete` meets
+  the records and transcript doors.
 - FR-002: `hook.transcript_rows(path, key)` returns the rows naming `key` in a regular file under
   `ws.PROJECTS` (links resolved), or None when the path is not one.
 - FR-003: PostToolUse on AskUserQuestion records `answer.unconfirmed` at once for a path that is
@@ -172,6 +182,9 @@ recorded real launch records `seat.stopped` as today.
 - The wait is 1.5 s at a Stop only. The measured row came 11 ms after the hook; the next planner
   call comes seconds later. Overturned by an `answer.unconfirmed` row whose transcript holds the
   answer.
+- A user who moves Claude Code's folder with `CLAUDE_CONFIG_DIR` gets every answer and stop
+  recorded as unconfirmed, loudly. Overturned if the owner wants that variable honoured; it would
+  then need a source a hand-made call cannot set.
 - Codex answers and stops are recorded as unconfirmed until a reader for Codex's transcript is
   built from a real fixture (How this fails 3). Overturned if the owner wants Codex kept on the
   old trust until then.
@@ -187,7 +200,7 @@ recorded real launch records `seat.stopped` as today.
 ## What stays open
 
 A process that writes the transcript itself: a script file, a writer the guards do not list
-(`install`, `perl`), a path built at run time, or a `CLAUDE_CONFIG_DIR` the guards do not name.
+(`install`, `perl`), a path built at run time, or a symlink made where the guards do not see it.
 The guard reads command text, so it is a tripwire there, not a wall. The sandbox item
 (sandbox-spike) is what can close it. A forger can also replay a real answer or a real seat's
 launch: the rows then repeat what the harness recorded.
