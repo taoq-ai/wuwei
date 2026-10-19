@@ -1,5 +1,6 @@
 """The workspace: config, the hash-chained ledger, traces and small caches under .wuwei/."""
 
+import contextlib
 import datetime
 import fcntl
 import hashlib
@@ -37,14 +38,24 @@ def today():
     return now().date().isoformat()
 
 
-def atomic_write(path, text):
+def atomic_write(path, text, root=None):  # every folder below root and the file are reached by descriptor: no link is followed
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # threads share a pid (#1121)
-    temp.unlink(missing_ok=True)  # a link planted at the temporary name is removed, never written through
-    with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666), 'wb') as out:
-        out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
-    os.replace(temp, path)
+    if root is None:  # by default the file's own folder, made first
+        root, _ = path.parent, path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp = os.open(root, os.O_RDONLY | os.O_DIRECTORY), f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'  # threads share a pid (#1121)
+    try:
+        for part in path.parent.relative_to(root).parts:
+            with contextlib.suppress(FileExistsError):
+                os.mkdir(part, dir_fd=fd)
+            fd, up = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd), fd
+            os.close(up)
+        with contextlib.suppress(FileNotFoundError):  # a link planted at the temporary name is removed, never written through
+            os.unlink(temp, dir_fd=fd)
+        with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=fd), 'wb') as out:
+            out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
+        os.replace(temp, path.name, src_dir_fd=fd, dst_dir_fd=fd)
+    finally:
+        os.close(fd)
 
 
 def raw_config(root):

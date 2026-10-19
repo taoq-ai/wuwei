@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.2.1](https://github.com/taoq-ai/wuwei/compare/v4.2.0...v4.2.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **hook:** the SessionStart context fits Claude Code's 10,000-character additionalContext cap ([#1149](https://github.com/taoq-ai/wuwei/issues/1149)) ([73af8d4](https://github.com/taoq-ai/wuwei/commit/73af8d42dad4ed9b41cc153e63f4258f2504c068))
+* **hook:** the verdict copy-in walks .wuwei/verdicts with directory file descriptors, and a loop there fails closed ([#1151](https://github.com/taoq-ai/wuwei/issues/1151)) ([5caa67b](https://github.com/taoq-ai/wuwei/commit/5caa67b59e80561dc8f4189b678001d3876e08c1))
+* **ws:** write_config round-trips a config read without a models key ([#1159](https://github.com/taoq-ai/wuwei/issues/1159)) ([7fd8f4b](https://github.com/taoq-ai/wuwei/commit/7fd8f4b7a4b6e421c3ab40ae6932086ce47d91e9))
+
 ## [4.2.0](https://github.com/taoq-ai/wuwei/compare/v4.1.0...v4.2.0) (2026-10-19)
 
 

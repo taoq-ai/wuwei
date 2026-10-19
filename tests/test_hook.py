@@ -745,13 +745,15 @@ def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root
     monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
     monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
     temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.7.tmp'
-    unlink = Path.unlink
+    unlink = ws.os.unlink
 
-    def replant(self, missing_ok=False):  # the race the exclusive create closes
-        unlink(self, missing_ok)
-        if self == temp:
-            temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
-    monkeypatch.setattr(Path, 'unlink', replant)
+    def replant(name, *, dir_fd=None):  # the race the exclusive create closes
+        try:
+            unlink(name, dir_fd=dir_fd)
+        finally:
+            if name == temp.name:
+                temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
+    monkeypatch.setattr(ws.os, 'unlink', replant)
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['decision'] == 'block'
     assert ledger.read_bytes()[:len(held)] == held and ws.rows(root, 'attest') == []
 
@@ -883,8 +885,217 @@ def test_the_other_refusals_that_say_write_beside_it_name_the_next_free_file_too
     (folder / 'quality-abc1234.md').write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
     (folder / 'quality-abc1234-2.md').write_text(verdict_text())
     reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
-    assert 'already holds another verdict: write yours beside it as quality-abc1234-3.md.' in reason
+    assert 'already holds another verdict: write yours as quality-abc1234-3.md beside it (the next free number).' in reason
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev0') is None
     (folder / 'quality-abc1234.md').write_text(verdict_text())
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev1')['reason']
     assert 'Write yours to quality-abc1234-3.md beside it (the next free number)' in reason
+
+
+def ledger_files(root):
+    return {p: p.read_bytes() for p in (root / ws.DIR / 'ledger').rglob('*') if p.is_file()}
+
+
+@pytest.mark.parametrize('swapped', ['verdicts/x', 'verdicts'])
+def test_a_parent_swapped_for_a_ledger_link_after_the_check_is_never_followed(root, tmp_path_factory, monkeypatch, swapped):
+    ws.record(root, 'plan.pass', {})
+    ledger, folder, before = root / ws.DIR / 'ledger', root / ws.DIR / swapped, ledger_files(root)
+    folder.mkdir(parents=True)
+    written, exists = worktree_verdict(tmp_path_factory), Path.exists
+
+    def swap(self, *args, **kwargs):  # the link check has passed: the folder becomes a link into the ledger
+        if self.name == written.name and not folder.is_symlink():
+            folder.rename(folder.with_name('moved'))
+            folder.symlink_to(ledger)
+        return exists(self, *args, **kwargs)
+    monkeypatch.setattr(Path, 'exists', swap)
+    out = reviewer_stop(root, f'Verdict file: {written}')
+    monkeypatch.undo()
+    after = ledger_files(root)
+    assert after.keys() == before.keys() and all(after[p].startswith(before[p]) for p in before)
+    assert out['decision'] == 'block' and ws.rows(root, 'attest') == [] and ws.rows(root, 'hook.error') == []
+
+
+@pytest.mark.parametrize('swapped', ['verdicts/x', 'verdicts'])
+def test_a_parent_swapped_for_a_ledger_link_inside_the_write_never_lands_it_in_the_ledger(root, tmp_path_factory, monkeypatch, swapped):
+    ws.record(root, 'plan.pass', {})
+    ledger, folder = root / ws.DIR / 'ledger', root / ws.DIR / swapped
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    copy.parent.mkdir(parents=True)
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    copy.with_name(f'.{copy.name}.4242.7.tmp').symlink_to(next(ledger.glob('*.jsonl')))  # only an unlink in the walked folder removes it
+    before, written = ledger_files(root), worktree_verdict(tmp_path_factory)
+
+    def swapping(call):  # the walk holds the folder's descriptor: from the first temporary name on, the name leads to the ledger
+        def at_temp(name, *args, **kwargs):
+            if str(name).endswith('.tmp') and not folder.is_symlink():
+                folder.rename(folder.with_name('moved'))
+                folder.symlink_to(ledger)
+            return call(name, *args, **kwargs)
+        return at_temp
+    monkeypatch.setattr(ws.os, 'unlink', swapping(ws.os.unlink))
+    monkeypatch.setattr(ws.os, 'open', swapping(ws.os.open))
+    reviewer_stop(root, f'Verdict file: {written}')
+    monkeypatch.undo()
+    after = ledger_files(root)
+    assert after.keys() == before.keys() and all(after[p].startswith(before[p]) for p in before)
+    moved = folder.with_name('moved') / copy.relative_to(folder)
+    assert moved.is_file() and moved.read_bytes() == written.read_bytes()  # the copy landed in the folder the walk opened
+
+
+def test_a_looping_verdicts_folder_refuses_the_handback_and_records_verdict_missing(root, tmp_path_factory):
+    verdicts = root / ws.DIR / 'verdicts'
+    verdicts.symlink_to(verdicts)  # resolving it raises RuntimeError on 3.11 and 3.12
+    written = worktree_verdict(tmp_path_factory)
+    assert handback(root, f'Verdict file: {written}')['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert reviewer_stop(root, f'Verdict file: {written}', active=True) is None
+    assert [r['data']['role'] for r in ws.rows(root, 'verdict.missing')] == ['sentinel-quality']
+    assert ws.rows(root, 'hook.error') == [] and ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('looping', ['verdicts', 'seat'])
+def test_a_runtime_error_from_resolving_is_refused_like_an_os_error(root, tmp_path_factory, monkeypatch, looping):
+    written, resolve = worktree_verdict(tmp_path_factory), Path.resolve
+
+    def loop(self, *args, **kwargs):  # what 3.11 and 3.12 raise for a symlink loop
+        if self.name == ('verdicts' if looping == 'verdicts' else written.name):
+            raise RuntimeError(f'Symlink loop from {self}')
+        return resolve(self, *args, **kwargs)
+    monkeypatch.setattr(Path, 'resolve', loop)
+    assert reviewer_stop(root, f'Verdict file: {written}', active=True) is None
+    monkeypatch.undo()
+    assert len(ws.rows(root, 'verdict.missing')) == 1 and ws.rows(root, 'hook.error') == []
+
+
+def no_free_name(root, tmp_path_factory, monkeypatch, site, cause):
+    folder = root / ws.DIR / 'verdicts' / 'x'
+    folder.mkdir(parents=True)
+    findings = '- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'
+    (folder / 'quality-abc1234.md').write_text(verdict_text(verdict='FIX', findings=findings) if site != 'shape'
+                                                else verdict_text(findings=CLOSED))
+    message = 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md'
+    if site == 'copy':
+        message = f'Verdict file: {worktree_verdict(tmp_path_factory)}'
+    elif site == 'other-seat':
+        assert reviewer_stop(root, message, agent='rev0') is None
+        (folder / 'quality-abc1234.md').write_text(verdict_text())
+    for i in range(2, 999) if cause == 'all-taken' else ():
+        (folder / f'quality-abc1234-{i}.md').write_text('taken\n')
+    iterdir = Path.iterdir
+
+    def unlistable(self):
+        if self == folder.resolve() or self == folder:
+            raise PermissionError(13, 'Permission denied', str(self))
+        return iterdir(self)
+    if cause == 'unlistable':
+        monkeypatch.setattr(Path, 'iterdir', unlistable)
+    return message
+
+
+@pytest.mark.parametrize('cause', ['all-taken', 'unlistable'])
+@pytest.mark.parametrize('site', ['copy', 'other-seat', 'shape'])
+def test_no_free_name_beside_a_verdict_is_a_refusal_never_a_hook_error(root, tmp_path_factory, monkeypatch, site, cause):
+    message = no_free_name(root, tmp_path_factory, monkeypatch, site, cause)
+    assert (out := reviewer_stop(root, message))['decision'] == 'block' and 'next free number' not in out['reason']  # none is free
+    assert handback(root, message)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert reviewer_stop(root, message, active=True) is None
+    assert len(ws.rows(root, 'verdict.missing')) == 1 and ws.rows(root, 'hook.error') == []
+
+
+def test_the_next_free_name_lists_the_folder_once(root, monkeypatch):
+    folder = root / ws.DIR / 'verdicts' / 'I-1'
+    folder.mkdir(parents=True)
+    for i in range(2, 6):
+        (folder / f'quality-abc1234-{i}.md').write_text('taken\n')
+    (folder / 'quality-abc1234.md').write_text(verdict_text(findings=CLOSED))
+    listed, iterdir = [], Path.iterdir
+    monkeypatch.setattr(Path, 'iterdir', lambda self: listed.append(self) or iterdir(self))
+    reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-abc1234.md')['reason']
+    assert 'Write the corrected verdict to quality-abc1234-6.md beside it' in reason
+    assert listed.count(folder.resolve()) == 1
+
+
+REPORT_1160 = 'Lead pass done: three candidates in .wuwei/candidates.json.\nBlocked: none\nGap: SubagentHandback refused'
+
+
+def seat_transcript(path, refused=True, text=REPORT_1160):
+    """A seat whose hand-back the harness refused outside auto mode (is_error), then its plain-text report."""
+    rows = [{'type': 'assistant', 'message': {'content': [
+        {'type': 'tool_use', 'id': 'toolu_1', 'name': 'SubagentHandback', 'input': {'message': REPORT_1160}}]}}]
+    rows.append({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_1', 'is_error': True,
+                 'content': 'Only the auto-mode classifier can allow SubagentHandback: the session is not in auto mode'}]}}
+                if refused else {'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'toolu_1', 'content': '{"success":true}'}]}})
+    if text:
+        rows.append({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': text}]}})
+    path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    return str(path)
+
+
+def lead_stop(root, transcript, mode='default', session='s1'):
+    return hook.handle(root, 'SubagentStop', {'session_id': session, 'agent_id': 'lead1', 'agent_type': 'wuwei:lead',
+                                              'permission_mode': mode, 'agent_transcript_path': transcript, 'cwd': str(root)})
+
+
+def planner_call(root, tool='Read', data=None, session='s1'):
+    return hook.handle(root, 'PreToolUse', {'session_id': session, 'cwd': str(root), 'tool_name': tool,
+                                           'tool_input': data or {'file_path': str(root / 'README.md')}})
+
+
+@pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
+def test_a_report_the_harness_kept_from_the_planner_reaches_it_once_on_its_next_call(root, tmp_path, mode):
+    """Outside auto mode Claude Code refuses SubagentHandback and drops a seat's plain text (#1160, #1040, #937)."""
+    assert lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'), mode) is None
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert REPORT_1160 in note and 'lead' in note
+    assert planner_call(root) is None  # given once
+    assert list((root / ws.DIR / 'reports').glob('*.md'))  # and kept
+
+
+def test_a_refused_handback_with_no_text_after_it_still_reaches_the_planner(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=''))
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_a_delivered_handback_is_not_given_twice_nor_to_another_session(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', refused=False, text=''), mode='auto')
+    assert planner_call(root) is None
+    lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl'), session='s2')
+    assert planner_call(root, session='s1') is None
+    assert REPORT_1160 in planner_call(root, session='s2')['hookSpecificOutput']['additionalContext']
+
+
+def test_the_planner_asking_the_seat_for_its_report_gets_it_instead_of_a_resume(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = planner_call(root, 'SendMessage', {'to': 'lead1', 'message': 'deliver your report'})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and REPORT_1160 in out['permissionDecisionReason']
+
+
+def test_a_planner_that_stops_first_gets_the_report_at_its_stop(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = hook.handle(root, 'Stop', {'session_id': 's1', 'cwd': str(root)})
+    assert out['decision'] == 'block' and REPORT_1160 in out['reason']
+
+
+def test_a_codex_seat_or_a_plain_subagent_is_never_reported_twice(root, tmp_path):
+    """Codex's wait_agent and a tool-only subagent already return the text: nothing is kept for them."""
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'turn_id': 't1', 'agent_id': 'a1', 'agent_type': 'builder',
+                                       'cwd': str(root), 'agent_transcript_path': None, 'last_assistant_message': REPORT_1160})
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'w1', 'agent_type': 'web-fetch', 'cwd': str(root),
+                                       'agent_transcript_path': seat_transcript(tmp_path / 'web.jsonl')})
+    assert planner_call(root) is None
+
+
+def test_a_guard_decision_passes_unchanged_and_the_report_waits_for_the_next_call(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = planner_call(root, 'Edit', {'file_path': str(root / ws.DIR / 'ledger' / 'x.jsonl')})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and REPORT_1160 not in out['permissionDecisionReason']
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert REPORT_1160 in note and 'second round done' in note
