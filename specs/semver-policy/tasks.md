@@ -19,3 +19,11 @@
 - [x] T009 Full suite green: 1926 passed, 2 skipped
 - [x] T010 No emojis and no em dashes in the diff
 - [x] T011 [US3] PR body holds `Release-As: 4.1.0` alone on a line (FR-006)
+
+## Phase 4: Fix round 1 (arch FIX at 937883f)
+
+- [x] T012 Extend the charter test with the documented-API condition, ESCALATE with Breaking: yes and the base commit, and run it red: 1 failed
+- [x] T013 [US1] Rule 7 in 79 words, the arch preamble and last paragraph trimmed; the arch agent stays at 2,248 (FR-002)
+- [x] T014 [US2] `evidence.md`: strict SemVer table, the exit-code meaning sentence, the base-commit read, the skill, plugin, role and owner-file surfaces, "Before a major merges" (FR-001)
+- [x] T015 `builder.md` rule 6, `reference.md` and `design.md` aligned (FR-003, FR-004)
+- [x] T016 Build, vendor, full suite, PR body `Announcement:` line

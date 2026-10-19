@@ -114,7 +114,7 @@ day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
 Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
-declared public API; a fix that makes WUWEI refuse or report more is a minor. The public API and
+declared public API. The public API and
 the classification are declared once, in
 [the evidence contract](site/concepts/evidence.md#breaking-changes). A break (declared with `!` or
 `BREAKING CHANGE:`, or found by the arch gate's required `Breaking:` line; a contract file or a

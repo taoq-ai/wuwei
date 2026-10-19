@@ -19,15 +19,17 @@ Charters in `charters/` are the one source for `agents/`. Every sentinel is buil
 - III. An auditor: the evidence rules (`Announcement:`, `breaking:`) are unchanged; only what
   counts as a break is defined.
 - V. Test first: the new charter test ran red before the edits.
-- VI. Budgets: AGENT_WORDS stays 2,250; the arch agent drops from 2,250 to 2,248 words.
+- VI. Budgets: AGENT_WORDS stays 2,250; the arch agent drops from 2,250 to 2,248 words and stays
+  there after fix round 1.
 
 ## Design
 
 - `docs/site/concepts/evidence.md` Breaking changes: the definition, the public API list, the
-  bump table, the auditor reading with the ESLint citation, the history sentence, then the
-  existing detection and evidence text.
-- `charters/sentinel-arch.md` rule 7: 65 words for 66.
-- `charters/builder.md` rule 6: `!` and `BREAKING CHANGE:` for a major only; a stricter check is
-  a `fix:` with release notes.
+  base-commit read, the strict SemVer bump table, the documented-API condition for a patch, the
+  exit-code meaning sentence, the history sentence, then the existing detection and evidence text.
+- `charters/sentinel-arch.md` rule 7: 79 words for 65; 15 words cut from its preamble and last
+  paragraph so the agent stays at 2,248.
+- `charters/builder.md` rule 6: `!` and `BREAKING CHANGE:` for a major only; a stricter check of a
+  documented rule is a `fix:`, a new capability a `feat:`.
 - `charters/_common.md` Done: "a breaking change (a SemVer major)", one word fewer.
 - `docs/design.md`, `docs/site/reference.md`, `docs/site/concepts/decisions.md`: link to the section.

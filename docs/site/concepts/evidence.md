@@ -76,24 +76,30 @@ WUWEI's own public API is:
 - the config keys and their defaults;
 - the ledger, state and verdict file formats;
 - the PR body lines and owner question shapes that seats and owners write;
-- the hook input and output contract.
+- the hook input and output contract;
+- the skill names (`/wuwei-run`, `/wuwei-watch`, `/wuwei-close`, `/wuwei-rules`, and the old name
+  of a renamed skill while its alias ships), the plugin name and the marketplace name;
+- the agent role names, which the config's `models` rows name;
+- the owner-written files: `.wuwei/goals.md`, `.wuwei/standards.md` and the plan file format.
 
-A change is classified by what it does to that API:
+The gate reads this list, or a project's own declaration, at the base commit, never from the PR's
+own head, so a PR cannot shrink the API it is judged by. A change is classified by what it does to
+that API:
 
 | Bump | The change |
 | --- | --- |
-| major | an element is removed, renamed or changes meaning; an input becomes required; an exit code or a format changes |
-| minor | a new capability, or a fix that makes WUWEI refuse or report more (a guard bypass closed, a gap it missed) |
-| patch | a fix that makes WUWEI refuse or report less, docs, internals |
+| major | a documented element is removed, renamed or given a different meaning or shape; an input every client must now give; a documented exit code changes meaning |
+| minor | a new capability that existing clients need not use; a new check that is off by default or only adds information |
+| patch | a fix of behaviour that contradicted the documented public API at the base, including a closed guard bypass and a gap the docs already promised; docs; internals |
 
-WUWEI is an auditor, so a gap is its lint error and a door refusal is its rule. It follows the
-reading in [ESLint's semantic versioning policy](https://github.com/eslint/eslint#semantic-versioning-policy):
-a bug fix that reports more errors is a minor, and one that reports fewer is a patch. A behaviour
-that contradicted the docs was a bug, so fixing it is not a major, even when the fix is stricter.
-Closing a hole in a rule WUWEI already documents is such a fix. A new rule that asks every PR for
-something WUWEI never asked before is a newly required input, so a major, as ESLint treats a new
-default error. A change with any major part is a major. When the gate is unsure which bump
-applies, it escalates to you.
+A fix makes the code do what the docs already said, so it is a patch even when WUWEI now refuses
+or reports more. Refusing or reporting more is a patch only under that condition: the old
+behaviour contradicted the documented public API. A new rule that asks every PR for something the
+docs never asked is an input every client must now give, so a major. An exit code is judged by its
+meaning, not by which inputs reach it: when `wuwei evidence` exits 1 on one more PR because a
+documented rule is now checked strictly, 1 still means gaps, so that is a patch. A change with
+any major part is a major. When the gate is unsure which bump applies, it escalates to you with
+`Breaking: yes`.
 
 Versions 2.0.0 to 4.0.0 were bumped under the earlier rule, where any visible change in behaviour
 counted as breaking, and from 4.1.0 the SemVer policy applies.
@@ -102,9 +108,10 @@ WUWEI finds a breaking change three ways: the PR declares it (a `!` in the title
 `BREAKING CHANGE:` line), the architecture gate states it (every arch verdict carries
 `Breaking: no` or `Breaking: yes: <what breaks for which clients>`, and yes means a major), and a
 change to a contract file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier
-so it looks. A stricter check is a `fix:` commit with release notes in its body, never a `!`.
+so it looks. A patch is a `fix:` commit and a minor a `feat:`, as release-please bumps them; only
+a major takes a `!`.
 
-Before such a change merges it needs evidence, in order:
+Before a major merges it needs evidence, in order:
 
 1. An `Announcement: <url>` line: one http(s) URL alone on the line, without brackets. It points at
    a client communication that already exists: a PR or issue comment, or a published release note
@@ -115,7 +122,7 @@ Before such a change merges it needs evidence, in order:
 
 **Why:** a break nobody announced is an outage for someone else. The team does the work of finding
 and announcing it; you decide whether it ships. A major that is not one costs clients an upgrade
-review for nothing, so a stricter check ships as a minor.
+review for nothing, so a fix of a documented rule ships as a patch, with release notes.
 
 ## Gates before the PR, chosen by the diff
 

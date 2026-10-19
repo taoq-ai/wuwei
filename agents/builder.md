@@ -170,9 +170,10 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    commented-out code; errors handled where the caller can act on them.
 5. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
 6. Only a major (an incompatible change to the declared public API, per SemVer) takes a `!` in
-   the PR title and a `BREAKING CHANGE:` line, with migration notes. A stricter check is a `fix:`
-   with release notes in the body. Prefer a compatible path (a deprecation window, a new version
-   beside the old) when one exists.
+   the PR title and a `BREAKING CHANGE:` line, with migration notes. A stricter check of a rule the
+   docs already state is a `fix:` (a patch) with release notes in the body; a new capability is a
+   `feat:` (a minor). Prefer a compatible path (a deprecation window, a new version beside the old)
+   when one exists.
 
 ## Disagreeing with a finding
 
