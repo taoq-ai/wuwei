@@ -1224,20 +1224,9 @@ def test_a_planner_note_names_an_answer_that_was_not_recorded(root):
 
 def test_a_stop_waits_for_an_answer_row_the_harness_is_still_writing(root, monkeypatch):
     """Wall clock: the Stop rereads for hook.WAIT seconds before it records answer.unconfirmed."""
-    import threading
     import time
     monkeypatch.setattr(hook, 'WAIT', 1.0)
     payload = installed(ASK, ASK_FLOW[:1])
-    hook.handle(root, 'PostToolUse', payload)
-
-    def late():
-        with Path(payload['transcript_path']).open('a') as out:
-            out.write(ASK_FLOW[1] + '\n')
-    timer = threading.Timer(0.3, late)
-    timer.start()
-    hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
-    timer.join()
-    assert len(ws.rows(root, 'ruling')) == 1 and not ws.rows(root, 'answer.unconfirmed')
     hook.handle(root, 'PostToolUse', {**payload, 'tool_use_id': 'toolu_never'})
     started = time.monotonic()
     out = hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
@@ -1333,3 +1322,41 @@ def test_the_real_entry_never_reads_a_projects_folder_its_caller_names(root, tmp
     subprocess.run([str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PostToolUse'], input=json.dumps(payload), text=True, check=True,
                    capture_output=True, env={**os.environ, variable: str(fake)}, cwd=root)
     assert ws.rows(root, 'ruling') == [] and 'is not a transcript under' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
+
+
+@pytest.mark.parametrize('rows, recorded', [
+    (lambda use, done, other: [use, done], True),
+    (lambda use, done, other: [use, done, other], False),  # the last tool_result row for the id carries another answer
+    (lambda use, done, other: [use, other, done], True),
+    (lambda use, done, other: [use.replace('"AskUserQuestion"', '"Bash"'), done], False),  # the id names another tool
+    (lambda use, done, other: [done], False)])
+def test_the_answer_is_the_last_tool_result_row_for_an_askuserquestion_with_that_id(root, rows, recorded):
+    other = json.dumps({**json.loads(ASK_FLOW[1]), 'toolUseResult': {'answers': {REAL_Q: 'No'}}})
+    payload = installed(ASK, rows(ASK_FLOW[0], ASK_FLOW[1], other))
+    hook.handle(root, 'PostToolUse', payload)
+    assert [r['data']['approved'] for r in ws.rows(root, 'ruling')] == ([True] if recorded else [])
+
+
+def test_a_stop_records_an_answer_row_the_harness_writes_within_the_wait(root, monkeypatch):
+    import threading
+    monkeypatch.setattr(hook, 'WAIT', 1.0)
+    payload = installed(ASK, ASK_FLOW[:1])
+    hook.handle(root, 'PostToolUse', payload)
+
+    def late():
+        with Path(payload['transcript_path']).open('a') as out:
+            out.write(ASK_FLOW[1] + '\n')
+    timer = threading.Timer(0.3, late)
+    timer.start()
+    hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
+    timer.join()
+    assert len(ws.rows(root, 'ruling')) == 1 and not ws.rows(root, 'answer.unconfirmed')
+
+
+def test_a_launch_id_on_another_tool_is_not_a_launch(root):
+    payload = installed(STOP)
+    with Path(payload['transcript_path']).open('w') as out:
+        out.write(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'toolu_01P73is5E7kQWKhB84Bzw2fs',
+                                                                           'name': 'Bash', 'input': {}}]}}) + '\n')
+    hook.handle(root, 'SubagentStop', payload)
+    assert ws.rows(root, 'seat.stopped') == [] and ws.rows(root, 'seat.unconfirmed')
