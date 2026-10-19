@@ -164,7 +164,9 @@ sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-
 `-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
-removing a cache file passes; a hand-made `wuwei hook` call; an owner question without a class.
+removing a cache file passes; a hand-made `wuwei hook` call, through Python too (`python -m wuwei hook`, the CLI's
+`__main__.py`, code naming the wuwei module beside `hook` or `record`, from `-c` or stdin) or with a program or
+subcommand word sh fills in; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting

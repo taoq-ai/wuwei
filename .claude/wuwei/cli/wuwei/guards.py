@@ -28,7 +28,11 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
+FORGE = (r'(?<![\w/.])wuwei(?![\w/-])', r'\b(hook|record)\b')  # the wuwei module named as code (not a path) beside its writers
+FILLED = r'(?<!\S)(?=\S*[$`*?\[{])\S*+'  # a word sh fills in only when it runs ($x, `x`, a glob, a brace), read once
+CLI = rf'wuwei(/__main__\.py|\.__main__)?( --)*( hook\b| {FILLED})|(^\S*|-\w*m ?)wuwei( --)*$|{FILLED} (-- )*hook\b'  # hook, a filled word or none
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',),
+              (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',), FORGE)
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
@@ -339,6 +343,7 @@ def bash(root, command, cwd, session):
                     '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
     inside = records(cwd, None) or any(records(w, None, 64) for w in {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)})  # or env -C
+    forged, hooked = all(re.search(w, command) for w in FORGE), re.search(r'\bhook\b', command)  # read once, so the loop stays linear
     for argv, targets in parts or ():
         program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
@@ -346,8 +351,11 @@ def bash(root, command, cwd, session):
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
-        if program == 'wuwei' and argv[1:2] == ['hook']:
-            return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
+        runner = re.search(FILLED, program) or program in SHELLS or any(Path(a).name.startswith(('python', 'pypy')) for a in argv)
+        if runner and (forged or hooked and re.match(f'{FILLED} (-- )*{FILLED}', ' '.join(argv))) or (
+                runner or program == 'wuwei') and re.search(CLI, ' '.join(argv)):  # forged: code; hooked: $W $x after x=hook
+            return deny('wuwei hook is called by the harness, never by a session, and so are python -m wuwei hook and code calling its hook '
+                        'or ws.record: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
         if program in ('git', 'git-clean'):

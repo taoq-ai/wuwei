@@ -94,6 +94,12 @@ Known shapes they do not read on one line, reported and not yet fixed:
   run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
   (`install`), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
   globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
+- A hook call the command text does not show. The guards read commands, not scripts: a script
+  file run by path that imports wuwei or runs `bin/wuwei hook` (`python3 forge.py`, `sh forge.sh`)
+  passes, because the repository's own probes under `specs/` import wuwei the same way. So does
+  code that builds the module name or comes from a variable (`__import__('wu' + 'wei.hook')`,
+  `python3 -c "$CODE"`), and the CLI under `eval`, behind a wrapper whose program is a variable
+  (`env "$W" hook Stop`), or under a runner outside the guards' list (`setsid`, `find -exec`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
 - Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.

@@ -257,6 +257,15 @@
     {"command": "cd ../g && git push origin main", "source": "item scratch-remotes (a cd before the push: the scratch rule reads one plain git call only)", "verdict": "push"},
     {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"},
     {"command": "git --work-tree=../x push .git :main", "source": "gates scratch-remotes at 6a5d00d (security: a work tree outside the shell's directory; real git deleted main in the working repository)", "verdict": "push"},
-    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"}
+    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"},
+    {"command": "PYTHONPATH=.claude/wuwei/cli python3 -m wuwei hook PostToolUse < p.json", "source": "item forge-door acceptance 1 (security gate on goal-met at 0039ce2: python -m wuwei hook)", "verdict": "refusal"},
+    {"command": "env PYTHONPATH=.claude/wuwei/cli python3 -m wuwei hook PostToolUse < p.json", "source": "item forge-door acceptance 1 (security gate on goal-met at 0039ce2: the same under env)", "verdict": "refusal"},
+    {"command": "python3 -c 'import sys; sys.path[:0] = [\".claude/wuwei/cli\"]; from wuwei import hook; hook.main(\"PostToolUse\")' < p.json", "source": "item forge-door acceptance 1 (security gate on goal-met at 0039ce2: python -c calling hook.main)", "verdict": "refusal"},
+    {"command": "python3 -c 'import sys; sys.path[:0] = [\".claude/wuwei/cli\"]; from wuwei import ws; ws.record(\".\", \"ruling\", {})'", "source": "item forge-door acceptance 1 (security gate on goal-met at 0039ce2: python -c calling ws.record)", "verdict": "refusal"},
+    {"command": "x=hook; .claude/wuwei/bin/wuwei $x PostToolUse < p.json", "source": "item forge-door acceptance 1 (security gate on goal-met at 0039ce2: the subcommand through a variable)", "verdict": "refusal"},
+    {"command": "python3 -m pytest -q", "source": "AGENTS.md (the suite; item forge-door keeps it passing)", "verdict": "pass"},
+    {"command": ".claude/wuwei/bin/wuwei status", "source": "charters/_common.md (the CLI; item forge-door keeps it passing)", "verdict": "pass"},
+    {"command": "bin/wuwei agents build", "source": "AGENTS.md (after a charter change; item forge-door keeps it passing)", "verdict": "pass"},
+    {"command": "python3 -I specs/goal-met/differential.py . out", "source": "specs/goal-met/differential.py (a probe run; item forge-door keeps it passing)", "verdict": "pass"}
   ]
 }

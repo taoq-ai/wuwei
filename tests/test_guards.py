@@ -118,6 +118,65 @@ def test_reading_the_ledger_passes(root, repo):
     assert guards.pre_tool(root, bash('tail -5 .wuwei/ledger.jsonl')) is None
 
 
+FORGED = 'wuwei hook is called by the harness, never by a session'
+
+
+@pytest.mark.parametrize('command', [  # forge-door: the readable shapes the goal-met security gate ran past the guard
+    'PYTHONPATH=.claude/wuwei/cli python3 -m wuwei hook PostToolUse < p.json',
+    'env PYTHONPATH=cli python3 -m wuwei hook PostToolUse < p.json',
+    """python3 -c 'import sys; sys.path[:0] = ["cli"]; from wuwei import hook; hook.main("PostToolUse")' < p.json""",
+    """python3 -c 'import sys; sys.path[:0] = ["cli"]; from wuwei import ws; ws.record(".", "ruling", {"pr": "acme/app#42"})'""",
+    'x=hook; .claude/wuwei/bin/wuwei $x PostToolUse < p.json',
+    'nice -n 5 python3 -Im wuwei hook Stop', 'timeout 5 /usr/bin/python3.12 -m wuwei.__main__ hook Stop',
+    'sudo -u ci python3 -I -m wuwei -- hook Stop', '.claude/wuwei/bin/wuwei -- hook Stop', 'bin/wuwei "$EVENT" Stop',
+    'python3 -m wuwei "$e"', '$PY -m wuwei hook Stop', '"$W" hook Stop', '.claude/wuwei/bin/$x hook Stop', 'sh "$W" hook Stop',
+    'PYTHONPATH=cli python3 cli/wuwei hook Stop', 'python3 cli/wuwei/__main__.py hook Stop', 'pypy3 -m wuwei hook Stop',
+    """echo 'from wuwei import hook; hook.main("Stop")' | python3""", "python3 <<< 'import wuwei.hook as h; h.main(\"Stop\")'",
+    "python3 - <<'EOF'\nfrom wuwei import hook\nhook.main('Stop')\nEOF", 'printf "hook Stop" | xargs .claude/wuwei/bin/wuwei',
+    """python3 -c "from wuwei import ws; ws.record('.', 'ruling', {})" # it's""", "uv run python -m wuwei hook Stop",
+    "bash -c 'python3 -m wuwei hook Stop'", 'p=python3; $p -c "import wuwei.ws as w; w.record(1, 2, 3)"',
+    'python3 -mwuwei.__main__ hook Stop', 'bin/wuwei {hook,} Stop', 'printf "hook Stop" | xargs python3 -m wuwei', 'bin/wuwe? hook Stop',
+    'x=hook; "$W" $x Stop', '"$W" $(echo hook) Stop', '$W {hook,} Stop', "python3 -m wuwei.__main__ ho''ok Stop",
+    '"$P" -m wuwei.__main__ "$SUB" Stop', 'x=hook; bin/$N $x Stop', 'bin/wu* {hook,} Stop',
+    'printf "hook Stop" | xargs bin/wuwei --', 'printf "hook Stop" | xargs python3 -m wuwei --',
+])
+def test_a_hook_call_through_python_or_an_indirect_word_is_refused(root, repo, command):
+    decision = guards.pre_tool(root, bash(command))
+    assert decision and decision['decision'] == 'deny', command
+
+
+@pytest.mark.parametrize('command', [
+    'python3 -m pytest -q', 'pytest -q', 'python3 -m pytest -q tests/test_hook.py -k record', '.claude/wuwei/bin/wuwei status',
+    '/w/wuwei/.claude/wuwei/bin/wuwei evidence taoq-ai/wuwei#5', 'bin/wuwei agents build', 'python3 -I specs/goal-met/differential.py',
+    'PYTHONPATH=.claude/wuwei/cli python3 -I specs/hook-transcript/probe.py --record out', 'PYTHONPATH=cli python3 -m wuwei plan show x',
+    """python3 -c 'import json; print(json.load(open(".claude/settings.json"))["hooks"])'""", 'cd /w/wuwei && python3 -m pytest -k hook',
+    'grep -n "wuwei hook" docs/design.md', 'bin/wuwei plan show "$ID"', '"$PYTHON" -m pytest -q', 'python3 -m http.server "$PORT"',
+    'python3 -m compileall -q cli/wuwei', 'python3 -m pytest -q --cov=cli/wuwei', 'python3 -I wuwei/specs/hook-transcript/probe.py',
+    'ls cli/wuwei', 'git diff -- cli/wuwei', '"$EDITOR" "$FILE"', 'python3 "$SCRIPT" "$ARG"',
+    'for f in specs/*/probe.py; do python3 -I "$f" "$out"; done', 'python3 -I specs/hook-transcript/probe.py "$IN" "$OUT"',
+    'x=hooks; "$EDITOR" $x', """python3 -c 'import json; print(json.load(open("app.wuwei.json"))["hook"])'""",
+])
+def test_a_command_that_does_not_reach_the_hook_entry_passes(root, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+def test_a_long_filled_word_reads_in_linear_time(root, repo):
+    start = time.perf_counter()  # a quadratic read of these takes about 30 s each
+    for command in ('python3 ' + '$' * 100000, '$W ' + '*' * 100000 + ' x', 'python3 ' + '-m' * 50000):
+        assert guards.pre_tool(root, bash(command)) is None
+    assert time.perf_counter() - start < 5
+
+
+def test_the_harness_runs_the_hook_entry_and_its_guard_reads_a_forged_call(root):
+    def run(command):
+        payload = json.dumps({'hook_event_name': 'PreToolUse', 'session_id': 's1', 'cwd': str(root), 'tool_name': 'Bash',
+                              'tool_input': {'command': command}})
+        return subprocess.run([str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PreToolUse'], input=payload, capture_output=True,
+                              text=True, cwd=root, timeout=60, env={**os.environ, 'CLAUDE_CODE_REMOTE': ''})
+    assert run('python3 -m pytest -q').stdout == ''
+    assert FORGED in json.loads(run('python3 -m wuwei hook Stop').stdout)['hookSpecificOutput']['permissionDecisionReason']
+
+
 @pytest.mark.parametrize('payload', [
     {'tool_name': 'mcp__slack__send_message', 'tool_input': {'text': 'token ghp_' + 'a1' * 18}},
     {'tool_name': 'mcp__linear__save_comment', 'tool_input': {'body': '-----BEGIN OPENSSH PRIVATE KEY-----'}},
