@@ -9,7 +9,8 @@ adds them with `wuwei plan add`, which computes the score.
    branch, review findings, review threads asking for follow-up work, follow-ups recorded in
    recent PRs, regressions in the report. Mark a source you cannot reach as unmeasured.
 2. Each candidate cites the goal in `.wuwei/goals.md` it serves, or is marked unplanned.
-   Deduplicate against the plan and open PRs. Verify the work is still open.
+   Deduplicate against the plan and open PRs. Verify the work is still open. A goal the owner
+   ruled met (the report's `Met goals:` line) gets no new candidates.
 3. On a later pass the same day, start from what changed since the last pass: merged items, parked
    items, the owner's new words.
 
