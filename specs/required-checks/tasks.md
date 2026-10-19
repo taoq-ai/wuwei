@@ -24,3 +24,11 @@
 
 - [x] T015 Route differential at main and at the head, under no protection and a required `test (3.11)`
 - [x] T016 Mutants of each new rule on both trees, one at a time, each killed by a failing test
+
+## Phase 4: Fix round 1 (arch and goal at 19ede00)
+
+- [x] T017 Tests first, red at 19ede00: a required check not yet created while CI runs waits and lets auto-merge arm; the blocked gap waits and lets auto-merge arm; a release PR's gap names the way through; the base branch is encoded; the required rule on page 2 is read
+- [x] T018 `evidence.AUTO` names what GitHub's auto-merge waits on; the merge door reads it (cli/wuwei/evidence.py, cli/wuwei/guards.py)
+- [x] T019 `quote` the base branch in the branch and rules reads (cli/wuwei/gh.py)
+- [x] T020 The release PR remedy (`RELEASE_PAT`, close and reopen, owner exception) in docs/site/concepts/evidence.md and docs/design.md; doors.md and design.md section 7 true for auto-merge again; the Done table names required checks
+- [x] T021 Route differential with six hosts and mutants R1 to R17 on both trees

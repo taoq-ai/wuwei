@@ -68,10 +68,20 @@ The acceptance scenarios, restated:
 - Q: How long is the protection read kept? A: `PR_TTL` (900 seconds), keyed by repository and the
   sha256 of the base branch name, so `a/b` and `a__b` never share an entry. A failed read is not
   kept. A board of many PRs on one base reads protection once per 15 minutes.
-- Q: Does auto-merge pass with a required check not run? A: No. Only `CI running` is exempt for
-  auto-merge; a required check that never ran waits forever, so arming auto-merge on it is refused.
-- Q: Is the gap actionable or waiting? A: Actionable: nobody's run will start it, someone has to push
-  or re-run. The unreadable gap is waiting, like `evidence unreadable`.
+- Q: Does auto-merge pass with a required check not run? A: Once CI has settled, no: a required
+  check that never ran waits forever, so arming auto-merge on it is refused. While CI still runs,
+  yes (fix round 1, arch): GitHub creates a job's check run only once the job is queued, so a
+  `needs:` job's check cannot be told apart from one that never runs. The gap then reads `required
+  check not run yet`, waiting, and GitHub's auto-merge enforces the check itself.
+- Q: Is the gap actionable or waiting? A: Actionable once CI has settled: nobody's run will start it,
+  someone has to push or re-run. Waiting while CI runs. The unreadable gap is waiting, like
+  `evidence unreadable`.
+- Q: Does the blocked gap hold auto-merge? A: No (fix round 1, arch). GitHub's auto-merge waits on
+  its own hold, so only a direct merge (an admin's REST merge among them) needs it. It is waiting:
+  the hold may be a review that a reviewer or the owner owes, not the team.
+- Q: What clears the gap on a release-please PR? A: A `RELEASE_PAT` secret that release.yml passes to
+  release-please, so its pushes start workflows; meanwhile a close and reopen by a person, or an owner
+  exception at the head. The gap names the first two.
 
 ## User Scenarios & Testing
 
@@ -109,13 +119,17 @@ failed read is read again; a warm board makes no protection call.
 - FR-002: `gh.rules` reads every page of the branch's rules.
 - FR-003: `gh.pr` carries `mergeableState` from the PR's `mergeable_state`.
 - FR-004: `evidence.gaps` adds `required check[s] not run at <sha7>: <names>` (safety, actionable) for
-  each required context with no check run or status of that name on the head.
+  each required context with no check run or status of that name on the head, once CI has settled;
+  while a check or status is unsettled it reads `required check[s] not run yet at <sha7>: <names>`
+  (safety, waiting), which does not hold arming auto-merge. On a release-please PR the settled gap
+  names the way through.
 - FR-005: a failed or malformed protection read adds `required checks unreadable on <base>: <error>`
   (safety, waiting) and is not cached.
 - FR-006: `mergeable_state` blocked with no other safety gap adds `GitHub reports the merge blocked
-  for a reason WUWEI cannot name: read the merge box on the PR` (safety, actionable).
+  for a reason WUWEI cannot name: read the merge box on the PR` (safety, waiting); it holds a direct
+  merge and not arming auto-merge.
 - FR-007: the protection read is cached `PR_TTL` per repository and base branch.
-- FR-008: runtime grows by at most 10 lines; `.claude/wuwei/` matches `cli/wuwei/`; the docs state
+- FR-008: runtime grows by at most 10 lines (16 after fix round 1); `.claude/wuwei/` matches `cli/wuwei/`; the docs state
   the rule.
 
 ## Assumptions
@@ -130,6 +144,13 @@ failed read is read again; a warm board makes no protection call.
   needs only read access and has no 404 for "no protection" to tell from a refusal. Overturned if a
   host answers the branch read without `protection` for some token; that reads as unreadable and
   fails closed, so the cost is a held merge, never a pass.
+
+- Fix round 1: GitHub's auto-merge enforces required checks and its own merge hold, so arming it
+  passes while a required check has no run yet during CI, and while only the blocked gap is left. This
+  keeps the change a patch. Overturned if GitHub's auto-merge is found to merge past a required check
+  or a blocked state.
+- Fix round 1: the base branch name is URL-encoded (`/` kept) in the branch and rules reads, so a
+  base `a#b` is never read as `a`.
 
 ## Rollback
 

@@ -50,16 +50,23 @@ read (`rulesets`, by branch) in the shapes read live on `taoq-ai/wuwei`. Runtime
 
 `cli/wuwei/*.py` 3,208 at 89e7064e to 3,218 at the head (`for f in cli/wuwei/*.py; do cat $f; done | wc -l`):
 gh.py +5; evidence.py +5 (9 new lines, 4 fewer from moving `SHA` and `PR_TTL` into the constants block).
+Fix round 1 adds 6 (3,224): evidence.py +4 (the `AUTO` exemptions, `settled` shared with the PR cache,
+the not-run-yet gap and the release hint), gh.py +2 (the `quote` import, the branch read split for its
+encoding), guards.py 0 (the merge door reads `evidence.AUTO`).
 
 ## Route differential (AGENTS.md)
 
 `specs/required-checks/route_diff.py` runs all 257 routes of `tests/fixtures/routes.json` (sha256
 `9e099867c909e8400bd80bdcb7e6e4b5d8914785ac6171ed9a56e8aa3a7901b0`) through `hook.handle` at main
 and at the head, under a host with no protection and one whose main requires `test (3.11)`, with PR 5
-otherwise complete. 514 cases: with no protection none moves; with `test (3.11)` required 23 move,
-every one a merge route of o/r#5 (15 `gh api` PUT spellings on `merge`, one on `ccr/auto_merge`, and 7 `gh pr merge`
-forms, `--auto` included) from allowed with `merge.checked` to refused with `- required check not run
-at aaaaaaa: test (3.11)`. No refusal names another PR or repository.
+otherwise complete. 514 cases: with no protection none moves; with `test (3.11)` required 23 move.
+22 are merge routes of o/r#5 (15 `gh api` PUT spellings on `merge`, one on `ccr/auto_merge`, and 6 `gh pr merge`
+forms, `--auto` included) that go from allowed with `merge.checked` to refused with `- required check
+not run at aaaaaaa: test (3.11)`. The 23rd, `gh pr merge https://github.com/other/x/pull/5 -R o/r`,
+was already refused at main naming `other/x#5` and only gains that line.
+
+Fix round 1 runs six hosts (none, required, blocked, blocked_running, running, required_running);
+the PR body lists every moved route as its own row.
 
 ## Mutants
 
