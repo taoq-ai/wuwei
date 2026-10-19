@@ -68,7 +68,7 @@
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |
 | `BREAKING CHANGE: <what>` (and `!` in the title) | a change that breaks an outward contract |
-| `Announcement: <link>` | a breaking change: the client communication, release note or migration guide |
+| `Announcement: <url>` | a breaking change: one http(s) URL alone on the line, without brackets, of a communication that already exists (a PR or issue comment, or a published release note or migration guide); a changelog entry written at release does not count |
 
 ## Verdict format
 

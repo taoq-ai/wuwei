@@ -35,8 +35,9 @@ def test_a_declared_breaking_change_needs_an_announcement_then_the_owner(root, f
     pr['title'] = 'feat!: drop the v1 export endpoint'
     fake.prs['42'] = pr
     gates(root)
-    assert texts(root) == ['breaking change without an announcement: add "Announcement: <link to the client '
-                           'communication, release note or migration guide>"']
+    assert texts(root) == ['breaking change without an announcement: add "Announcement: <http(s) URL of the '
+                           'published client communication, release note or migration guide>", the URL alone on '
+                           'its line, without brackets']
     pr['body'] = 'WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/2026-10-15-export-v1-retired'
     assert texts(root) == ['breaking change needs the owner\'s confirmation: ask "breaking: acme/app#42 at aaaaaaa: '
                            '<what breaks>. Announced at <link>. Proceed?"']
@@ -53,7 +54,7 @@ def test_the_arch_gate_finds_an_undeclared_break(root, fake):
 
 def test_a_confirmation_does_not_survive_a_moved_head(root, fake):
     standard(root)
-    pr = make_pr(body='WUWEI-Item: I-1\nBREAKING CHANGE: v1 export removed\nAnnouncement: CHANGELOG.md')
+    pr = make_pr(body='WUWEI-Item: I-1\nBREAKING CHANGE: v1 export removed\nAnnouncement: https://acme.test/v2')
     fake.prs['42'] = pr
     gates(root)
     ws.record(root, 'ruling', {'kind': 'breaking', 'pr': 'acme/app#42', 'head': 'bbbbbbb', 'approved': True})

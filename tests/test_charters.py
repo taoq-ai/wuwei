@@ -115,6 +115,14 @@ def test_the_security_gate_defines_its_scanner_and_reads_the_supply_chain():
     assert 'Supply chain:' in text and 'lockfile' in text
 
 
+def test_the_shepherd_asks_for_an_announcement_url_that_exists_at_the_head():
+    text = ' '.join((PLUGIN / 'charters' / 'shepherd.md').read_text(encoding='utf-8').split())
+    assert '`Announcement: <url>`' in text and 'one http(s) URL and nothing else' in text
+    assert 'must exist at the head' in text and 'the release will write later does not count' in text
+    common = ' '.join((PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8').split())
+    assert '`Announcement: <url>`' in common and '`Announcement: <link>`' not in common
+
+
 def test_the_steward_may_propose_charter_deletions():
     text = ' '.join((PLUGIN / 'charters' / 'steward.md').read_text(encoding='utf-8').split())
     assert 'Charters shrink too' in text and 'proposed for deletion' in text
@@ -281,3 +289,9 @@ def test_a_gate_puts_the_findings_its_fix_closed_under_probes():
         assert 'Closed findings go under ## Probes' in text, path
         assert '`closed: <finding> at <sha7>`' in text and '## Findings holds only open findings, or none' in text, path
         assert 'refuses a wrong shape, naming the next free file: write the corrected verdict there' in text, path
+
+
+def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
+    text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text()
+    assert ".claude/wuwei/cli/wuwei/" in text
+    assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
