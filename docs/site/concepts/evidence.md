@@ -155,11 +155,21 @@ A verdict counts only when WUWEI attested it. When a sentinel stops, the Subagen
 file it names (`Verdict file: <path>`), checks its shape, and records its hash, gate, item, head,
 confidence and the agent that wrote it. A malformed verdict goes back to the reviewer once with the
 format. A file edited after attestation no longer counts, except that a finding (FIX or ESCALATE)
-still holds as recorded: replacing it cannot turn it into a pass. At one head, a later pass does not
-outvote a finding; a new head does. A seat that writes over another seat's verdict is sent back to
+still holds as recorded: replacing it cannot turn it into a pass. A verdict counts only at an
+ancestor of the PR head. A pass counts only for this PR, for its repository alone, or when no PR is
+named (an imported 0.34 verdict); a finding holds from any PR of the item. A later pass at an older
+head never clears a finding. At the same head it clears a FIX only when it names that file on a
+`Supersedes: <item>/<file>` line, for a finding closed outside the diff; an ESCALATE stays the
+owner's. Otherwise only a pass at a newer head on the PR's line clears it. `Supersedes:` clears
+gates only: an arch `Breaking: no` clears a `Breaking: yes` only from a newer head on the PR's line,
+for this PR or its repository alone. The
+create and ready doors read no PR yet, so there a pass for any PR of the item in that repository
+counts. A gate whose only pass named another PR reads missing: re-run it with
+`PR: <owner/repo>#<n>`. A seat that writes over another seat's verdict is sent back to
 write its own file beside it. When the stop cannot read the seat's last message, the handback to the
 lead carries it, and the verdict is attested from there. A verdict file that does not count is
-never silent: the board names it and why (its shape, or that no sentinel attested it).
+never silent: the board names it and why (its shape, or that no sentinel attested it). An attested
+pass that does not count for this PR or head shows only as the gate missing.
 
 **Why:** a review is evidence only if a reviewer wrote it and it has not changed since. The hook
 checks the file at stop, however it was written, so a shell edit cannot slip past the lint.
