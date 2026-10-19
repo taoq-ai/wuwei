@@ -6,10 +6,10 @@ from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
 
 
-def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breaking='no', pr='acme/app#42'):
+def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breaking='no', pr='acme/app#42', extra=''):
     path = root / ws.DIR / 'verdicts' / item / (name or f'{gate}-{head[:7]}.md')
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item, pr=pr, breaking=breaking))
+    path.write_text(extra + verdict_text(gate=gate, verdict=verdict, head=head, item=item, pr=pr, breaking=breaking))
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
@@ -601,6 +601,33 @@ def test_a_later_pass_at_the_same_head_does_not_outvote_a_finding(root, fake):
     assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
 
 
+def test_a_pass_at_the_same_head_that_names_the_fix_it_closes_clears_it(root, fake):
+    """A finding closed outside the diff (the PR body) no longer needs a no-op commit to move the head (#1162)."""
+    light(root)
+    fake.prs['42'] = make_pr()
+    fix = attest(root, 'quality', verdict='FIX')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-2.md', extra='Supersedes: some-other.md\n')
+    assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-3.md', extra=f'Supersedes: {fix.relative_to(root)}\n')
+    assert not any(t.startswith('gates missing') for t in texts(evidence.gaps(root, 'acme/app', 42)))
+
+
+def test_a_pass_never_supersedes_an_escalate_an_older_fix_or_another_items_fix(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    gaps = lambda: texts(evidence.gaps(root, 'acme/app', 42))  # noqa: E731
+    attest(root, 'quality', verdict='FIX')
+    newest = attest(root, 'quality', verdict='FIX', name='quality-aaaaaaa-2.md')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-3.md', extra='Supersedes: I-1/quality-aaaaaaa.md\n')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-4.md', item='I-2', extra='Supersedes: I-2/quality-aaaaaaa-2.md\n')
+    assert 'gates missing at head aaaaaaa: quality' in gaps()  # only the newest FIX of this item, by item and file
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-5.md', extra=f'Supersedes: {newest}\n')
+    assert not any(t.startswith('gates missing') for t in gaps())
+    escalated = attest(root, 'quality', verdict='ESCALATE', name='quality-aaaaaaa-6.md')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-7.md', extra=f'Supersedes: {escalated.relative_to(root)}\n')
+    assert 'gates missing at head aaaaaaa: quality' in gaps()  # an ESCALATE is the owner's
+
+
 def test_an_approval_for_an_older_commit_is_named_when_a_check_is_red(root, fake):
     light(root)
     fake.prs['42'] = make_pr(checks='FAILURE', reviews=(('alice', 'APPROVED', OLD),))
@@ -1084,6 +1111,7 @@ def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'acme/app')], []),  # before the draft PR existed
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'Acme/App#42')], []),
     ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#7')], ANNOUNCE),  # a yes from another PR of the item holds
 ])
 def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
     assert breaking(root, fake, *said) == found
@@ -1210,3 +1238,20 @@ def test_the_walk_asks_the_code_host_about_each_pair_of_heads_once(root, fake):
     found = texts(evidence.gate_gaps(root, 'acme/app', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
     asked = [c[1].split('/compare/')[1] for c in fake.calls if c[0] == 'api' and '/compare/' in c[1]]
     assert found[:1] == OWED and sorted(asked) == sorted([f'{OLD}...{HEAD}', f'{mid}...{HEAD}', f'{OLD}...{mid}'])
+
+
+@pytest.mark.parametrize('head, supersedes, pr, found', [
+    (HEAD, True, 'acme/app#42', []),  # a pass at the finding's head that names it clears it (#1162)
+    (HEAD, True, 'acme/app', []),  # written before the draft PR existed
+    (HEAD, False, 'acme/app#42', OWED),  # the same pass without Supersedes clears nothing
+    (OLD, True, 'acme/app#42', OWED),  # a pass at an older head never clears, named or not
+    (HEAD, True, 'acme/app#7', OWED),  # nor a pass for another PR of the item
+])
+def test_a_pass_clears_a_finding_at_its_head_only_by_naming_it(root, fake, head, supersedes, pr, found):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    fix = attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
+    attest(root, 'quality', head, 'PASS', name='quality-pass.md', pr=pr,
+           extra=f'Supersedes: {fix.relative_to(root)}\n' if supersedes else '')
+    assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate'))] == found

@@ -1014,3 +1014,88 @@ def test_the_next_free_name_lists_the_folder_once(root, monkeypatch):
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-abc1234.md')['reason']
     assert 'Write the corrected verdict to quality-abc1234-6.md beside it' in reason
     assert listed.count(folder.resolve()) == 1
+
+
+REPORT_1160 = 'Lead pass done: three candidates in .wuwei/candidates.json.\nBlocked: none\nGap: SubagentHandback refused'
+
+
+def seat_transcript(path, refused=True, text=REPORT_1160):
+    """A seat whose hand-back the harness refused outside auto mode (is_error), then its plain-text report."""
+    rows = [{'type': 'assistant', 'message': {'content': [
+        {'type': 'tool_use', 'id': 'toolu_1', 'name': 'SubagentHandback', 'input': {'message': REPORT_1160}}]}}]
+    rows.append({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_1', 'is_error': True,
+                 'content': 'Only the auto-mode classifier can allow SubagentHandback: the session is not in auto mode'}]}}
+                if refused else {'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'toolu_1', 'content': '{"success":true}'}]}})
+    if text:
+        rows.append({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': text}]}})
+    path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    return str(path)
+
+
+def lead_stop(root, transcript, mode='default', session='s1'):
+    return hook.handle(root, 'SubagentStop', {'session_id': session, 'agent_id': 'lead1', 'agent_type': 'wuwei:lead',
+                                              'permission_mode': mode, 'agent_transcript_path': transcript, 'cwd': str(root)})
+
+
+def planner_call(root, tool='Read', data=None, session='s1'):
+    return hook.handle(root, 'PreToolUse', {'session_id': session, 'cwd': str(root), 'tool_name': tool,
+                                           'tool_input': data or {'file_path': str(root / 'README.md')}})
+
+
+@pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
+def test_a_report_the_harness_kept_from_the_planner_reaches_it_once_on_its_next_call(root, tmp_path, mode):
+    """Outside auto mode Claude Code refuses SubagentHandback and drops a seat's plain text (#1160, #1040, #937)."""
+    assert lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'), mode) is None
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert REPORT_1160 in note and 'lead' in note
+    assert planner_call(root) is None  # given once
+    assert list((root / ws.DIR / 'reports').glob('*.md'))  # and kept
+
+
+def test_a_refused_handback_with_no_text_after_it_still_reaches_the_planner(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=''))
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_a_delivered_handback_is_not_given_twice_nor_to_another_session(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', refused=False, text=''), mode='auto')
+    assert planner_call(root) is None
+    lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl'), session='s2')
+    assert planner_call(root, session='s1') is None
+    assert REPORT_1160 in planner_call(root, session='s2')['hookSpecificOutput']['additionalContext']
+
+
+def test_the_planner_asking_the_seat_for_its_report_gets_it_instead_of_a_resume(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = planner_call(root, 'SendMessage', {'to': 'lead1', 'message': 'deliver your report'})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and REPORT_1160 in out['permissionDecisionReason']
+
+
+def test_a_planner_that_stops_first_gets_the_report_at_its_stop(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = hook.handle(root, 'Stop', {'session_id': 's1', 'cwd': str(root)})
+    assert out['decision'] == 'block' and REPORT_1160 in out['reason']
+
+
+def test_a_codex_seat_or_a_plain_subagent_is_never_reported_twice(root, tmp_path):
+    """Codex's wait_agent and a tool-only subagent already return the text: nothing is kept for them."""
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'turn_id': 't1', 'agent_id': 'a1', 'agent_type': 'builder',
+                                       'cwd': str(root), 'agent_transcript_path': None, 'last_assistant_message': REPORT_1160})
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'w1', 'agent_type': 'web-fetch', 'cwd': str(root),
+                                       'agent_transcript_path': seat_transcript(tmp_path / 'web.jsonl')})
+    assert planner_call(root) is None
+
+
+def test_a_guard_decision_passes_unchanged_and_the_report_waits_for_the_next_call(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    out = planner_call(root, 'Edit', {'file_path': str(root / ws.DIR / 'ledger' / 'x.jsonl')})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and REPORT_1160 not in out['permissionDecisionReason']
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert REPORT_1160 in note and 'second round done' in note

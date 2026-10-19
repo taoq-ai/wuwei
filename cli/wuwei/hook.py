@@ -22,14 +22,18 @@ def transcript(payload):
             row = json.loads(line)
             if usage := row.get('message', {}).get('usage') or {}:
                 total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-            for part in row.get('message', {}).get('content', []) if row.get('type') == 'assistant' else ():
+            content = row.get('message', {}).get('content', [])
+            if ended and row.get('type') == 'user' and isinstance(content, list) and any(
+                    isinstance(p, dict) and p.get('is_error') and p.get('tool_use_id') == ended for p in content):
+                ended = False  # the harness refused it (outside auto mode): it delivered nothing
+            for part in content if row.get('type') == 'assistant' else ():
                 if part.get('type') == 'text' and part.get('text', '').strip():
                     found, ended = part['text'], False
                 elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
-                    found, ended = part['input']['message'], part.get('name') == 'SubagentHandback'
+                    found, ended = part['input']['message'], part.get('name') == 'SubagentHandback' and (part.get('id') or True)
     except (OSError, TypeError, ValueError, AttributeError):
         pass
-    return found, total, ended
+    return found, total, bool(ended)
 
 
 def last_text(payload):
@@ -150,8 +154,17 @@ def _settled(payload):
 
 def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
-    role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
-    _, tokens, ended = transcript(payload)
+    role, (_, tokens, ended) = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], transcript(payload)
+    out = _seat_stop(root, payload, role, tokens, ended)
+    if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip() \
+            and Path(str(payload.get('agent_transcript_path') or '')).is_file():  # a Claude seat ends: keep what the harness drops
+        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
+        ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
+                        payload['last_assistant_message'], Path(root))
+    return out
+
+
+def _seat_stop(root, payload, role, tokens, ended):
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
                                      'session': payload.get('session_id')})
@@ -385,11 +398,39 @@ def codex(payload):
     return payload
 
 
+def deliver(root, event, payload, out):
+    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode, and plain text never
+    reaches the caller), given once on the planner's next tool call or stop and kept under .wuwei/reports (#1160)."""
+    spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
+    if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
+            and event != 'Stop':  # a decision stays as it is; the next call carries the reports
+        return out
+    pending, found = Path(root) / ws.DIR / 'reports' / 'pending', []
+    session = re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
+    for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
+        try:
+            os.replace(path, kept := pending.parent / path.name)  # one hook wins a race; the other skips it
+        except OSError:
+            continue
+        _, agent, role, _ = kept.stem.split('--', 3)
+        found.append((agent, f'## {role} {agent} (kept at {kept})\n{kept.read_text(encoding="utf-8")}'))
+    if not found:
+        return out
+    note = ("WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their last "
+            'messages:\n\n' + '\n\n'.join(text for _, text in found))
+    if event == 'Stop':
+        return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
+    if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):
+        return {'hookSpecificOutput': {'hookEventName': event, 'permissionDecision': 'deny',
+                                       'permissionDecisionReason': note + '\n\nNot sent: the report is above.'}}
+    return context(event, (spec.get('additionalContext', '') + '\n\n' + note).strip())
+
+
 def handle(root, event, payload):
     if (handler := HANDLERS.get(event)) is None:
         return None
     try:
-        return handler(root, codex(payload))
+        out = handler(root, codex(payload))
     except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
         message = f'{type(exc).__name__}: {exc}'[:300]
         print(f'wuwei hook {event}: {message}', file=sys.stderr)
@@ -401,6 +442,11 @@ def handle(root, event, payload):
             return {'hookSpecificOutput': {'hookEventName': event, 'permissionDecision': 'deny', 'permissionDecisionReason':
                     f'WUWEI: this call names a door and the hook failed while checking it ({message}); fix the cause and retry.'}}
         return None
+    try:  # a delivery that fails never changes the decision
+        return deliver(root, event, payload, out)
+    except Exception as exc:
+        print(f'wuwei hook {event}: report delivery failed: {exc}'[:300], file=sys.stderr)
+        return out
 
 
 def door(payload):

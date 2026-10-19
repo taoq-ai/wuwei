@@ -44,7 +44,7 @@ def _summary(pr):
             'state': 'MERGED' if pr.get('merged_at') else (pr.get('state') or '').upper(), 'isDraft': bool(pr.get('draft')),
             'headRefName': pr['head']['ref'], 'headRefOid': pr['head']['sha'], 'baseRefName': pr['base']['ref'],
             'author': {'login': (pr.get('user') or {}).get('login', '')}, 'url': pr.get('html_url', ''),
-            'mergedAt': pr.get('merged_at'), 'createdAt': pr.get('created_at')}
+            'mergedAt': pr.get('merged_at'), 'createdAt': pr.get('created_at'), 'updatedAt': pr.get('updated_at')}
 
 
 def pr(repo, number):

@@ -10,6 +10,13 @@ result moves. It also checks two properties at each tree and counts their holes:
   this repository when no PR is read), never changes the result;
 - no-clear: a PASS at the same or an older head than a counted FIX of its gate, appended to a
   history that owes the gate, leaves the gate owed.
+
+A third family appends a quality FIX, then a quality PASS whose Supersedes line names that FIX
+(#1162), to every one-verdict prefix, in every head and PR form, and checks:
+
+- named: the named PASS reads as the same PASS unnamed unless it is at the FIX's head and counts;
+  there, after a prefix with no quality verdict (the FIX is the one held), it clears the missing
+  gate. An imported PASS is read from its ledger row, which carries no Supersedes line.
 """
 
 import hashlib
@@ -75,10 +82,11 @@ def run_tree(tree):
         root = Path(tempfile.mkdtemp(dir=base))
         (root / ws.DIR).mkdir()
         ws.write_config(root, {**ws.DEFAULTS, 'repos': [REPO], 'owner_paths': []})
-        for n, (gate, verdict, head, pr) in enumerate(history):
+        for n, (gate, verdict, head, pr, *named) in enumerate(history):
             path = root / ws.DIR / 'verdicts' / 'I-1' / f'{gate}-{n}.md'
             path.parent.mkdir(parents=True, exist_ok=True)
             said = 'Breaking: no\n' if gate == 'arch' else ''
+            said += ''.join(f'Supersedes: I-1/{history[i][0]}-{i}.md\n' for i in named)
             path.write_text(f'Verdict: {verdict}\nGate: {gate}\nItem: I-1\nPR: {PR_TEXT.get(pr, REF)}\nHead: {head}\n'
                             f'Confidence: high\n{said}\n## Findings\nnone\n')
             row = {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -99,7 +107,7 @@ def run_tree(tree):
     def owes(found, gate):
         return any(t.startswith('gates missing') and gate in t.split(': ', 1)[1].split(', ') for t in found)
 
-    out, holes = {}, {'ignored': [], 'no-clear': []}
+    out, holes = {}, {'ignored': [], 'no-clear': [], 'named': []}
     for gates, history in histories():
         for ref in (REF, ''):
             for delta in DELTAS:
@@ -117,8 +125,20 @@ def run_tree(tree):
                 if verdict == 'PASS' and counted(last, ref) and fixed and not owes(found, gate) \
                         and owes(read(gates, prefix, ref, delta)[0], gate):
                     holes['no-clear'].append(key)
+    named = 0
+    for prefix in [()] + [(a,) for a in itertools.product(('quality', 'arch'), ('PASS', 'FIX'), (OLD, HEAD, OTHER), PRS[:2])]:
+        for fix, (head, pr), ref in itertools.product(itertools.product(NAMES, PRS), itertools.product(NAMES, PRS), (REF, '')):
+            history = prefix + (('quality', 'FIX') + fix,)
+            plain = history + (('quality', 'PASS', head, pr),)
+            found = read(('quality',), history + (plain[-1] + (len(history) - 1,),), ref, 'big')[0]
+            alone = read(('quality',), plain, ref, 'big')[0]
+            named += 1
+            at = head[:7] == fix[0][:7] and counted(plain[-1], ref) and pr != 'imported'
+            if at and not any(a[0] == 'quality' for a in prefix) and counted(history[-1], ref) and owes(found, 'quality') \
+                    or not at and found != alone:
+                holes['named'].append(json.dumps([[[g, v, NAMES[h], p] for g, v, h, p in plain], 'named', ref]))
     shutil.rmtree(base)
-    json.dump({'results': out, 'holes': holes}, sys.stdout)
+    json.dump({'results': out, 'holes': holes, 'named': named}, sys.stdout)
 
 
 def main(main_tree, head_tree, moves_file=None):
@@ -135,7 +155,7 @@ def main(main_tree, head_tree, moves_file=None):
     moved = [k for k in new['results'] if old['results'][k]['found'] != new['results'][k]['found']]
     lines = [f'{k}\n  main: {old["results"][k]["found"]}\n  head: {new["results"][k]["found"]}' for k in moved]
     print(f'cases generated: {len(new["results"])}')
-    print(f'cases whose gate result moves: {len(moved)}')
+    print(f'cases whose gate result moves: {len(moved)}; named-PASS cases: {new["named"]}')
     classes, looser = {}, set()
     for k in moved:
         _, history, ref, _ = json.loads(k)
@@ -154,8 +174,9 @@ def main(main_tree, head_tree, moves_file=None):
     for name, data in (('main', old), ('head', new)):
         calls = sum(r['calls'] for r in data['results'].values())
         print(f'{name}: ignored holes {len(data["holes"]["ignored"])}, no-clear holes {len(data["holes"]["no-clear"])}, '
+              f'named holes {len(data["holes"]["named"])}, '
               f'compare calls {calls}')
-    for hole in new['holes']['ignored'] + new['holes']['no-clear']:
+    for hole in new['holes']['ignored'] + new['holes']['no-clear'] + new['holes']['named']:
         print('head hole:', hole)
     if moves_file:
         Path(moves_file).write_text('\n'.join(lines) + '\n')

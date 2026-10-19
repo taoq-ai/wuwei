@@ -133,8 +133,8 @@ verdicts are read oldest first, and only at an ancestor of the PR head. A pass c
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
 the item in that repository counts. A finding holds from any PR of the item and displaces a pass.
-A later pass at the same or an older head never clears a finding: only a pass from a strict
-descendant of its head does. An arch `Breaking: no` clears a yes the same way, and only for this
+A later pass at an older head never clears a finding. At the same head it clears a FIX only by
+naming that file on a `Supersedes:` line; otherwise only a pass from a strict descendant does. An arch `Breaking: no` clears a yes the same way, and only for this
 PR or its repository alone. Gaps are
 actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass. A PR read
 after it merged lists what it lacked as `post-merge:` gaps, and the report counts a finding attested
