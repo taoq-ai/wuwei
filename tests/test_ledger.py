@@ -12,8 +12,10 @@ def test_ledger_chains_and_detects_a_rewrite(root):
     assert ws.verify(root) == [f'ledger/{ws.clone(root)}.jsonl:1']
 
 
-def test_config_keeps_only_the_five_keys(root):
+def test_config_keeps_only_the_six_keys(root):
     (root / ws.DIR / 'config.toml').write_text('repos = ["a/b"]\nretired_key = 3\n')
+    assert ws.config(root) == {**ws.DEFAULTS, 'repos': ['a/b']}
+    ws.write_config(root, ws.raw_config(root))
     assert ws.config(root) == {**ws.DEFAULTS, 'repos': ['a/b']}
 
 

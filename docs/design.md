@@ -38,7 +38,9 @@ Planner (the owner's session), lead, builder, four sentinels (arch, quality, sec
 shepherd, steward. `charters/` is the one source; `wuwei agents build` generates the agents with
 their reviewed tool grants. Each seat's model and effort come from the table in the planner charter
 (`docs/site/concepts/models.md`); at least one gate per head runs on a different model than the
-builder. Seats cannot ask the owner. The planner passes each seat its
+builder. `wuwei agents build` writes each role's default model and effort into its agent file;
+the hook notes a launch that departs from the table and records what ran, and never refuses one.
+Seats cannot ask the owner. The planner passes each seat its
 role's lines of `.wuwei/standards.md`.
 
 ## 4. The day
@@ -113,9 +115,12 @@ holds more than prose (`.md`, `.rst`, `.adoc`), `LICENSE`, `NOTICE`, `specs/` an
 day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR it skips until an
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 
-Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
-by the arch gate's required `Breaking:` line; a contract file or a spec contract takes the arch
-gate at any tier) needs an `Announcement: <url>` line and then the owner's `breaking:`
+Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
+declared public API. The public API and
+the classification are declared once, in
+[the evidence contract](site/concepts/evidence.md#breaking-changes). A break (declared with `!` or
+`BREAKING CHANGE:`, or found by the arch gate's required `Breaking:` line; a contract file or a
+spec contract takes the arch gate at any tier) needs an `Announcement: <url>` line and then the owner's `breaking:`
 confirmation at the head. Both are safety gaps. The line holds one http(s) URL alone, without
 brackets, of a communication that already exists: a PR or issue comment, or a published release
 note or migration guide. A changelog entry written at release does not count.
@@ -196,7 +201,7 @@ flow.
 
 | Hook | Role |
 |---|---|
-| SessionStart | the way of working, `_common.md`, the planner charter, goals, standards, the board |
+| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat |
@@ -223,7 +228,7 @@ plugin into a repository's `.claude/` for cloud sessions, where repository plugi
 The report: plan passes and checkpoints with the diff since the last, the board, merges through the
 check or as exceptions, the doors, owner prompts, seats and verdicts, learning (escapes traced to
 gates with confidence, change failure rate and raised tiers, unplanned PRs, gate yield, tokens by
-role, open exceptions, the weekly sample), telemetry, ledger integrity. DORA comes from the code
+role, each seat by model and effort, open exceptions, the weekly sample), telemetry, ledger integrity. DORA comes from the code
 host alone. Replay cases (`wuwei evidence --record`) hold every future version to past answers.
 
 ## 11. Configuration and budgets

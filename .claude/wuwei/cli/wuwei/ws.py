@@ -1,5 +1,6 @@
 """The workspace: config, the hash-chained ledger, traces and small caches under .wuwei/."""
 
+import contextlib
 import datetime
 import fcntl
 import hashlib
@@ -10,7 +11,7 @@ import threading
 import tomllib
 
 DIR = '.wuwei'
-DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True}
+DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}}
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -37,14 +38,24 @@ def today():
     return now().date().isoformat()
 
 
-def atomic_write(path, text):
+def atomic_write(path, text, root=None):  # every folder below root and the file are reached by descriptor: no link is followed
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # threads share a pid (#1121)
-    temp.unlink(missing_ok=True)  # a link planted at the temporary name is removed, never written through
-    with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666), 'wb') as out:
-        out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
-    os.replace(temp, path)
+    if root is None:  # by default the file's own folder, made first
+        root, _ = path.parent, path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp = os.open(root, os.O_RDONLY | os.O_DIRECTORY), f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'  # threads share a pid (#1121)
+    try:
+        for part in path.parent.relative_to(root).parts:
+            with contextlib.suppress(FileExistsError):
+                os.mkdir(part, dir_fd=fd)
+            fd, up = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd), fd
+            os.close(up)
+        with contextlib.suppress(FileNotFoundError):  # a link planted at the temporary name is removed, never written through
+            os.unlink(temp, dir_fd=fd)
+        with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=fd), 'wb') as out:
+            out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
+        os.replace(temp, path.name, src_dir_fd=fd, dst_dir_fd=fd)
+    finally:
+        os.close(fd)
 
 
 def raw_config(root):
@@ -53,7 +64,7 @@ def raw_config(root):
 
 
 def config(root):
-    """The five keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
+    """The six keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
     table, [merge] owner paths, a [telemetry] table)."""
     data = raw_config(root)
     out = {**DEFAULTS, **{key: value for key, value in data.items() if key in DEFAULTS}}
@@ -65,6 +76,7 @@ def config(root):
         out['tracker'] = DEFAULTS['tracker']
     if isinstance(out['telemetry'], dict):
         out['telemetry'] = out['telemetry'].get('mode', 'on') not in ('off', 'false')
+    out['models'] = {k: v for k, v in out['models'].items() if isinstance(v, str) and len(v.split()) > 1} if isinstance(out['models'], dict) else {}
     merge = data.get('merge') if isinstance(data.get('merge'), dict) else {}
     if not data.get('owner_paths'):
         out['owner_paths'] = [p for key in ('owner_paths', 'never_auto_paths') for p in merge.get(key, [])
@@ -75,7 +87,7 @@ def config(root):
 def retired(root):
     """Top-level keys and tables 1.0 does not read, and the 0.34 table shapes it rewrites."""
     data = raw_config(root)
-    shapes = [key for key in DEFAULTS if isinstance(data.get(key), dict)
+    shapes = [key for key in DEFAULTS if isinstance(data.get(key), dict) and key != 'models'
               or key == 'repos' and any(isinstance(r, dict) for r in data.get('repos', []))]
     return sorted(set(data) - set(DEFAULTS)) + sorted(f'{key} (0.34 shape)' for key in shapes)
 
@@ -85,12 +97,15 @@ def _toml(value):
         return 'true' if value else 'false'
     if isinstance(value, list):
         return '[' + ', '.join(_toml(item) for item in value) + ']'
+    if isinstance(value, dict):
+        return '{' + ', '.join(f'{json.dumps(k)} = {_toml(v)}' for k, v in value.items()) + '}'
     return json.dumps(value)
 
 
 def write_config(root, data):
     atomic_write(Path(root) / DIR / 'config.toml',
-                 ''.join(f'{key} = {_toml(data[key])}\n' for key in DEFAULTS))
+                 ''.join(f'{key} = {_toml(data.get(key, DEFAULTS[key]))}\n'
+                         for key in DEFAULTS if key != 'models' or data.get(key)))
 
 
 def set_config(root, key, value):
@@ -101,6 +116,8 @@ def set_config(root, key, value):
         value = [item.strip() for item in value.split(',') if item.strip()]
     elif isinstance(DEFAULTS[key], bool):
         value = value.lower() in ('1', 'true', 'on', 'yes')
+    elif isinstance(DEFAULTS[key], dict):  # models: "<role>[ <tier>]=<model> <effort>, ..."
+        value = {k.strip(): v.strip() for k, _, v in (part.partition('=') for part in value.split(',')) if k.strip() and len(v.split()) > 1}
     data[key] = value
     write_config(root, data)
     return data

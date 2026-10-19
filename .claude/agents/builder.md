@@ -2,6 +2,8 @@
 name: builder
 description: Builds one WUWEI plan item test first in its own branch and worktree.
 tools: Read, Glob, Grep, Bash, Write, Edit
+model: claude-opus-5-5
+effort: medium
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->
@@ -40,8 +42,8 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 - the gates the diff needs, passed at the head before the PR turned ready;
 - green CI and every review thread answered;
 - owner review on `owner_paths`;
-- a breaking change to an outward contract announced (`Announcement: <url>`) and confirmed by the
-  owner (`breaking:`);
+- a breaking change (a SemVer major) announced (`Announcement: <url>`) and confirmed by the owner
+  (`breaking:`);
 - at `full`, the spec engine's artifacts.
 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
@@ -169,9 +171,11 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
 4. The repository's own conventions over general preference, its PR template included. No dead or
    commented-out code; errors handled where the caller can act on them.
 5. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
-6. A breaking change to an outward contract (CLI, API, config, events, schemas) is declared with a
-   `!` in the PR title and a `BREAKING CHANGE:` line, with migration notes. Prefer a compatible
-   path (a deprecation window, a new version beside the old) when one exists.
+6. Only a major (an incompatible change to the declared public API, per SemVer) takes a `!` in
+   the PR title and a `BREAKING CHANGE:` line, with migration notes. A stricter check of a rule the
+   docs already state is a `fix:` (a patch) with release notes in the body; a new capability is a
+   `feat:` (a minor). Prefer a compatible path (a deprecation window, a new version beside the old)
+   when one exists.
 
 ## Disagreeing with a finding
 

@@ -4,12 +4,13 @@ lets the work go on and records why; a door call it fails on is refused."""
 import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
 import time
 
-from wuwei import board, evidence, guards, plan, sync, verdict, view, ws
+from wuwei import agents, board, evidence, guards, plan, sync, verdict, view, ws
 
 
 def transcript(payload):
@@ -56,7 +57,7 @@ def pre_tool(root, payload):
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
     found = {'decision': 'deny', 'reason': problem + '\nThen hand back again.'} if problem else guards.pre_tool(root, payload)
     if found is None:
-        return None
+        return advise(root, payload.get('tool_input') or {}) if payload.get('tool_name') in ('Agent', 'Task') else None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
     try:  # the decision stands even when its record fails
         ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500], 'session': payload.get('session_id')})
@@ -66,6 +67,37 @@ def pre_tool(root, payload):
         return context('PreToolUse', found['reason'])
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': found['decision'],
                                    'permissionDecisionReason': 'WUWEI: ' + found['reason']}}
+
+
+def asked(data):
+    """The item the brief names, the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
+    item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
+        r'\bItem:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+    return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+
+
+def advise(root, data):
+    """A note on a launch that departs from agents.TABLE or the owner's models rows; never a refusal or a rewrite."""
+    role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
+    if role not in agents.TABLE or not data.get('prompt'):  # a Codex spawn carries no brief and no model
+        return None
+    item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
+    tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
+    if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
+        tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
+    allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
+        (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
+    fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
+    model, effort = str(data.get('model') or table[''].rsplit(' ', 1)[0]), effort or table[''].rsplit(' ', 1)[1]
+    named = str([raw.get(k) for k in (f'{role} {tier}', role)] if isinstance(raw := ws.raw_config(root).get('models'), dict) else '')
+    floor = role.startswith('sentinel-') and (fam(model) == 'haiku' or 'haiku' in named.lower())  # a row, even one config() drops
+    if not floor and (reason or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
+                                    (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed)):
+        return None
+    return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
+                   f"brief (asked: {model} {effort}" + ''.join(f'; the row also allows {s} {when}' for s, when in allowed[1:]) + ').' + (
+                       " Haiku 5.5 never runs a gate on risky, owner or contract paths, and neither a reason nor a models row "
+                       "covers that: it is an exception: for the owner." if floor else ''))
 
 
 def closed(root):
@@ -143,22 +175,26 @@ def _verdict_problem(root, payload, role):
     if (match := re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)) is None:
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
-    verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
-    free = lambda p: next(n for i in range(2, 999) if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md')  # noqa: E731
-                          not in {q.name for q in p.parent.iterdir()})  # the next <stem>-N.md beside p that no file or link holds
+    verdicts = Path(root) / ws.DIR / 'verdicts'
+    def free(p):  # the next <stem>-N.md beside p that no file or link holds, the folder listed once
+        try:
+            return next(n for held in [{q.name for q in p.parent.iterdir()}] for i in range(2, 999)
+                        if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md') not in held) + ' beside it (the next free number)'
+        except (OSError, StopIteration):
+            return f'a new name of your own beside it (none of -2 to -998 is free, or {p.parent} cannot be listed)'
     try:
-        path = path.resolve()
+        verdicts, path = verdicts.resolve(), path.resolve()  # a loop raises RuntimeError on 3.11 and 3.12
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
             copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
-                return f'{copy} already holds another verdict: write yours beside it as {free(copy)}.'
-            ws.atomic_write(copy, body)
+                return f'{copy} already holds another verdict: write yours as {free(copy)}.'
+            ws.atomic_write(copy, body, Path(root).resolve())  # no folder swapped for a link after the check is followed
             path = copy
         path.relative_to(verdicts)
         body = path.read_bytes()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
     rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
@@ -166,18 +202,20 @@ def _verdict_problem(root, payload, role):
         return None
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
-                f'counts as recorded. Write yours to {free(path)} beside it (the next free number) and end with its Verdict file: line.')
+                f'counts as recorded. Write yours to {free(path)} and end with its Verdict file: line.')
     parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
-                + f'\nWrite the corrected verdict to {free(path)} beside it (the next free number) in this shape:\n' + verdict.FORMAT)
+                + f'\nWrite the corrected verdict to {free(path)} in this shape:\n' + verdict.FORMAT)
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
+    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id')), {})
     ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
-                               'transcript': payload.get('agent_transcript_path')})
+                               'transcript': payload.get('agent_transcript_path'), 'model': seat.get('model', 'unrecorded'),
+                               'effort': seat.get('effort', 'unrecorded'), 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
     return None
 
 
@@ -191,9 +229,11 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
+        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
         ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
                                          'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId']})
+                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
@@ -272,6 +312,7 @@ def _answers(root, data, response):
 
 
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
+SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
 
 
 def exception_refs(question):
@@ -295,19 +336,24 @@ def _goal(root, ref, repo):
 
 
 def session_start(root, payload):
-    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
+    """Orientation under Claude Code's 10,000-character additionalContext cap; what does not fit is named, not inlined."""
+    cli, charters = str(ws.PLUGIN / 'bin' / 'wuwei'), ws.PLUGIN / 'charters'
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
-    for name in ('goals.md', 'standards.md'):
-        path = Path(root) / ws.DIR / name
-        if path.is_file() and path.read_text(encoding='utf-8').strip():
-            parts.append(f'{name}:\n' + path.read_text(encoding='utf-8').strip()[:3000])
+    read = lambda name: (charters / name).read_text(encoding='utf-8') if (charters / name).is_file() else ''  # noqa: E731
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)', read('_way.md').strip(), '_common.md, Decisions and Done:\n'
+             + ''.join(re.findall(r'^## (?:Decisions|Done)\n.*?(?=^## |\Z)', read('_common.md'), re.S | re.M)).strip(),
+             f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
+             f'and the goals and standards in {Path(root) / ws.DIR}.']
+    left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
     try:
-        parts.append(board.text(board.rows(root), root))
+        found, cut = board.rows(root), 0
+        lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
+        while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
+            lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
+        parts.append('\n'.join(lines + left(cut)))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
-    return context('SessionStart', '\n\n'.join(parts))
+    return context('SessionStart', '\n\n'.join(parts)[:SESSION_CAP])  # only a board with no item left to drop reaches the cut
 
 
 HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'SubagentStop': subagent_stop,

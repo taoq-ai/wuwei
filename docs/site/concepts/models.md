@@ -96,11 +96,31 @@ departure the planner can record with a reason: breaking it is an `exception:` f
 - Effort precedence: `CLAUDE_CODE_EFFORT_LEVEL` beats every other effort setting, the per-call
   parameter included. A workspace that sets it turns WUWEI's effort advice off. A managed
   `maxEffortLevel`, or an organization effort cap, still limits the level a seat runs at.
-- What a hook can see: the Agent call's `tool_input` carries `model` but not `effort`, so the brief's
-  first line records the effort asked for. What ran is visible too: the PostToolUse response
-  carries `resolvedModel`, the model the seat started on, and PreToolUse, PostToolUse, Stop and
-  SubagentStop inputs carry `effort.level`, the level in effect (also `$CLAUDE_EFFORT` in Bash).
-- Your own `models` rows in `.wuwei/config.toml` override any table row.
+- What a hook can see: the hooks page lists `model` in the Agent call's `tool_input` and not
+  `effort`, though a session transcript of 2026-10-18 shows the call's input holds `effort` when
+  the planner passes it. The brief's first line records the effort asked for either way. What ran
+  is visible too: the PostToolUse response carries `resolvedModel`, the model the seat started on,
+  and PreToolUse, PostToolUse, Stop and SubagentStop inputs carry `effort.level`, the level in
+  effect (also `$CLAUDE_EFFORT` in Bash).
+- `wuwei agents build` writes each role's default (the row's first setting, standard for the
+  builder) into its agent file as `model:` and `effort:`, so a launch with no `model` still runs
+  on the table.
+- On each Agent launch the hook compares the role, model and effort with the table at the item's
+  tier (from the brief's `Item:` line, raised one step when the cached change failure rate says
+  so). On a departure with no `Model reason:` line it adds a note naming the table's setting; it
+  never refuses or rewrites the call. It cannot see the diff's paths at launch, so a setting the
+  row gives on risky, owner or contract paths, or for a logic conflict, counts as a fit. A Haiku
+  gate gets the note even with a reason line or a `models` row.
+- Each launch records the model that ran, the model and effort asked for, the reason and the item
+  (`unrecorded` or `unmeasured` where the hook cannot read them). A gate's verdict row copies the
+  model and effort.
+- Your own `models` rows in `.wuwei/config.toml` override any table row, for example
+  `models = {"builder light" = "opus medium"}`. A row for a role and tier wins over one for the
+  role alone. A `models` row that puts Haiku 5.5 on a gate does not break the floor: only your
+  `exception:` answer does.
+- `wuwei doctor` names `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL` in a `note` row when
+  they are set. A note never changes the doctor's exit code.
+  With the first set, the hook leaves effort out of its note; with the second, the model.
 - `/wuwei-watch` may run on Sonnet 5.5 at medium effort through its own frontmatter. The skill offers
   that as an option, not a default.
 
@@ -131,12 +151,13 @@ outcome on Codex has been recorded against it.
   `expose_spawn_agent_model_overrides` (off by default). Its own guidance tells the model that
   spawned agents inherit the current model and not to set `model` unless the user asks.
 - The role files `wuwei init --codex` writes still name no model; writing the table into them is
-  later work.
+  later work. A Codex launch is recorded with its model and effort unmeasured, and gets no note.
 
 ## Learning from it
 
-At each close the steward reads outcomes by seat, model and effort: fix rounds, blocking findings,
-escapes and tokens per merged item. Where the numbers back it, the retro proposes a change to a row,
+At each close the steward reads outcomes by seat, model and effort. The report's Learning section
+gives one line for each: launches, fix rounds per item, blocking findings, escapes traced to a
+passing gate and tokens, and how many launches had no readable model or effort. Where the numbers back it, the retro proposes a change to a row,
 with those numbers, as advice. See [the learning loop](learning.md).
 
 ## Sources

@@ -147,7 +147,7 @@ def cmd_sync(args):
     try:
         print(sync.pull(root))
         print(sync.push(root))
-    except RuntimeError as exc:
+    except (RuntimeError, OSError) as exc:  # a pull stopped at a planted link is one more sync failure
         print(f'wuwei sync: {exc}', file=sys.stderr)
         return 1
     return 0
@@ -227,7 +227,7 @@ def main(argv=None):
     p.set_defaults(func=cmd_init)
     sub.add_parser('sync', help='pull, then push .wuwei/ on the wuwei/state branch').set_defaults(func=cmd_sync)
     sub.add_parser('doctor', help='install, workspace and the strength of each door').set_defaults(func=cmd_doctor)
-    p = sub.add_parser('config', help='show, or set one of the five keys')
+    p = sub.add_parser('config', help='show, or set one of the six keys')
     for name in ('key', 'value'):
         p.add_argument(name, nargs='?')
     p.set_defaults(func=cmd_config)
