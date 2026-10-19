@@ -114,11 +114,6 @@ def unanswered_threads(repo, number, author):
     return sum(1 for login in last.values() if login != author)
 
 
-def ancestor(repo, older, newer):
-    """True when commit older is newer or an ancestor of it."""
-    return older == newer or compare(repo, older, newer).get('status') in ('ahead', 'identical')
-
-
 def compare(repo, older, newer):
     """Status, commits and files (in the shape pr() gives) from older to newer, each a sha or a branch."""
     data = run(['api', f'repos/{repo}/compare/{older}...{newer}'])
