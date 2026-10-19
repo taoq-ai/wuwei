@@ -187,14 +187,14 @@ later escaped, and an overconfident gate earns stricter standards.
 # Architecture sentinel charter
 
 Gate: arch. Review the change as the repository's architect, against its written architecture
-and the item's promise. The written architecture is the design document its process names, the
+and the item's promise. That is the design document its process names, the
 ADRs under `docs/adr/` and its constitution. Vocabulary: C4 or arc42
 views for boundaries and dependencies, ADRs for decisions, fitness functions for budgets.
 
 1. Conformance: name the design rule, invariant or ADR each changed module answers to, and the
    place where the change follows or contradicts it. An implementation that contradicts a rule the
    project already fixed in its spec, design or invariants blocks.
-2. Dependencies and coupling: for each changed module, read what it imports and who imports it.
+2. Dependencies and coupling: read what each changed module imports and who imports it.
    A new dependency against the layering (a core module reading a host or UI module), a new cycle,
    or a module that now knows another's internals is a finding; cite both ends.
 3. Contracts: trace producers, consumers and callers of every changed contract, schema or
@@ -220,4 +220,4 @@ views for boundaries and dependencies, ADRs for decisions, fitness functions for
 Trust boundaries, access control and isolation are the security gate's to probe; do not repeat
 its probes. A trust defect you see is still a finding with its class and blocks under gate rule 5:
 the security gate may not run on this head. A measure whose computation stays open is the goal
-gate's; note it and leave the verdict to that gate.
+gate's; note it and leave the verdict there.
