@@ -1,6 +1,30 @@
 {
  "items": [
   {
+   "id": "push-force-clusters",
+   "title": "fix(guards): a force push written in a short option cluster with digits (-4f, -f4, -qf6) meets the push door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 34.0,
+   "why": "push-refspecs security gate (#1155, security-b16d799.md): `-4f`, `-f4`, `-6f`, `-qf6` and `-4vf` are force pushes that pass at main and head (80 probe commands moved main by force).",
+   "promise": "The push door reads a short option cluster the way git's parse-options does, so any cluster holding `f` is a force push, whatever digits or flags sit beside it. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy. Runtime estimate +1, budget 2. After push-refspecs.",
+   "acceptance": [
+    "given each of -4f, -f4, -6f, -qf6, -4vf with a refspec to main under real git, when guards.bash reads it, then it is refused as a force push",
+    "given -4, -6, -q, -v and -u alone, then the push is read as before"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "sync-paths",
    "title": "fix(sync): a state pull writes only inside .wuwei and a push reads no file through a link",
    "goal": "G-2",
@@ -220,6 +244,30 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "push-moved-head",
+   "title": "fix(guards): a push after a command that moves HEAD or the working folder meets the push door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "push-refspecs gates (#1155, security-b16d799.md and the builder's residual a): the guard reads HEAD when the hook runs, in the session's folder, so `git checkout main && git push origin HEAD`, `cd ../c && git push origin HEAD`, `env -C ../c git push origin HEAD`, `git --git-dir=../c/.git push origin HEAD` and a relative `git -C ../c push` (resolved against the hook process, not the payload cwd) each moved main under real git and pass at main and head.",
+   "promise": "A push whose current branch the guard cannot know at call time (an earlier segment runs checkout, switch, cd, pushd, or a wrapper or git option changes the folder or git dir) is read as pushing main unless its refspecs name a branch explicitly. `git commit && git push origin HEAD` and `git push -u origin <branch>` still pass. A relative `-C` resolves against the payload cwd. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy. Runtime estimate +6, budget 8. After push-refspecs. AGENTS.md Testing the guards in full, including the working-folder wrapper probes.",
+   "acceptance": [
+    "given each of the five commands above under real git from a clone whose main is behind, when guards.bash reads it, then it is refused",
+    "given `git commit -m x && git push origin HEAD` on a feature branch and `git push -u origin feature`, then both pass"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
   },
   {
    "id": "gh-args",
