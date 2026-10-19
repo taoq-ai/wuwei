@@ -1,5 +1,36 @@
 # Changelog
 
+## [4.1.0](https://github.com/taoq-ai/wuwei/compare/v4.0.0...v4.1.0) (2026-10-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **evidence:** an owner's exception waives only the gap it names, matched exactly ([#1150](https://github.com/taoq-ai/wuwei/issues/1150))
+* **evidence:** wuwei evidence, the board and the merge door hold a breaking PR whose Announcement: line is not a URL alone on its line (a file path, TBD, a URL inside prose, a non-http scheme). Post the announcement first and put its URL alone after Announcement:.
+
+### Features
+
+* **plan:** a plan pass offers a goal as met when its date passed or its measure is met, and a met goal gets no new items ([#1145](https://github.com/taoq-ai/wuwei/issues/1145)) ([9610bee](https://github.com/taoq-ai/wuwei/commit/9610bee4141160a7a5bb55e771994b057e67af02))
+
+
+### Bug Fixes
+
+* **evidence:** an Announcement: line counts only as an http(s) URL alone on its line ([#1148](https://github.com/taoq-ai/wuwei/issues/1148)) ([4eafb0c](https://github.com/taoq-ai/wuwei/commit/4eafb0cbf07a87cbd829e0cf1ab6baa7569d83a9))
+* **evidence:** an owner's exception waives only the gap it names, matched exactly ([#1150](https://github.com/taoq-ai/wuwei/issues/1150)) ([6682925](https://github.com/taoq-ai/wuwei/commit/668292596ed2114d127eb8d2391730ecd4aad390))
+* **guards:** the push door passes a push to a git directory in a scratch folder ([#1141](https://github.com/taoq-ai/wuwei/issues/1141)) ([dc39cae](https://github.com/taoq-ai/wuwei/commit/dc39cae6e9e55a30399560f909181764eb234c85))
+* **verdict:** closed findings go under Probes, and a refused verdict names the next free file ([#1144](https://github.com/taoq-ai/wuwei/issues/1144)) ([d7c4f43](https://github.com/taoq-ai/wuwei/commit/d7c4f4389d185b5eec92b01dd3c6691c8aa92f05))
+
+
+### Performance Improvements
+
+* **board:** read a repository's linked PR evidence on a thread pool and say what is read ([#1140](https://github.com/taoq-ai/wuwei/issues/1140)) ([b28a3dc](https://github.com/taoq-ai/wuwei/commit/b28a3dc40c90921aec75e75adf7a73ba984d5805)), closes [#1121](https://github.com/taoq-ai/wuwei/issues/1121)
+
+
+### Documentation
+
+* **agents:** add the mutant lessons gates found ([#1153](https://github.com/taoq-ai/wuwei/issues/1153)) ([5fe8347](https://github.com/taoq-ai/wuwei/commit/5fe83477d06af0d35810285a94db4341d72df707))
+* **charters:** a breaking change is a SemVer major of the declared public API ([#1154](https://github.com/taoq-ai/wuwei/issues/1154)) ([b5822fe](https://github.com/taoq-ai/wuwei/commit/b5822fe0ada23e84ad192565f088d5066598e7ac))
+
 ## [4.0.0](https://github.com/taoq-ai/wuwei/compare/v3.0.1...v4.0.0) (2026-10-18)
 
 
