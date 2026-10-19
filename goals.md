@@ -10,9 +10,9 @@ Date: 2026-10-23
 Priority: 1
 
 ## G-2
-Outcome: the 3.x line holds up in real use: bugs found while running WUWEI on itself are fixed before features, and each fix ships in a release.
+Outcome: the current release line holds up in real use: bugs found while running WUWEI on itself are fixed before features, and each fix ships in a release.
 Measure: open issues labelled bug, plus open bug-shaped issues without the label (#1113, #1129, #1130, #1131, #1132 on 2026-10-18); escapes the retro traces to a gate; days from a bug fix's merge to the release that carries it.
-Target: no bug open more than three days; the 2026-10-18 bug sweep released in the first release-please cut after 3.0.1 (4.0.0 if any sweep commit carries `!`, else 3.0.2); every later fix released within two days of its merge.
+Target: no bug open more than three days; the 2026-10-18 bug sweep released in the next release-please cut; every later fix released within two days of its merge.
 Date: 2026-10-23
 Priority: 2
 

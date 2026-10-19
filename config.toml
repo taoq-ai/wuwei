@@ -1,5 +1,5 @@
 repos = ["taoq-ai/wuwei"]
-owner_paths = []
+owner_paths = ["cli/wuwei/guards.py", "cli/wuwei/hook.py", "cli/wuwei/evidence.py"]
 prioritisation = "wsjf"
 tracker = "github"
 telemetry = true
