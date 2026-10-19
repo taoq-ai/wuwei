@@ -1,5 +1,6 @@
 import pytest
 import hashlib
+import shutil
 import time
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
@@ -13,6 +14,11 @@ def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breakin
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
+
+
+def forget(root):
+    """A test that changes what the host holds at one sha drops what the cache kept for it, as GitHub never does."""
+    shutil.rmtree(root / ws.DIR / 'cache', ignore_errors=True)
 
 
 def standard(root):
@@ -459,7 +465,7 @@ def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
         attest(root, gate)
     assert evidence.gaps(root, 'acme/app', 42) == []
     del fake.files[f'{change}/proposal.md']
-    ws.cache_put(root, 'spec-acme__app', None)
+    forget(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{change}/proposal.md missing: run the spec engine step that writes it']
 
 
@@ -628,6 +634,7 @@ def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
     analysis_pr(fake, '| F6 | HIGH | Resolved: tests/test_app.py::test_grant |')
     assert not any('analysis.md' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
     analysis_pr(fake, '| F6 | HIGH | open |')
+    forget(root)
     assert any('open CRITICAL or HIGH finding' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
 
 
@@ -690,9 +697,11 @@ def test_a_long_docs_delta_carries_the_passes_and_a_long_spec_delta_is_read_by_a
     fake.deltas[(OLD, HEAD)] = [{'path': 'README.md', 'additions': 300, 'deletions': 0}]
     assert evidence.gaps(root, 'acme/app', 42) == []
     fake.deltas[(OLD, HEAD)] = [{'path': 'specs/004-voice/spec.md', 'additions': 200, 'deletions': 0}]
+    forget(root)
     assert evidence.gaps(root, 'acme/app', 42) == []
     for path, n in (('specs/004-voice/spec.md', 201), ('specs/004-voice/contracts/api.yaml', 2)):
         fake.deltas[(OLD, HEAD)] = [{'path': path, 'additions': n, 'deletions': 0}]
+        forget(root)
         assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by arch)']
 
 
@@ -704,6 +713,7 @@ def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(
     fake.deltas[(OLD, HEAD)] = [{'path': 'src/app.py', 'additions': 4, 'deletions': 2}]
     assert evidence.gaps(root, 'acme/app', 42) == []
     fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 4, 'deletions': 2}]
+    forget(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
 
 

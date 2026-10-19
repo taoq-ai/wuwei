@@ -130,6 +130,22 @@ def _cached(root, name, read, max_age=86400):
     return ws.cache_put(root, name, read()) if value is None else value
 
 
+SHA = re.compile(r'[0-9a-f]{40}')
+
+
+def compare(root, repo, older, newer):
+    """gh.compare, kept a day for two commit shas, whose answer never changes (#1161)."""
+    if not (SHA.fullmatch(older or '') and SHA.fullmatch(newer or '')):
+        return gh.compare(repo, older, newer)
+    return _cached(root, f'cmp-{repo.replace("/", "__")}-{older}-{newer}',
+                   lambda: {k: v for k, v in gh.compare(repo, older, newer).items() if k in ('status', 'files')})
+
+
+def ancestor(root, repo, older, newer):
+    """True when commit older is newer or an ancestor of it."""
+    return older == newer or compare(root, repo, older, newer).get('status') in ('ahead', 'identical')
+
+
 def spec_engine(root, repo):
     return _cached(root, 'spec-' + repo.replace('/', '__'),
                    lambda: next((path for path in ('.specify', 'openspec') if gh.has_path(repo, path)), ''))
@@ -291,7 +307,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
         prior = latest.get(found['gate'])
         if prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]:
             continue  # at one head, a later pass does not outvote a finding
-        if gh.ancestor(repo, found['head'], head):
+        if ancestor(root, repo, found['head'], head):
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
@@ -299,7 +315,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
         return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
-    delta = gh.compare(repo, last, head)['files']
+    delta = compare(root, repo, last, head)['files']
     want = needed(root, 'light' if tier == 'light' else 'standard', delta)
     gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
     if not gate or lines(delta) <= TRIVIAL and gate == 'quality' or gate in passed and head.startswith(passed[gate]['head']):
@@ -334,8 +350,8 @@ def breaking_gaps(root, ref, pr, item_id):
     body, head, repo, said = pr.get('body') or '', pr['headRefOid'], ref.split('#')[0], None
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
     for v in (v for v in verdicts(root, item_id, ref) if v['gate'] == 'arch' and 'breaking' in v):  # oldest first
-        if v['breaking'] or not said or v['head'] != said['head'] and gh.ancestor(repo, said['head'], v['head']) \
-                and gh.ancestor(repo, v['head'], head):
+        if v['breaking'] or not said or v['head'] != said['head'] and ancestor(root, repo, said['head'], v['head']) \
+                and ancestor(root, repo, v['head'], head):
             said = v
     if not (declared or said and said['breaking']):
         return []
@@ -384,7 +400,7 @@ def gaps(root, repo, number, listed=None):
         name, sig = f'pr-{repo.replace("/", "__")}-{number}', listed and [listed.get('headRefOid'), listed.get('updatedAt')]
         hit = (sig and ws.cache_get(root, name, PR_TTL)) or {}
         hit = hit if hit.get('sig') == sig else {}
-        pr, spec = hit.get('pr') or gh.pr(repo, number), hit.get('spec', {})
+        pr = hit.get('pr') or gh.pr(repo, number)
         item, ref, generated = item_for(root, pr, repo), f'{repo}#{number}', release(repo, pr)
         found = [] if item else [gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
         tier = (item or {}).get('tier', 'standard')
@@ -394,9 +410,11 @@ def gaps(root, repo, number, listed=None):
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
-            key = f'{spec_engine(root, repo)} {tier}'
-            if key not in spec:
+            key, kept = f'{spec_engine(root, repo)} {tier}', f'{name}-{head}'  # the artifacts at a head never change, CI or not
+            if key not in (spec := ws.cache_get(root, kept, 86400) or {}):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
+                if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
+                    ws.cache_put(root, kept, spec)
             found += [dict(g, kind='safety') if tier == 'full' else g for g in spec[key]]
         code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
@@ -421,8 +439,7 @@ def gaps(root, repo, number, listed=None):
         threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, author)
         if sig and not hit and rollup and all(c.get('status', 'COMPLETED') == 'COMPLETED' and c.get('state') not in (
                 'PENDING', 'EXPECTED') for c in rollup):  # written on a miss only, so its age is the read's; CI settled
-            ws.cache_put(root, name, {'sig': sig, 'pr': pr, 'threads': threads, 'spec': {  # a host error reads as missing
-                k: v for k, v in spec.items() if not any(' missing: ' in g['text'] for g in v)}})
+            ws.cache_put(root, name, {'sig': sig, 'pr': pr, 'threads': threads})
         if threads:
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
         if not pr.get('reviewRequests') and all((r.get('author') or {}).get('login') == author for r in pr.get('reviews') or ()):
