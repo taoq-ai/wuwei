@@ -31,3 +31,14 @@
 - [x] T018 Run the new tests red on 3fab3cb's hook.py: 2 failed (singular, newline), 6 passed; green at the fix: 8 passed
 - [x] T019 /wuwei-run step 2 reads planner.md; the counting unit and the newline limits go under Assumptions
 - [x] T020 Thirteen mutants in fresh copies, applied to cli/ and .claude/: 13 killed, 0 holes
+
+## Phase 5: Fix round 2 (quality verdict at d9d48c1)
+
+- [x] T021 Merge origin/main at 6682925 with a merge commit; the wuwei-run step 1 and 2 conflict with #1145 keeps both changes
+- [x] T022 The sweep: 40 items over title paddings 0 to 190 in steps of 10, two root lengths (the tmp path and one 120 characters deeper), with and without a newline in the titles; at each of the 80 points the board is also pushed to exactly 9,999 and 10,000 characters (tests/test_charters.py)
+- [x] T023 An andon reason holding `- item-00, ...` keeps the board header and is not counted, with and without the final cut (tests/test_charters.py)
+- [x] T024 One and two left-out items read "1 more item" and "2 more items"; a board at 9,999 characters keeps every item (tests/test_charters.py)
+- [x] T025 Run the new tests red on 9422fdf's hook.py: 81 failed (80 sweep points, the andon test), 5 passed
+- [x] T026 Remove the 9,900 room: the trim measures the final string against SESSION_CAP and drops whole items in the board.text item shape (cli/wuwei/hook.py)
+- [x] T027 Mutants in fresh copies, both hook.py copies: specs/session-context-cap/mutants.py at 9eba49f
+- [x] T028 Route differential at main 6682925 and the head, and the measurements, at 9eba49f
