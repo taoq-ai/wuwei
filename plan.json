@@ -197,31 +197,6 @@
    "approved": false
   },
   {
-   "id": "verdict-at-head",
-   "title": "fix(evidence): gate_gaps reads a verdict at the PR head above one attested later at an older or unrelated head",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 13.0,
-   "why": "Gates on #1135 at 21d9ce3: gate_gaps on main takes the last verdict per gate in ledger order (evidence.py:296), so an older-head PASS attested after a FIX at the PR head clears the gate; the security gate showed the same class (older head, non-ancestor head, another PR) for breaking_gaps, which breaking-latest now fixes with an ancestry walk",
-   "promise": "gate_gaps reads each gate's verdicts the way breaking-latest's fixed breaking_gaps does: a verdict counts only at an ancestor of the PR head and on this PR, and a later verdict at the same or an older head never clears a FIX at a newer head. Reuses the ancestry walk breaking-latest adds. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs/design.md:108. Runtime lines: estimate +3, budget 5. Order: after breaking-latest merges. Rollback: revert the commit.",
-   "acceptance": [
-    "given an arch FIX at the PR head and an arch PASS at an older ancestor head attested after it, when evidence.gaps reads the PR, then arch is still owed at the head",
-    "given a PASS whose head is not an ancestor of the PR head, or one recorded for another PR of the same item, when evidence.gaps reads the PR, then that PASS does not count",
-    "given a FIX at the PR head and a later PASS at the same head, when evidence.gaps reads the PR, then the gate is still owed"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "push-git-runs",
    "title": "fix(guards): a push to a scratch remote that makes git push elsewhere (submodule recursion, core.hooksPath) meets the push door",
    "goal": "G-2",
@@ -1439,6 +1414,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "verdict-at-head",
+   "title": "fix(evidence): gate_gaps reads a verdict at the PR head above one attested later at an older or unrelated head",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "Gates on #1135 at 21d9ce3: gate_gaps on main takes the last verdict per gate in ledger order (evidence.py:296), so an older-head PASS attested after a FIX at the PR head clears the gate; the security gate showed the same class (older head, non-ancestor head, another PR) for breaking_gaps, which breaking-latest now fixes with an ancestry walk",
+   "promise": "gate_gaps reads each gate's verdicts the way breaking-latest's fixed breaking_gaps does: a verdict counts only at an ancestor of the PR head and on this PR, and a later verdict at the same or an older head never clears a FIX at a newer head. Reuses the ancestry walk breaking-latest adds. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs/design.md:108. Runtime lines: estimate +3, budget 5. Order: after breaking-latest merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given an arch FIX at the PR head and an arch PASS at an older ancestor head attested after it, when evidence.gaps reads the PR, then arch is still owed at the head",
+    "given a PASS whose head is not an ancestor of the PR head, or one recorded for another PR of the same item, when evidence.gaps reads the PR, then that PASS does not count",
+    "given a FIX at the PR head and a later PASS at the same head, when evidence.gaps reads the PR, then the gate is still owed"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1152 after goal, quality and security passed, arch at c0af114 (Breaking: no, patch), merged with #1166's Supersedes rule, owner review approved at c0af114"
   },
   {
    "id": "verdict-closed",
