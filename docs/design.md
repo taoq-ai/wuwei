@@ -200,8 +200,11 @@ Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (an edit
 tool in `guards.DOORS` or a Codex apply_patch, any MCP tool, or a Bash command that names a door program
 or a network program in `guards.NETWORK`, read with its quotes and backslashes removed) refuses
-it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`. `wuwei doctor` reports each door's strength per repository: wall (code host or
-credentials), refused (hook), detected (audit).
+it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`.
+The launcher is the one exception: when the PreToolUse hook fails before it can judge (an import, its
+arguments, the version read), `bin/wuwei` exits 2 and refuses every PreToolUse call, not only door calls.
+`wuwei doctor` reports each door's strength per repository: wall (code host or credentials), refused
+(hook), detected (audit).
 
 Andon: `wuwei andon owner/repo --reason` holds new builds in one repository until cleared; others
 flow.
