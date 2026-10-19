@@ -257,6 +257,18 @@
     {"command": "cd ../g && git push origin main", "source": "item scratch-remotes (a cd before the push: the scratch rule reads one plain git call only)", "verdict": "push"},
     {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"},
     {"command": "git --work-tree=../x push .git :main", "source": "gates scratch-remotes at 6a5d00d (security: a work tree outside the shell's directory; real git deleted main in the working repository)", "verdict": "push"},
-    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"}
+    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"},
+    {"command": "git push origin feature:heads/main", "source": "item push-refspecs acceptance 1 (real git 2.43 moved main on a scratch bare remote)", "verdict": "push"},
+    {"command": "git push origin :", "source": "item push-refspecs acceptance 1 (real git 2.43 moved main on a scratch bare remote)", "verdict": "push"},
+    {"command": "git push --all origin", "source": "item push-refspecs acceptance 1 (real git 2.43 moved main on a scratch bare remote)", "verdict": "push"},
+    {"command": "git push origin 'refs/heads/*:refs/heads/*'", "source": "item push-refspecs acceptance 1 (real git 2.43 moved main on a scratch bare remote)", "verdict": "push"},
+    {"command": "git push origin --all", "source": "item push-refspecs (--all after the remote: git reads options anywhere)", "verdict": "push"},
+    {"command": "git push origin heads/main", "source": "item push-refspecs (a source-only word names its own destination; real git moved main)", "verdict": "push"},
+    {"command": "git push origin :/fix:main", "source": "item push-refspecs (git splits a refspec at its last colon; real git moved main)", "verdict": "push"},
+    {"command": "git push --mirr origin", "source": "item push-refspecs (git takes a unique prefix of --mirror; real git moved main)", "verdict": "push"},
+    {"command": "git push origin feature", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
+    {"command": "git push origin feature:feature", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
+    {"command": "git push --tags origin", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
+    {"command": "git push origin 'refs/heads/f/*:refs/heads/f/*'", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"}
   ]
 }

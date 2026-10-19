@@ -143,22 +143,23 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def git_push(root, args, cwd):
-    if any(a.startswith('--force') or a == '--mirror' or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args):
+def git_push(root, args, cwd):  # git 2.43 (remote.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
+    longs = [a[2:] for a in args if re.fullmatch(r'--[a-z]+', a)]  # parse-options takes any unique prefix: --mirr is --mirror
+    if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in longs):
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
     positional = [a for a in args if not a.startswith('-')]
     deleting = any(a in ('--delete', '-d') for a in args)
     if any(ref.startswith('+') for ref in positional[1:]):
         return deny('force push refused (a + refspec): push a new commit instead.')
-    targets = []
-    for ref in positional[1:] or ['HEAD']:
-        destination = ref.split(':', 1)[1] if ':' in ref else ref
-        if destination in ('', 'HEAD'):
-            destination = current_branch(cwd)
-        targets.append(destination.removeprefix('refs/heads/'))
-        deleting = deleting or ref.startswith(':')
+    targets = ['refs/heads/*'] * any('all'.startswith(n) or 'branches'.startswith(n) for n in longs)  # --all, --branches: every branch
+    for ref in positional[1:] or ['HEAD'] * (not any('tags'.startswith(n) for n in longs)):  # --tags alone sends tags alone
+        source, colon, destination = ref.rpartition(':')
+        deleting = deleting or bool(colon and not source and destination)
+        if destination in ('', 'HEAD', '@'):  # git reads @ as HEAD
+            destination = '*' if ref == ':' else current_branch(cwd)  # : pushes each branch both sides hold
+        targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole
     protected = _default(root, origin(cwd))
-    if hit := [t for t in targets if t in protected]:
+    if hit := [b for b in protected for t in targets if fnmatchcase('refs/heads/' + b, t)]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 

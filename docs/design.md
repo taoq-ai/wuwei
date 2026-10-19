@@ -152,7 +152,9 @@ collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges
 `contents/` on any branch; `gh repo delete` and a REST DELETE on the repository; a `gh api graphql`
 mutation that merges, arms auto-merge, opens a PR, marks one ready, requests reviewers, moves a ref, commits to a branch or changes
 branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
-every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
+every form; pushes to or deletion of the default branch (a destination as git 2.43 reads it: `main`,
+`heads/main` or `refs/heads/main` after the last colon; the matching refspec `:`, `--all`, `--branches`
+and a glob whose destination can match it), including the GitHub MCP `push_files`,
 `create_or_update_file` and `delete_file` tools on the default branch or with no branch (a force
 push, push or delete to a git directory in a scratch folder passes in one plain git call, as
 SECURITY.md reads it); a git

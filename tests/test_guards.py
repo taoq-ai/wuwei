@@ -1633,3 +1633,80 @@ def test_a_remote_named_in_global_config_keeps_the_push_door(root, scratch, monk
 def test_a_push_to_a_git_directory_outside_the_temporary_folders_meets_the_push_door(root, scratch, monkeypatch):
     monkeypatch.setattr(guards, 'TEMP', (str(scratch / 'c'),))
     assert 'the default branch main' in guards.bash(root, 'git push ../r.git main', str(scratch / 'c'), 's1')['reason']
+
+
+@pytest.fixture
+def ahead(scratch):
+    """Item push-refspecs: clone c on feature; main and feature are each a commit ahead of origin (../s.git); tag v1, branch f/x."""
+    git = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=scratch / 'c', check=True,  # noqa: E731
+                                    capture_output=True)
+    git('push', '-q', 'origin', 'main:main', 'main:feature')
+    git('commit', '-q', '--allow-empty', '-m', 'ahead on main')
+    git('switch', '-q', '-c', 'feature', 'HEAD~1')
+    git('commit', '-q', '--allow-empty', '-m', 'ahead on feature')
+    git('branch', 'f/x')
+    git('tag', 'v1')
+    return scratch
+
+
+def main_at(remote):
+    return subprocess.run(['git', '--git-dir', str(remote), 'rev-parse', 'main'], capture_output=True, text=True).stdout
+
+
+REFSPECS_TO_MAIN = ['git push origin feature:heads/main', 'git push origin :', 'git push --all origin', 'git push origin --all',
+                    "git push origin 'refs/heads/*:refs/heads/*'", 'git push origin "refs/heads/*"', 'git push origin heads/main',
+                    'git push origin refs/heads/\\*:refs/heads/\\*', "git push origin '*:*'", 'git push origin ":/ahead on main:main"',
+                    'git push origin main:refs/heads/main', 'git push --al origin', 'git push --mirr origin', 'git push --m origin',
+                    "git push origin 'refs/*:refs/*'"]
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('command', REFSPECS_TO_MAIN)
+def test_a_refspec_that_moves_main_under_real_git_meets_the_push_door(root, ahead, monkeypatch, command):
+    """Item push-refspecs: git 2.43 expands a destination with its ref rules, pushes matching branches for : and every branch
+    for --all (any unique prefix) or a glob, and splits a refspec at its last colon. Real git moves main; the door refuses it."""
+    before = main_at(ahead / 's.git')
+    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', capture_output=True, timeout=30)
+    assert main_at(ahead / 's.git') != before, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))  # the same remote outside the scratch folders, as the real origin is
+    assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', command
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('command', ['git push origin feature', 'git push origin feature:feature', 'git push --tags origin',
+                                     "git push origin 'refs/heads/f/*:refs/heads/f/*'", 'git push origin feature:refs/heads/f/main',
+                                     'git push origin HEAD:refs/f/main', 'git push origin feature:heads/f'])
+def test_a_refspec_that_cannot_reach_main_passes_the_push_door(root, ahead, monkeypatch, command):
+    before = main_at(ahead / 's.git')
+    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    assert main_at(ahead / 's.git') == before, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    assert guards.bash(root, command, str(ahead / 'c'), 's1') is None, command
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('command, moves', [('git push origin @', True), ('git push origin feature @', True),
+                                            ('git push --tags origin', False), ('git push origin --ta', False)])
+def test_a_push_from_main_reads_at_and_tags_as_git_does(root, ahead, monkeypatch, command, moves):
+    """Probe at the head: git reads @ as HEAD, and --tags with no refspec pushes tags alone, not the current branch."""
+    subprocess.run(['git', 'switch', '-q', 'main'], cwd=ahead / 'c', check=True, capture_output=True)
+    before = main_at(ahead / 's.git')
+    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    assert (main_at(ahead / 's.git') != before) == moves, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
+
+
+@pytest.mark.parametrize('command', ['git push --branches origin', 'git push origin --bra', 'git push origin +:',
+                                     'git push origin refs/heads/m*:refs/heads/m*', 'git push origin --delete heads/main'])
+def test_a_refspec_reaching_the_default_branch_by_git_rules_meets_the_push_door(root, repo, command):
+    assert door_reached(guards.pre_tool(root, bash(command))) == 'push', command
+
+
+@pytest.mark.parametrize('command, reason', [('git push origin :', 'pushing to the default branch main refused'),
+                                             ('git push --all origin', 'pushing to the default branch main refused'),
+                                             ('git push origin :heads/main', 'deleting the default branch main refused'),
+                                             ('git push origin --delete refs/heads/main', 'deleting the default branch main refused'),
+                                             ('git push --mi origin', 'force push refused: history on a shared branch')])
+def test_a_refspec_refusal_keeps_the_push_door_text(root, fake, repo, command, reason):
+    assert guards.pre_tool(root, bash(command))['reason'].startswith(reason), command
