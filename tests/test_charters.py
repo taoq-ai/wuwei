@@ -286,11 +286,14 @@ def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_ch
 SESSION_CAP = 10000  # Claude Code saves a longer additionalContext to a file and shows a 2,000-character preview
 
 
-def session_plan(root, items, newline=''):
+def session_plan(root, items, newline='', pad=0, first=0):
     from conftest import write_plan
+    from wuwei import ws
     write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
                        'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries,{newline} '
-                       'with its promise named in the title the way this plan writes them'} for n in range(items)])
+                       'with its promise named in the title the way this plan writes them' + 'x' * (pad + (first if n == 0 else 0))}
+                      for n in range(items)])
+    ws.cache_put(root, 'board', None)
 
 
 def session_context(root):
@@ -323,14 +326,56 @@ def test_the_session_start_context_fits_the_cap_and_says_what_it_left_out(root, 
     assert items == 0 or text.endswith('\n' + left_out(items - shown)), 'the left-out line is whole and last'
 
 
-def test_the_left_out_line_counts_one_item_in_the_singular(root, fake):
+def session_board(root, newline, pad, first=0):
+    session_plan(root, 40, newline, pad, first)
+    text = session_context(root)
+    return text, len(re.findall(r'^- item-', text, re.M))
+
+
+@pytest.mark.parametrize('pad', range(0, 200, 10))
+@pytest.mark.parametrize('newline', ['', '\n'])
+@pytest.mark.parametrize('deep', [0, 120])
+def test_the_board_fills_the_cap_to_the_character_at_any_title_and_path_length(root, fake, deep, newline, pad):
     from wuwei import ws
+    work = root / ('r' * deep)
+    if deep:
+        (work / ws.DIR).mkdir(parents=True)
+        ws.write_config(work, ws.raw_config(root))
+    text, shown = session_board(work, newline, pad)
+    assert len(text) < SESSION_CAP and shown >= 10 and text.endswith('\n' + left_out(40 - shown)), (len(text), shown)
+    full, kept = session_board(work, newline, pad, SESSION_CAP - 1 - len(text))
+    assert len(full) == SESSION_CAP - 1 and kept == shown, 'one character under the cap keeps every item'
+    over, fewer = session_board(work, newline, pad, SESSION_CAP - len(text))
+    assert len(over) < SESSION_CAP and fewer == shown - 1 and over.endswith('\n' + left_out(41 - shown)), 'at the cap one goes'
+
+
+def test_an_andon_reason_that_reads_like_an_item_line_is_not_counted_or_trimmed(root, fake):
+    from wuwei import board
+    fragment, header = '\n- item-00, a fragment of the reason', '\nBoard (what each open item still lacks):\n'
+    board.andon(root, 'acme/lib', 'base branch red' + fragment)
+    room = SESSION_CAP - 20 - len(session_context(root)) + len('Board: nothing open in the plan.') - len(header + left_out(40)) + 1
+    session_plan(root, 40)
+    for over, size, end in ((0, SESSION_CAP - 20, left_out(40)), (40, SESSION_CAP, left_out(40)[:-20])):
+        board.andon(root, 'acme/lib', 'base branch red' + 'x' * (room + over) + fragment)
+        text = session_context(root)
+        assert len(text) == size and text.endswith(fragment + header + end), (over, len(text))
+
+
+def test_the_left_out_line_reads_one_item_in_the_singular_and_two_in_the_plural(root, fake):
     session_plan(root, 40)
     shown = len(re.findall(r'^- item-', session_context(root), re.M))
-    session_plan(root, shown + 1)
-    ws.cache_put(root, 'board', None)
+    session_plan(root, shown)
+    pad = SESSION_CAP - 1 - len(session_context(root))
+    session_plan(root, shown, first=pad)
     text = session_context(root)
-    assert len(text) < SESSION_CAP and text.endswith('\n1 more item left out; `wuwei status` lists them all.')
+    assert len(text) == SESSION_CAP - 1 and len(re.findall(r'^- item-', text, re.M)) == shown, 'the whole board fits to the character'
+    session_plan(root, shown, first=pad + 1)
+    text = session_context(root)
+    assert len(re.findall(r'^- item-', text, re.M)) == shown - 1 and len(text) < SESSION_CAP
+    assert text.endswith('\n1 more item left out; `wuwei status` lists them all.')
+    session_plan(root, shown, first=pad + 1 + SESSION_CAP - len(text))
+    text = session_context(root)
+    assert len(re.findall(r'^- item-', text, re.M)) == shown - 2 and text.endswith('\n2 more items left out; `wuwei status` lists them all.')
 
 
 def test_a_title_with_a_newline_still_lets_the_board_trim(root, fake):
