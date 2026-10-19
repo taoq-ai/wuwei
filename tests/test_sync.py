@@ -117,7 +117,8 @@ def test_a_kept_local_copy_is_pushed(remote, tmp_path):
     assert git(b, 'show', 'origin/wuwei/state:plan.json') == 'mine'
 
 
-def test_a_pull_never_writes_through_a_link_planted_under_the_workspace(remote, tmp_path):
+def test_a_pull_never_writes_through_a_link_planted_under_the_workspace(remote, tmp_path, monkeypatch, capsys):
+    from wuwei import __main__ as cli
     a = workspace(clone(remote, tmp_path / 'a'))
     (a / ws.DIR / 'verdicts' / 'x').mkdir(parents=True)
     (a / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md').write_text('verdict\n')
@@ -126,6 +127,7 @@ def test_a_pull_never_writes_through_a_link_planted_under_the_workspace(remote, 
     ws.record(b, 'from-b', {})
     (b / ws.DIR / 'verdicts').mkdir()
     (b / ws.DIR / 'verdicts' / 'x').symlink_to(b / ws.DIR / 'ledger')
-    with pytest.raises(OSError):
-        sync.pull(b)
+    monkeypatch.chdir(b)
+    assert cli.main(['sync']) == 1  # the pull stops at the link and names the file it was writing, with no traceback
+    assert (err := capsys.readouterr().err).startswith('wuwei sync: ') and '.wuwei/verdicts/x/quality-abc1234.md' in err
     assert sorted(p.name for p in (b / ws.DIR / 'ledger').iterdir()) == [f'{ws.clone(b)}.jsonl']

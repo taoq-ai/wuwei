@@ -833,7 +833,7 @@ def test_the_other_refusals_that_say_write_beside_it_name_the_next_free_file_too
     (folder / 'quality-abc1234.md').write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
     (folder / 'quality-abc1234-2.md').write_text(verdict_text())
     reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
-    assert 'already holds another verdict: write yours beside it as quality-abc1234-3.md.' in reason
+    assert 'already holds another verdict: write yours as quality-abc1234-3.md beside it (the next free number).' in reason
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev0') is None
     (folder / 'quality-abc1234.md').write_text(verdict_text())
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev1')['reason']
@@ -862,6 +862,33 @@ def test_a_parent_swapped_for_a_ledger_link_after_the_check_is_never_followed(ro
     after = ledger_files(root)
     assert after.keys() == before.keys() and all(after[p].startswith(before[p]) for p in before)
     assert out['decision'] == 'block' and ws.rows(root, 'attest') == [] and ws.rows(root, 'hook.error') == []
+
+
+@pytest.mark.parametrize('swapped', ['verdicts/x', 'verdicts'])
+def test_a_parent_swapped_for_a_ledger_link_inside_the_write_never_lands_it_in_the_ledger(root, tmp_path_factory, monkeypatch, swapped):
+    ws.record(root, 'plan.pass', {})
+    ledger, folder = root / ws.DIR / 'ledger', root / ws.DIR / swapped
+    copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
+    copy.parent.mkdir(parents=True)
+    monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    copy.with_name(f'.{copy.name}.4242.7.tmp').symlink_to(next(ledger.glob('*.jsonl')))  # only an unlink in the walked folder removes it
+    before, written = ledger_files(root), worktree_verdict(tmp_path_factory)
+
+    def swapping(call):  # the walk holds the folder's descriptor: from the first temporary name on, the name leads to the ledger
+        def at_temp(name, *args, **kwargs):
+            if str(name).endswith('.tmp') and not folder.is_symlink():
+                folder.rename(folder.with_name('moved'))
+                folder.symlink_to(ledger)
+            return call(name, *args, **kwargs)
+        return at_temp
+    monkeypatch.setattr(ws.os, 'unlink', swapping(ws.os.unlink))
+    monkeypatch.setattr(ws.os, 'open', swapping(ws.os.open))
+    reviewer_stop(root, f'Verdict file: {written}')
+    monkeypatch.undo()
+    after = ledger_files(root)
+    assert after.keys() == before.keys() and all(after[p].startswith(before[p]) for p in before)
+    assert (folder.with_name('moved') / copy.relative_to(folder)).read_bytes() == written.read_bytes()
 
 
 def test_a_looping_verdicts_folder_refuses_the_handback_and_records_verdict_missing(root, tmp_path_factory):
@@ -917,7 +944,7 @@ def no_free_name(root, tmp_path_factory, monkeypatch, site, cause):
 @pytest.mark.parametrize('site', ['copy', 'other-seat', 'shape'])
 def test_no_free_name_beside_a_verdict_is_a_refusal_never_a_hook_error(root, tmp_path_factory, monkeypatch, site, cause):
     message = no_free_name(root, tmp_path_factory, monkeypatch, site, cause)
-    assert reviewer_stop(root, message)['decision'] == 'block'
+    assert (out := reviewer_stop(root, message))['decision'] == 'block' and 'next free number' not in out['reason']  # none is free
     assert handback(root, message)['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert reviewer_stop(root, message, active=True) is None
     assert len(ws.rows(root, 'verdict.missing')) == 1 and ws.rows(root, 'hook.error') == []

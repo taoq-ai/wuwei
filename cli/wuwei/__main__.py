@@ -146,7 +146,7 @@ def cmd_sync(args):
     try:
         print(sync.pull(root))
         print(sync.push(root))
-    except RuntimeError as exc:
+    except (RuntimeError, OSError) as exc:  # a pull stopped at a planted link is one more sync failure
         print(f'wuwei sync: {exc}', file=sys.stderr)
         return 1
     return 0

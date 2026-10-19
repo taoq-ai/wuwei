@@ -38,11 +38,10 @@ def today():
     return now().date().isoformat()
 
 
-def atomic_write(path, text, root=None):
-    """Each folder below root is opened without following a link, and the temporary file is made and renamed relative to
-    the last, so a folder swapped for a link after a caller's check is never followed."""
+def atomic_write(path, text, root=None):  # every folder below root and the file are reached by descriptor: no link is followed
     path = Path(path)
-    root = root or path.parent.mkdir(parents=True, exist_ok=True) or path.parent  # by default the file's own folder, made first
+    if root is None:  # by default the file's own folder, made first
+        root, _ = path.parent, path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp = os.open(root, os.O_RDONLY | os.O_DIRECTORY), f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'  # threads share a pid (#1121)
     try:
         for part in path.parent.relative_to(root).parts:

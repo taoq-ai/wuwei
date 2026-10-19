@@ -147,9 +147,9 @@ def _verdict_problem(root, payload, role):
     def free(p):  # the next <stem>-N.md beside p that no file or link holds, the folder listed once
         try:
             return next(n for held in [{q.name for q in p.parent.iterdir()}] for i in range(2, 999)
-                        if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md') not in held)
+                        if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md') not in held) + ' beside it (the next free number)'
         except (OSError, StopIteration):
-            return f'a new name of your own (no -2 to -998 beside it is free, or {p.parent} cannot be listed)'
+            return f'a new name of your own beside it (none of -2 to -998 is free, or {p.parent} cannot be listed)'
     try:
         verdicts, path = verdicts.resolve(), path.resolve()  # a loop raises RuntimeError on 3.11 and 3.12
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
@@ -157,7 +157,7 @@ def _verdict_problem(root, payload, role):
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
-                return f'{copy} already holds another verdict: write yours beside it as {free(copy)}.'
+                return f'{copy} already holds another verdict: write yours as {free(copy)}.'
             ws.atomic_write(copy, body, Path(root).resolve())  # no folder swapped for a link after the check is followed
             path = copy
         path.relative_to(verdicts)
@@ -170,11 +170,11 @@ def _verdict_problem(root, payload, role):
         return None
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
-                f'counts as recorded. Write yours to {free(path)} beside it (the next free number) and end with its Verdict file: line.')
+                f'counts as recorded. Write yours to {free(path)} and end with its Verdict file: line.')
     parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
-                + f'\nWrite the corrected verdict to {free(path)} beside it (the next free number) in this shape:\n' + verdict.FORMAT)
+                + f'\nWrite the corrected verdict to {free(path)} in this shape:\n' + verdict.FORMAT)
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
