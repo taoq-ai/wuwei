@@ -1480,9 +1480,11 @@ def test_the_pr_read_carries_github_mergeable_state(root, fake):
     assert gh.pr('acme/app', 42)['mergeableState'] == 'blocked'
 
 
-def test_a_required_check_not_yet_created_while_ci_runs_waits_and_lets_auto_merge_arm(root, fake):
+@pytest.mark.parametrize('running', [{'name': 'build', 'conclusion': '', 'status': 'IN_PROGRESS'},
+                                     {'context': 'ci/external', 'state': 'PENDING', 'url': None}])
+def test_a_required_check_not_yet_created_while_ci_runs_waits_and_lets_auto_merge_arm(root, fake, running):
     complete(root, fake)  # a needs: job: GitHub creates its check run only once the job is queued
-    fake.prs['42']['statusCheckRollup'].append({'name': 'build', 'conclusion': '', 'status': 'IN_PROGRESS'})
+    fake.prs['42']['statusCheckRollup'].append(running)
     fake.protection['main'] = ['test (3.11)']
     found = evidence.gaps(root, 'acme/app', 42)
     assert [(g['text'], g['kind'], g['actionable']) for g in found] == [
