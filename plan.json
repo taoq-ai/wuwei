@@ -27,6 +27,31 @@
    "approved": false
   },
   {
+   "id": "sync-paths",
+   "title": "fix(sync): a state pull writes only inside .wuwei and a push reads no file through a link",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 20,
+    "size": 2
+   },
+   "score": 26.5,
+   "why": "Security gate on verdict-dirfd (#1151, security-f1c2f04.md), same at main: a wuwei/state tree with `..` entries makes sync.pull write outside .wuwei; git cat-file resolved `a/../../x` and the probe reached the workspace root and .git/hooks/post-checkout. sync.push reads .wuwei through file links, so a planted link published an outside file to the wuwei/state branch. Also at main: a FIFO at the verdict copy path hangs the hook, a device node exhausts memory, and a .wuwei/verdicts link outside the workspace raises ValueError at hook.py:167 outside the try (fail open).",
+   "promise": "sync.pull refuses every tree entry whose path is absolute, holds `..` or `.`, or resolves outside .wuwei, and writes nothing for that pull. sync.push reads each file with O_NOFOLLOW and skips (and names) a link. The verdict copy-in reads only a regular file (O_NOFOLLOW, fstat S_ISREG, a size cap) and the verdicts resolve sits inside the try, so each case refuses with verdict.missing. Files: cli/wuwei/sync.py, cli/wuwei/hook.py, tests, the vendored copy, SECURITY.md. Runtime estimate +6, budget 8. After verdict-dirfd. AGENTS.md Testing the guards: normalisation probe per path class.",
+   "acceptance": [
+    "given a wuwei/state tree with entries `a/../../x`, `/abs`, `./x`, when sync.pull runs, then nothing outside .wuwei changes and the pull names the entry",
+    "given .wuwei/goals.md as a link to a file outside the workspace, when sync.push runs, then the outside bytes are not in the pushed tree",
+    "given a FIFO, a device node or an outside link at the verdict copy path, when SubagentStop runs, then it refuses with verdict.missing within one second and writes no hook.error"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "spike-962",
    "title": "spike: can PostToolUse confirm an owner answer against the session transcript",
    "goal": "G-4",
