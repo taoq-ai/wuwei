@@ -25,3 +25,10 @@
 - [x] T015 Pin an imported 0.34 PASS counting for every PR of its item, and an imported short-head FIX holding against a PASS at that commit (tests/test_evidence.py)
 - [x] T016 An arch `Breaking: no` from another PR clears no yes, run red, then the filter (tests/test_evidence.py, cli/wuwei/evidence.py)
 - [x] T017 Merge origin/main, re-run the suite, the probes and the mutants
+
+## Phase 4: Merge of main 5a33509 (#1166 Supersedes)
+
+- [x] T018 Merge origin/main with a merge commit; resolve verdicts() (path and ref) and gate_gaps (the walk with the Supersedes rule inside it) once, then re-vendor
+- [x] T019 A FIX at the head, then a PASS at the head naming it clears; without Supersedes, naming another item's file, at an older head, or for another PR it does not; run red before the rule (tests/test_evidence.py)
+- [x] T020 An arch yes for another PR of the item at the head holds this PR (tests/test_evidence.py)
+- [x] T021 The history probe gains a named-PASS family; re-run it, the route differential and seven mutants at main 5a33509 and the merged head

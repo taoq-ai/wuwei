@@ -1241,17 +1241,17 @@ def test_the_walk_asks_the_code_host_about_each_pair_of_heads_once(root, fake):
 
 
 @pytest.mark.parametrize('head, supersedes, pr, found', [
-    (HEAD, True, 'acme/app#42', []),  # a pass at the finding's head that names it clears it (#1162)
-    (HEAD, True, 'acme/app', []),  # written before the draft PR existed
-    (HEAD, False, 'acme/app#42', OWED),  # the same pass without Supersedes clears nothing
-    (OLD, True, 'acme/app#42', OWED),  # a pass at an older head never clears, named or not
-    (HEAD, True, 'acme/app#7', OWED),  # nor a pass for another PR of the item
+    (HEAD, 'I-1/quality-fix.md', 'acme/app#42', []),  # a pass at the finding's head that names it clears it (#1162)
+    (HEAD, 'I-1/quality-fix.md', 'acme/app', []),  # written before the draft PR existed
+    (HEAD, '', 'acme/app#42', OWED),  # the same pass without Supersedes clears nothing
+    (HEAD, 'I-2/quality-fix.md', 'acme/app#42', OWED),  # nor one naming another item's file of that name
+    (OLD, 'I-1/quality-fix.md', 'acme/app#42', OWED),  # a pass at an older head never clears, named or not
+    (HEAD, 'I-1/quality-fix.md', 'acme/app#7', OWED),  # nor a pass for another PR of the item
 ])
 def test_a_pass_clears_a_finding_at_its_head_only_by_naming_it(root, fake, head, supersedes, pr, found):
     standard(root)
     fake.prs['42'] = make_pr()
     fake.ancestors.add((OLD, HEAD))
-    fix = attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
-    attest(root, 'quality', head, 'PASS', name='quality-pass.md', pr=pr,
-           extra=f'Supersedes: {fix.relative_to(root)}\n' if supersedes else '')
+    attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
+    attest(root, 'quality', head, 'PASS', name='quality-pass.md', pr=pr, extra=f'Supersedes: {supersedes}\n' if supersedes else '')
     assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate'))] == found

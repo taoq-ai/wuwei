@@ -44,6 +44,14 @@ The acceptance scenarios, restated:
 - Q: The same head written short and in full? A: Heads compare on their first 7 characters, as the
   same-head rule on main did.
 
+### Session 2026-10-19 (merge of main 5a33509, #1166)
+
+- Q: How does #1162's Supersedes rule read with the walk? A: (the lead's decision) At one head a
+  later PASS replaces a held FIX only when it names that FIX file (`<item>/<file>`) on a
+  `Supersedes:` line and counts for this PR or its repository alone. A PASS at an older head never
+  clears, named or not. A later FIX or ESCALATE at the same head replaces a held FIX, so the newest
+  finding is the one a PASS must name. Everything else is as round 1 has it.
+
 ## Requirements
 
 - FR-001: Each gate's verdicts are walked oldest first through one shared test (`newer`), the one
@@ -51,7 +59,8 @@ The acceptance scenarios, restated:
 - FR-002: A PASS is read only for this PR, its repository alone, or no PR (imported); with no PR
   read, only for the repository read.
 - FR-003: A finding replaces a held PASS; a PASS never replaces a finding at the same or a newer
-  head.
+  head, except that at the same head a PASS that counts here and names the held FIX on a
+  `Supersedes:` line replaces it (#1162). At one head a later finding replaces a held FIX.
 - FR-004: The small-delta carry rule and the delta gate choice are unchanged.
 - FR-005: Runtime within the item's budget of 5 lines and at or under 3,400.
 - FR-006: An arch `Breaking: no` clears a yes only when it names this PR or its repository alone
@@ -80,6 +89,26 @@ The acceptance scenarios, restated:
    read, so a PASS for another PR of the item in the same repository still counts there.
 
 ## Probe results
+
+### Round 2: the merge of main 5a33509 (#1166)
+
+Read at main `5a33509` and at the merge commit `7755a3f` (`git archive` of each in a scratch folder,
+`PROBE_TMP` under it). The main family gives the same 48,592 cases and the same 7,479 moves; the
+sorted moves file has sha256 `1069931ea5712ab2ac48c4f6bcf933795099915d01c73410178f15a169877ba8`, as
+in rounds 0 and 1. The new named-PASS family has 31,250 cases: a prefix of none or one verdict, a
+quality FIX in every head and PR form, then a quality PASS in every head and PR form naming it.
+
+```
+main: ignored holes 6175, no-clear holes 864, named holes 1125, compare calls 87992
+head: ignored holes 0, no-clear holes 0, named holes 0, compare calls 84454
+```
+
+Every one of main's 1,125 named holes is a PASS at the FIX's head naming it for another
+repository (750) or another PR read with the PR (375): main had no PR filter. The route
+differential (257 routes x 6 PASS forms, corpus sha256 unchanged) moves the same 142 reads as
+round 1, all pass to a door for a PASS naming a PR or repository other than the one its door reads.
+
+### Rounds 0 and 1
 
 Read at main `5fe8347` and at this branch's head (round 1; round 0 read main `d7c4f43`) with
 `python3 -I specs/verdict-at-head/probe.py <main tree> <head tree>`; the main tree is
@@ -173,6 +202,12 @@ is the same at main and at the head.
   rule did.
 - `breaking_gaps` compares heads on 7 characters through `newer` instead of in full; every arch
   verdict it reads is parsed, so its heads are 40 characters and the reading is unchanged.
+- An ESCALATE stays held against a later FIX at its head, so no named PASS clears it. Main 5a33509
+  let a later FIX at the same head replace an ESCALATE; no test on either side holds that path, and
+  this branch keeps the stricter reading. Overturned if the owner wants a FIX to answer an ESCALATE.
+- An imported 0.34 PASS is read from its ledger row, which has no `Supersedes:` field, so it clears
+  no FIX at its head; as on main.
+- Runtime after the merge: +5 over main (3,178 at 5a33509 to 3,183), `cat cli/wuwei/*.py | wc -l`.
 - Runtime: +5 over main (3,026 at 5fe8347 to 3,031), measured with `cat cli/wuwei/*.py | wc -l`;
   budget 5. Round 1 removed a repeated call without a line.
 
