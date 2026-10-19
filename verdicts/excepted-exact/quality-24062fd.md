@@ -1,0 +1,31 @@
+Verdict: PASS
+Gate: quality
+Item: excepted-exact
+PR: taoq-ai/wuwei#1150
+Head: 24062fd084105a6ecae29badfb55bd636540fe55
+Confidence: high
+
+## Findings
+- [low] cli/wuwei/evidence.py:437 blocks: no. The first rstrip(' .,;:!?') before removesuffix('[waiting]') is untested: mutant S18 (first rstrip cut to ' .') survives the full suite in a fresh copy. The spec clarification covers "[waiting] with marks around it", yet probe.same() only generates "[waiting]." and "[waiting]" with no mark. Input "owner review needed (owner_paths: infra/main.tf) [waiting]!" is waived at head and would not be under the mutant. That direction fails closed, and the hook already cuts at '?'. Missing test: one accepted gap ending in "[waiting]!" or "[waiting];".
+- [low] cli/wuwei/evidence.py:440 blocks: no. Existing untested guards on lines this diff rewrote. Mutant S16 (headless ruling, `or '-'` becomes `or ''`) and mutant S17 (the kind == 'exception' check dropped) both survive the full suite. The hook always records a head (hook.REF requires ` at <sha>`), and breaking rulings carry no 'gap' key, so no writer at head reaches either mutant. Still, nothing pins them. Missing tests: a ruling without a head, and a ruling of another kind that carries a gap.
+- [low] cli/wuwei/evidence.py:53 blocks: no. GATES restates the wording of the gate gaps that gate_gaps prints (lines 299 and 307). If either wording changes, the gate-list form silently stops matching. That fails closed, and the probe test would catch it, because probe.printed() hard-codes the same wording.
+- [low] tests/test_evidence.py:330 blocks: no. test_no_generated_accepted_gap_waives_a_gap_it_does_not_name loads specs/excepted-exact/probe.py, so the unit suite now depends on a spec artifact (the first test that does) and takes +2.3s. Its oracle canon() is written apart but follows the same algorithm, so it catches slips in the implementation, not misreadings of the rule.
+- [low] blocks: no. test_a_delta_review_exception_names_its_gate is green on main, so it is a pin, not red-first. The gate form it guards is still killed by M3, M10, S15 and S19.
+- [low] blocks: no. How this fails 1 is confirmed and recorded by the builder (analysis A1): 68 of 544 guard-passing questions (tail '\nAccept?') record "gap\nAccept" and leave their gap standing. On main all 544 waived their gap, but 1328 of them also waived gaps they did not name. The change fails closed, and the follow-up on the exception parser owns the hook's cut.
+
+## Probes
+- Copies: git archive 24062fd and 8c1939e into fresh directories under the sentinel-quality-excepted-exact scratch folder. The remote head was read once with ls-remote: 24062fd, unchanged.
+- Suite: at head, 1779 passed, 2 skipped. The 2 skips are tests/test_release.py:36 and :57, skipped because ssh-keygen is absent. Unrelated. At main, 1774 passed, 2 skipped. That is +5 tests.
+- Red on main: head tests/test_evidence.py and probe.py run against main's code give 4 failed: short_or_partial, printed_gap, gate_list_exactly, generated. test_a_delta_review_exception_names_its_gate passes on main.
+- Acceptance 1 is pinned by test_a_short_or_partial_exception_waives_nothing through evidence.gaps: rulings 'e' and 20 other parts are recorded, and both [SECURITY, OWNER] still show. Acceptance 2 is pinned by test_an_exception_naming_the_printed_gap_waives_that_gap_alone through evidence.gaps and report.day. Wrong head, wrong PR and approved False each waive nothing.
+- Merge door (guards.pre_tool on `gh pr merge 42 --squash`, my own scratch test): with ruling gap 'e' the door denies and lists "no test in the diff". With ruling gap 'No test in the diff.' the door denies, listing only "gates missing at head aaaaaaa: quality". 2 passed.
+- Mutants (check 1): I applied every mutant to cli/wuwei/evidence.py and .claude/wuwei/cli/wuwei/evidence.py together and ran the full suite each time. test_the_vendored_plugin_matches_the_tree_it_was_copied_from failed for 0 of 19, so no kill rests on drift. The builder's own mutants.py runs only test_evidence.py and test_report.py, so the vendored trap never touched its count. Restated count: the builder's 13 are all killed by behavioural tests in test_evidence.py (M7 and M4 by the generated-pairs test alone). My 6 extra: S14 (no rstrip after [waiting]), S15 (no delta-review form) and S19 (group 0 for the gate list) are killed. S16, S17 and S18 survive (see Findings). Total 16 of 19.
+- Survivors re-run serially in fresh copies: S16, S17 and S18 each gave 1779 passed. In the parallel run, linear-time guard tests (test_the_git_option_loop_stays_linear_at_125_kb, test_segments_and_redirects_stay_linear..., test_git_clean_joins...) failed under load. I did not count those as kills.
+- Probe (python3 -I specs/excepted-exact/probe.py run/diff): 71 gaps x 9183 accepted = 651,993 pairs. At head: 2199 waived, 0 holes, 0 misses. At main: 25,994 holes and 832 misses. The diff moves 26,826 pairs: 25,994 no longer waived (not named) and 832 newly waived (named). This matches the builder's claim.
+- Edge inputs at head: '... [waiting]!' and '... [waiting]?' waive the owner gap; 'security [waiting]' waives nothing next to a gate gap "quality, security"; 'quality, security' waives the gate gap; 'Quality , Security' waives nothing (fails closed).
+- Line budget: evidence.py is 447 lines at main and 449 at head, +2 against a budget of 3. Total runtime stays under the 3400 cap, which test_setup asserts and which passed.
+- Simplicity: none to delete. The norm lambda and GATES are the least code that gives exact matching plus the gate-list form. `(GATES.match(t) or ('', ''))[1]` could read as `m[1] if (m := GATES.match(t)) else ''`, which is style only. The str check and the `- {''}` set difference are fail-closed validation (M8 and M2 are killed).
+- Confidence high: every condition in the diff is killed by a behavioural test or confirmed as a fail-closed survivor, the probe shows 0 holes on 651,993 pairs at head, and the door was exercised directly.
+
+## Residual risk
+The suite does not pin the pre-existing head and kind filters (S16, S17), or [waiting] followed by a mark other than a dot (S18). No current writer reaches any of them, and each fails closed or depends on hand-edited ledger rows.

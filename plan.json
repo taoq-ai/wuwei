@@ -26,11 +26,11 @@
    "reason": "Read from this session's real plan question (tool_use toolu_01BykhNnzNaG4s2ozvGdRfzC, 2026-10-18). (a) The transcript row with the matching tool_result is stamped 13:56:09.296Z and sits before the hook_success and hook_additional_context rows; the ledger prompt row is stamped 13:56:09 (second resolution), so the order at hook time is not shown. Claude Code docs (hooks.md) say the transcript is written asynchronously and may lag: unmeasured until a hook reads the file at hook time and logs whether the id is present. (b) transcript_path is /root/.claude/projects/-home-user-wuwei/<session>.jsonl, mode 600 owned by root; the session runs as root and guards.py names no projects-dir rule, so a Bash or Write call can write it today. (c) Per hooks.md the payload carries only common fields (session_id, transcript_path, cwd, hook_event_name, tool fields); no field marks a harness-originated call. Still lacks: (a) at hook time, via a probe hook that logs presence before returning."
   },
   {
-   "id": "scratch-remotes",
-   "title": "fix(guards): the push door passes a push whose remote is a local path under the session scratch folder",
-   "goal": "G-2",
+   "id": "mutants-both",
+   "title": "docs(agents): a mutant changes both cli/wuwei and the vendored copy, and a kill counts only when a behavioural test fails",
+   "goal": "G-1",
    "repo": "taoq-ai/wuwei",
-   "tier": "full",
+   "tier": "light",
    "framework": "wsjf",
    "scores": {
     "value": 8,
@@ -39,15 +39,14 @@
     "size": 1
    },
    "score": 21.0,
-   "why": "Real-git acceptance for push-door items needs pushes to a scratch bare remote. Today the door refuses them, so the git-globals builder ran them from Python around the door (the owner accepted that one run, trust:, and asked for this item). Without it every push-door item either routes around the door or loses real-execution evidence.",
-   "promise": "The push door passes a push whose remote is a local path (a filesystem path or file:// URL, given directly or as a remote whose url is one) that resolves under the session scratch folder or a fresh temporary folder, never the working repository or any path holding .wuwei. Files: cli/wuwei/guards.py, tests, routes.json, the vendored copy, SECURITY.md. Runtime lines: estimate +2, budget 3; needs free-lines-5 first. Order: after git-globals and free-lines-5, before push-refspecs. Acceptance from real execution: a push to a scratch bare remote through the door. Rollback: revert the commit. Outside: any network remote. Assumptions: the remote url is read from the command or `git config remote.<name>.url` in the clone; a symlink out of scratch is resolved with realpath before the check.",
+   "why": "Quality gate on models-record (#1146, quality-e0351a1.md): the builder's mutants changed cli/wuwei only, so test_the_vendored_plugin_matches_the_tree_it_was_copied_from killed all 30 and hid 2 survivors. The goal-met arch gate saw the same with the .upper() mutant.",
+   "promise": "AGENTS.md says a mutant is applied to both copies or the vendored drift test is deselected, and a kill counts only when a behavioural test fails. Docs only.",
    "acceptance": [
-    "given a scratch bare remote and a clone, when `git push ../r.git main` and `git push origin main` (origin set to the scratch path) run in Bash, then the door passes them and the bare remote has main",
-    "given `git push /home/user/wuwei/.git main`, a remote whose url is a symlink from scratch to the working repository, and `git push origin main` with origin on GitHub, when guards.bash reads them, then each is refused as before"
+    "given AGENTS.md at the head, when a seat reads it, then the rule is stated once with the test name"
    ],
    "status": "open",
-   "added": "2026-10-17",
-   "approved": true
+   "added": "2026-10-18",
+   "approved": false
   },
   {
    "id": "push-refspecs",
@@ -99,6 +98,30 @@
    "approved": true
   },
   {
+   "id": "forge-door",
+   "title": "fix(guards): a hook call made through Python or a script (python3 -m wuwei hook, ws.record, a script path) meets the forged-hook door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 20,
+    "size": 3
+   },
+   "score": 17.67,
+   "why": "Security gate on goal-met (#1145, verdict security-0039ce2.md) ran 13 shapes under real bash at main 8c1939e: 7 pass the guard and write a valid ruling row with no chain break, including `PYTHONPATH=<cli> python3 -m wuwei hook PostToolUse < payload.json`, `python3 -c '...ws.record(...)'`, `python3 forge.py`, `sh forge.sh` and `x=hook; <bin> $x PostToolUse`. A forged owner review approval satisfies evidence.owner_approved. guards.py:331 refuses a hand-made hook call only when the program is named wuwei.",
+   "promise": "The forged-hook door refuses a seat command that runs the wuwei module or its hook or record functions by any route the guard can read: python -m wuwei, python -c naming wuwei with hook or record, a script file under the workspace that imports wuwei, an indirect program word. A command the guard cannot read that names the CLI path or module is refused. Files: cli/wuwei/guards.py, tests, tests/fixtures/routes.json, the vendored copy. Runtime estimate +6, budget 8. AGENTS.md Testing the guards applies in full (route differential, combinatorial probe under real bash with a stub, normalisation probes).",
+   "acceptance": [
+    "given the 7 passing shapes from the goal-met security verdict, when guards.bash reads each from a seat, then each is refused and no ruling row is written",
+    "given a generated probe of runner x spelling x position classes under real bash with a stub wuwei, then every command that ran the stub hook is refused (holes 0) and `wuwei status`, `wuwei evidence` and `python3 -m pytest` still pass"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
+  },
+  {
    "id": "excepted-exact",
    "title": "fix(evidence): an owner's exception waives only the gap it names, matched exactly, never by substring",
    "goal": "G-2",
@@ -121,6 +144,30 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "yes-word",
+   "title": "fix(hook): an owner answer reads as yes only when its first word is a yes word, so Yesterday or Proceed to keep it open never approves",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "Security gate on goal-met (security-0039ce2.md): the yes check at hook.py:240 has no word boundary. End to end, `Yesterday it was 40 percent; keep it open` recorded G-2 met; at main the same check approves owner review on `Yesterday's run failed, hold it`. `Proceed to keep it open`, `Accepting it is not met` and `Yes, No` also read as yes.",
+   "promise": "An answer counts as yes only when its first word (after trim and casefold) is one of the yes words the option labels use, followed by a non-letter or the end, and no no-word follows in the same answer. Files: cli/wuwei/hook.py, tests, the vendored copy. Runtime estimate +1, budget 3. Route differential and a generated answer probe apply.",
+   "acceptance": [
+    "given owner answers `Yesterday's run failed, hold it`, `Proceed to keep it open`, `Accepting it is not met` and `Yes, No` to an owner review question, when the hook records them, then none is an approval",
+    "given `Yes`, `yes.`, `Approve`, `Proceed` and `Authorize`, then each is an approval as on main"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
   },
   {
    "id": "release-sweep",
@@ -172,31 +219,6 @@
    "approved": true
   },
   {
-   "id": "verdict-closed",
-   "title": "fix(verdict): closed findings go under Probes, and a refused verdict names the next free file",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 13.0,
-   "why": "A charter gap made six gates fail their first file; one sentence and one message fix it.",
-   "promise": "(1) charters/_gate.md rule 6 and the verdict block say: findings closed since your previous verdict go under ## Probes, one line each (\"closed: <finding> at <sha7>\"); ## Findings holds only open findings, or none. (2) The shape refusal in hook._verdict_problem (hook.py:170-171) ends \"Write the corrected verdict to <stem>-2.md beside it (the next free number) in this shape\" instead of \"Rewrite it\", matching the charter's never-edit rule. Then `bin/wuwei agents build`. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after verdict-symlink (same function). Rollback: revert the commit. Outside: loosening FINDING in verdict.py (the shape check stays strict). Assumptions: Probes is where gates already put run evidence, so closed findings fit there; overturned if the goal gate says closures must be machine-read.",
-   "acceptance": [
-    "given a delta verdict with \"Previous findings at e418c1d: all closed.\" under ## Probes and none under ## Findings, when the hook lints it, then it is attested",
-    "given the same line under ## Findings, when the hook lints quality-abc1234.md, then the refusal names quality-abc1234-2.md as the file to write next",
-    "given agents/sentinel-quality.md at the head, when a reader looks for closed findings, then it says they go under Probes"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "verdict-at-head",
    "title": "fix(evidence): gate_gaps reads a verdict at the PR head above one attested later at an older or unrelated head",
    "goal": "G-2",
@@ -220,6 +242,30 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "push-git-runs",
+   "title": "fix(guards): a push to a scratch remote that makes git push elsewhere (submodule recursion, core.hooksPath) meets the push door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "Quality re-read on scratch-remotes (#1141, quality-ad953d3.md): `git push ../r.git --recurse-submodules=on-demand main` and `git -c core.hooksPath=<dir> push ../r.git main` pass and moved main on the code-host stand-in. At 3d2eb29 the same harm passes with refspec HEAD:feature, so it predates #1141. SECURITY.md:105 names neither.",
+   "promise": "The push door refuses a push that carries --recurse-submodules other than no, or a -c core.hooksPath or hook config, unless the target is a scratch remote and no submodule or hook can reach a non-scratch remote. If shorter, it refuses both options on every push and says so in SECURITY.md. Runtime estimate +3, budget 4. After push-refspecs.",
+   "acceptance": [
+    "given the two commands above under real git with a scratch remote and a submodule whose remote is the stand-in, when guards.bash reads them, then each is refused",
+    "given `git push ../r.git main` with no submodule option, then it passes as on main"
+   ],
+   "status": "open",
+   "added": "2026-10-18",
+   "approved": false
   },
   {
    "id": "gh-args",
@@ -619,31 +665,6 @@
    "approved": true
   },
   {
-   "id": "status-perf",
-   "title": "perf(board): a cold status reads each repository's PR evidence in parallel and says what it is reading",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 2,
-    "risk": 3,
-    "size": 2
-   },
-   "score": 5.0,
-   "why": "A bug the owner hit in real use; the parallel read is safe only with the temp-name fix, which the item carries.",
-   "promise": "(1) board.compute reads the evidence of a repository's linked PRs on a concurrent.futures thread pool of at most 8, rows in the same order as today. (2) ws.atomic_write names its temp file with the pid and the thread id, so two threads writing one cache key (spec-, template-, budget-, review-, ci-, login) never share a temp file. (3) When the board is computed cold, it prints one stderr line per repository: \"wuwei: reading <repo>: <n> open PRs\". (4) The zsh error in the issue: bin/wuwei is POSIX sh (bin/wuwei:1) and no skill or charter text holds `==`; the builder reproduces the issue's command under zsh (apt install zsh in its scratch) and, if WUWEI is not the source, answers on the issue that zsh expands a word starting with \"=\" (echo ===) as a command path. Files: board.py, ws.py, tests, the vendored copies. Runtime lines: +4, budget 6. Order: none; runs now. plan-after, which edits board.compute, starts after it. Rollback: revert the commit. Outside: caching beyond today's TTLs. Assumptions: gh calls dominate the cold time; overturned if a cProfile of a cold status on the fake host with 18 PRs shows otherwise, in which case the item fixes what the profile names.",
-   "acceptance": [
-    "given a fake gh where each call sleeps 0.5 s and a plan with 18 items linked to 18 open PRs, when `wuwei status` runs with an empty cache, then it finishes in under a third of the serial time measured at efcd9e7 and prints the same rows in the same order",
-    "given two threads writing the same cache key 200 times each, when they finish, then no exception was raised and the file holds valid JSON",
-    "given a cold board, when status runs, then stderr names each repository read and stdout is unchanged"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "gates-status",
    "title": "feat(ci): a wuwei/gates commit status, posted by the repository's CI from the evidence on wuwei/state, so a required check holds any author",
    "goal": "G-1",
@@ -1004,6 +1025,31 @@
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
   },
   {
+   "id": "scratch-remotes",
+   "title": "fix(guards): the push door passes a push whose remote is a local path under the session scratch folder",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "Real-git acceptance for push-door items needs pushes to a scratch bare remote. Today the door refuses them, so the git-globals builder ran them from Python around the door (the owner accepted that one run, trust:, and asked for this item). Without it every push-door item either routes around the door or loses real-execution evidence.",
+   "promise": "The push door passes a push whose remote is a local path (a filesystem path or file:// URL, given directly or as a remote whose url is one) that resolves under the session scratch folder or a fresh temporary folder, never the working repository or any path holding .wuwei. Files: cli/wuwei/guards.py, tests, routes.json, the vendored copy, SECURITY.md. Runtime lines: estimate +2, budget 3; needs free-lines-5 first. Order: after git-globals and free-lines-5, before push-refspecs. Acceptance from real execution: a push to a scratch bare remote through the door. Rollback: revert the commit. Outside: any network remote. Assumptions: the remote url is read from the command or `git config remote.<name>.url` in the clone; a symlink out of scratch is resolved with realpath before the check.",
+   "acceptance": [
+    "given a scratch bare remote and a clone, when `git push ../r.git main` and `git push origin main` (origin set to the scratch path) run in Bash, then the door passes them and the bare remote has main",
+    "given `git push /home/user/wuwei/.git main`, a remote whose url is a symlink from scratch to the working repository, and `git push origin main` with origin on GitHub, when guards.bash reads them, then each is refused as before"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as #1141 (dc39cae) after arch, quality and security passed at ad953d3; evidence showed no gaps"
+  },
+  {
    "id": "exception-shape",
    "title": "fix(guards): an exception: question whose ref is not followed by \": <gap>\" is refused with the exact shape",
    "goal": "G-2",
@@ -1265,6 +1311,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "verdict-closed",
+   "title": "fix(verdict): closed findings go under Probes, and a refused verdict names the next free file",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 13.0,
+   "why": "A charter gap made six gates fail their first file; one sentence and one message fix it.",
+   "promise": "(1) charters/_gate.md rule 6 and the verdict block say: findings closed since your previous verdict go under ## Probes, one line each (\"closed: <finding> at <sha7>\"); ## Findings holds only open findings, or none. (2) The shape refusal in hook._verdict_problem (hook.py:170-171) ends \"Write the corrected verdict to <stem>-2.md beside it (the next free number) in this shape\" instead of \"Rewrite it\", matching the charter's never-edit rule. Then `bin/wuwei agents build`. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after verdict-symlink (same function). Rollback: revert the commit. Outside: loosening FINDING in verdict.py (the shape check stays strict). Assumptions: Probes is where gates already put run evidence, so closed findings fit there; overturned if the goal gate says closures must be machine-read.",
+   "acceptance": [
+    "given a delta verdict with \"Previous findings at e418c1d: all closed.\" under ## Probes and none under ## Findings, when the hook lints it, then it is attested",
+    "given the same line under ## Findings, when the hook lints quality-abc1234.md, then the refusal names quality-abc1234-2.md as the file to write next",
+    "given agents/sentinel-quality.md at the head, when a reader looks for closed findings, then it says they go under Probes"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1144"
   },
   {
    "id": "models-table",
@@ -2163,6 +2235,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1082"
+  },
+  {
+   "id": "status-perf",
+   "title": "perf(board): a cold status reads each repository's PR evidence in parallel and says what it is reading",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 2,
+    "risk": 3,
+    "size": 2
+   },
+   "score": 5.0,
+   "why": "A bug the owner hit in real use; the parallel read is safe only with the temp-name fix, which the item carries.",
+   "promise": "(1) board.compute reads the evidence of a repository's linked PRs on a concurrent.futures thread pool of at most 8, rows in the same order as today. (2) ws.atomic_write names its temp file with the pid and the thread id, so two threads writing one cache key (spec-, template-, budget-, review-, ci-, login) never share a temp file. (3) When the board is computed cold, it prints one stderr line per repository: \"wuwei: reading <repo>: <n> open PRs\". (4) The zsh error in the issue: bin/wuwei is POSIX sh (bin/wuwei:1) and no skill or charter text holds `==`; the builder reproduces the issue's command under zsh (apt install zsh in its scratch) and, if WUWEI is not the source, answers on the issue that zsh expands a word starting with \"=\" (echo ===) as a command path. Files: board.py, ws.py, tests, the vendored copies. Runtime lines: +4, budget 6. Order: none; runs now. plan-after, which edits board.compute, starts after it. Rollback: revert the commit. Outside: caching beyond today's TTLs. Assumptions: gh calls dominate the cold time; overturned if a cProfile of a cold status on the fake host with 18 PRs shows otherwise, in which case the item fixes what the profile names.",
+   "acceptance": [
+    "given a fake gh where each call sleeps 0.5 s and a plan with 18 items linked to 18 open PRs, when `wuwei status` runs with an empty cache, then it finishes in under a third of the serial time measured at efcd9e7 and prints the same rows in the same order",
+    "given two threads writing the same cache key 200 times each, when they finish, then no exception was raised and the file holds valid JSON",
+    "given a cold board, when status runs, then stderr names each repository read and stdout is unchanged"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1140"
   },
   {
    "id": "ascii-digits",
