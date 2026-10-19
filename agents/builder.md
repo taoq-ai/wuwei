@@ -2,6 +2,8 @@
 name: builder
 description: Builds one WUWEI plan item test first in its own branch and worktree.
 tools: Read, Glob, Grep, Bash, Write, Edit
+model: claude-opus-5-5
+effort: medium
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

@@ -38,7 +38,9 @@ Planner (the owner's session), lead, builder, four sentinels (arch, quality, sec
 shepherd, steward. `charters/` is the one source; `wuwei agents build` generates the agents with
 their reviewed tool grants. Each seat's model and effort come from the table in the planner charter
 (`docs/site/concepts/models.md`); at least one gate per head runs on a different model than the
-builder. Seats cannot ask the owner. The planner passes each seat its
+builder. `wuwei agents build` writes each role's default model and effort into its agent file;
+the hook notes a launch that departs from the table and records what ran, and never refuses one.
+Seats cannot ask the owner. The planner passes each seat its
 role's lines of `.wuwei/standards.md`.
 
 ## 4. The day
@@ -219,7 +221,7 @@ plugin into a repository's `.claude/` for cloud sessions, where repository plugi
 The report: plan passes and checkpoints with the diff since the last, the board, merges through the
 check or as exceptions, the doors, owner prompts, seats and verdicts, learning (escapes traced to
 gates with confidence, change failure rate and raised tiers, unplanned PRs, gate yield, tokens by
-role, open exceptions, the weekly sample), telemetry, ledger integrity. DORA comes from the code
+role, each seat by model and effort, open exceptions, the weekly sample), telemetry, ledger integrity. DORA comes from the code
 host alone. Replay cases (`wuwei evidence --record`) hold every future version to past answers.
 
 ## 11. Configuration and budgets

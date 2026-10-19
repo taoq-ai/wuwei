@@ -137,6 +137,8 @@ def doctor(root):
                  or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r)]
         rows.append(('codex roles', 'warn' if stale else 'ok',
                      f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
+    rows += [(var, 'note', f'set to {os.environ[var]}: {half} advice is off') for var, half in (  # a note: the exit code ignores it
+        ('CLAUDE_CODE_EFFORT_LEVEL', 'effort'), ('CLAUDE_CODE_SUBAGENT_MODEL', 'model')) if os.environ.get(var)]
     if gone := ws.retired(root):
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
