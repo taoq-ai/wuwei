@@ -66,6 +66,13 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - Q: Where may `--all` stand? A: anywhere: parse-options reads options before and after the remote
   and refspecs. The guard on main read `git push --all origin` as a push of the current branch, so
   it was refused only when the current branch was main, whatever the option order.
+- Q: What did the first probe run at the head find? A: 6 holes, all one class: `git push origin @`
+  from a clone on main. git reads `@` as `HEAD`, so it pushes the current branch; the guard read
+  `@` as a branch named `@`. The guard now reads a destination `@` as it reads `HEAD` (the current
+  branch). The same run showed `git push --tags origin` refused on main: with no refspec the
+  guard read the current branch, while git 2.43 sends only `refs/tags/*` when `--tags` stands
+  alone. The guard now adds the current branch only when no refspec and no `--tags` prefix is
+  given, so acceptance 3 holds on any branch.
 - Q: What does the guard do with quoting and `*`? A: shlex reads single quotes, double quotes and a
   backslash as bash does, so the glob word the guard reads is the word git gets; bash leaves an
   unquoted glob that matches no file as typed. `$'..'` stays unreadable and is refused by the
@@ -93,7 +100,8 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - FR-001: `git_push` splits each refspec at its last colon and names `refs/heads/<x>` for a
   destination `x`, `heads/x` or `refs/heads/x`; a destination with a `*` is a full-name pattern.
 - FR-002: `:` reads as the pattern `*`; `--all`, `--branches` and their prefixes add
-  `refs/heads/*`; any prefix of `--mirror` is a force push.
+  `refs/heads/*`; any prefix of `--mirror` is a force push; `@` reads as `HEAD`; `--tags` with no
+  refspec adds no current branch.
 - FR-003: a push is refused when any destination matches `refs/heads/<default>`; deletion keeps the
   "deleting" text, and `:` and `--all` say "pushing to".
 - FR-004: the route corpus on main moves no row; new rows hold the acceptance commands.
@@ -111,7 +119,11 @@ None. The change only refuses pushes that can reach the default branch and that 
 - A glob is refused on its destination alone (Clarifications). Overturned if the owner wants
   `refs/heads/f/*:refs/heads/*` style pushes to pass; then the guard must read local refs at call
   time, which a command can change before its push.
-- Runtime lines: 3,012 at the head against 3,011 at main dc39cae (+1), inside the item's budget
-  (+4, ceiling 6). free-lines-5 is no longer needed: the cap is 3,400.
+- A destination `HEAD` (or `@`, or empty) keeps main's reading: the current branch. Under real
+  git 2.43, `feature:HEAD` from a clone on main left main alone, so the guard over-refuses it there;
+  the rule is main's and the item does not ask to change it.
+- Runtime lines: 3,027 at the head against 3,026 at main 6682925 (+1; dc39cae held 3,011 and the
+  head on it 3,012), inside the item's budget (+4, ceiling 6). free-lines-5 is no longer needed:
+  the cap is 3,400.
 
 Rollback: revert the commit; no data or config migrates.
