@@ -138,9 +138,46 @@ def test_a_warm_board_rereads_no_compare_and_no_spec_artifact(root, fake, monkey
 def test_reading_the_open_list_prunes_pr_entries_older_than_a_day(root, fake, monkeypatch):
     _eighteen(root, fake)
     cache = root / ws.DIR / 'cache'
-    for name in ('pr-acme__app-9', 'cmp-acme__app-' + OLD + '-' + HEAD, 'login'):
+    for name in ('pr-acme__app-9', 'cmp-acme__app-' + OLD + '-' + HEAD, 'budget-other__repo'):
         ws.cache_put(root, name, {})
         os.utime(cache / f'{name}.json', (time.time() - 86400 - 60,) * 2)
+    ws.cache_put(root, 'pr-acme__app-8', {})  # fresh entries of the pruned kinds stay
+    ws.cache_put(root, f'cmp-acme__app-{HEAD}-{OLD}', {})
     board.compute(root)
     assert not (cache / 'pr-acme__app-9.json').exists() and not (cache / f'cmp-acme__app-{OLD}-{HEAD}.json').exists()
-    assert (cache / 'login.json').exists() and (cache / 'pr-acme__app-101.json').exists()
+    assert all((cache / f'{name}.json').exists() for name in ('budget-other__repo', 'pr-acme__app-8', f'cmp-acme__app-{HEAD}-{OLD}'))
+
+
+def _spec_pr(root, fake):
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open'}])
+    fake.paths.add('.specify')
+    fake.files.update({'specs/001-x/spec.md': '# spec', 'specs/001-x/tasks.md': '- [x] done'})
+    fake.prs['42'] = make_pr(files=('specs/001-x/spec.md', 'src/app.py', 'tests/test_app.py'))
+
+
+def _spec_texts(root):
+    return [g['text'] for g in evidence.gaps(root, 'acme/app', 42) if 'specs/' in g['text']]
+
+
+def test_a_spec_read_through_a_host_error_is_read_again(root, fake):
+    """A host error reads as missing, so a missing result is never kept (#1161)."""
+    _spec_pr(root, fake)
+    assert _spec_texts(root) == ['specs/001-x/plan.md missing: run the spec engine step that writes it']
+    fake.files['specs/001-x/plan.md'] = '# plan'  # the host answers again, at the same head
+    assert _spec_texts(root) == []
+
+
+def test_a_push_reads_the_spec_at_the_new_head(root, fake):
+    _spec_pr(root, fake)
+    fake.files['specs/001-x/plan.md'] = '# plan'
+    assert _spec_texts(root) == []
+    fake.files['specs/001-x/tasks.md'] = '- [ ] undone'
+    fake.prs['42']['headRefOid'] = 'f' * 40
+    assert _spec_texts(root) == ['specs/001-x/tasks.md has 1 unchecked item']
+
+
+def test_a_compare_naming_a_branch_is_never_kept(root, fake):
+    for _ in range(2):
+        evidence.compare(root, 'acme/app', 'main', HEAD)
+    assert sum('/compare/' in call[1] for call in fake.calls if call[0] == 'api') == 2
+    assert not list((root / ws.DIR / 'cache').glob('cmp-*'))

@@ -454,6 +454,19 @@ def test_a_clean_full_tier_speckit_feature_passes(root, fake):
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
+def test_a_retarget_at_the_same_head_reads_the_spec_of_the_new_file_list(root, fake):
+    """A stacked PR moved onto main keeps its head, but its diff now carries its parent's feature (#1161)."""
+    from wuwei import guards
+    light(root, 'full')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
+    fake.prs['42']['files'] += [{'path': 'specs/8-stacked/spec.md', 'additions': 5, 'deletions': 0}]
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
+
+
 def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
     standard(root)
     fake.paths.add('openspec')

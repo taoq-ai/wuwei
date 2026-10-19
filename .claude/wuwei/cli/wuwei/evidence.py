@@ -418,7 +418,9 @@ def gaps(root, repo, number, listed=None):
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
-            key, kept = f'{spec_engine(root, repo)} {tier}', f'{name}-{head}'  # the artifacts at a head never change, CI or not
+            # the artifacts at a head never change, CI or not; the file list does when the base is retargeted
+            listing = hashlib.sha256('\n'.join(sorted(files)).encode()).hexdigest()[:16]
+            key, kept = f'{spec_engine(root, repo)} {tier}', f'{name}-{head}-{listing}'
             if key not in (spec := ws.cache_get(root, kept, 86400) or {}):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
                 if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
