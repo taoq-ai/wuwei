@@ -175,22 +175,26 @@ def _verdict_problem(root, payload, role):
     if (match := re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)) is None:
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
-    verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
-    free = lambda p: next(n for i in range(2, 999) if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md')  # noqa: E731
-                          not in {q.name for q in p.parent.iterdir()})  # the next <stem>-N.md beside p that no file or link holds
+    verdicts = Path(root) / ws.DIR / 'verdicts'
+    def free(p):  # the next <stem>-N.md beside p that no file or link holds, the folder listed once
+        try:
+            return next(n for held in [{q.name for q in p.parent.iterdir()}] for i in range(2, 999)
+                        if (n := re.sub(r'(?<=[0-9a-f]{7})-[0-9]+$', '', p.stem) + f'-{i}.md') not in held) + ' beside it (the next free number)'
+        except (OSError, StopIteration):
+            return f'a new name of your own beside it (none of -2 to -998 is free, or {p.parent} cannot be listed)'
     try:
-        path = path.resolve()
+        verdicts, path = verdicts.resolve(), path.resolve()  # a loop raises RuntimeError on 3.11 and 3.12
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
             copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
-                return f'{copy} already holds another verdict: write yours beside it as {free(copy)}.'
-            ws.atomic_write(copy, body)
+                return f'{copy} already holds another verdict: write yours as {free(copy)}.'
+            ws.atomic_write(copy, body, Path(root).resolve())  # no folder swapped for a link after the check is followed
             path = copy
         path.relative_to(verdicts)
         body = path.read_bytes()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
     rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
@@ -198,11 +202,11 @@ def _verdict_problem(root, payload, role):
         return None
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
-                f'counts as recorded. Write yours to {free(path)} beside it (the next free number) and end with its Verdict file: line.')
+                f'counts as recorded. Write yours to {free(path)} and end with its Verdict file: line.')
     parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
-                + f'\nWrite the corrected verdict to {free(path)} beside it (the next free number) in this shape:\n' + verdict.FORMAT)
+                + f'\nWrite the corrected verdict to {free(path)} in this shape:\n' + verdict.FORMAT)
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
@@ -308,6 +312,7 @@ def _answers(root, data, response):
 
 
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
+SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
 
 
 def exception_refs(question):
@@ -331,19 +336,24 @@ def _goal(root, ref, repo):
 
 
 def session_start(root, payload):
-    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
+    """Orientation under Claude Code's 10,000-character additionalContext cap; what does not fit is named, not inlined."""
+    cli, charters = str(ws.PLUGIN / 'bin' / 'wuwei'), ws.PLUGIN / 'charters'
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
-    for name in ('goals.md', 'standards.md'):
-        path = Path(root) / ws.DIR / name
-        if path.is_file() and path.read_text(encoding='utf-8').strip():
-            parts.append(f'{name}:\n' + path.read_text(encoding='utf-8').strip()[:3000])
+    read = lambda name: (charters / name).read_text(encoding='utf-8') if (charters / name).is_file() else ''  # noqa: E731
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)', read('_way.md').strip(), '_common.md, Decisions and Done:\n'
+             + ''.join(re.findall(r'^## (?:Decisions|Done)\n.*?(?=^## |\Z)', read('_common.md'), re.S | re.M)).strip(),
+             f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
+             f'and the goals and standards in {Path(root) / ws.DIR}.']
+    left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
     try:
-        parts.append(board.text(board.rows(root), root))
+        found, cut = board.rows(root), 0
+        lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
+        while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
+            lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
+        parts.append('\n'.join(lines + left(cut)))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
-    return context('SessionStart', '\n\n'.join(parts))
+    return context('SessionStart', '\n\n'.join(parts)[:SESSION_CAP])  # only a board with no item left to drop reaches the cut
 
 
 HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'SubagentStop': subagent_stop,
