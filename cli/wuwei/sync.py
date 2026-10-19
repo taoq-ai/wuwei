@@ -79,7 +79,10 @@ def pull(root):
         if local == data or name == f'ledger/{ws.clone(root)}.jsonl':
             continue
         if _theirs(root, name) or local is None or _digests({name: local})[name] == synced.get(name):
-            ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'))
+            try:  # no link a seat planted is followed: the pull stops there and names the file
+                ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'), Path(root) / ws.DIR)
+            except OSError as exc:
+                raise OSError(exc.errno, f'{exc.strerror} at {exc.filename!r} on the way to {ws.DIR}/{name}; a link there is never followed') from exc
         elif branch[name] != synced.get(name):  # only here: kept and pushed next, no note
             kept.append(name)
     ws.cache_put(root, 'sync', branch)  # what the branch holds, so push still sends what was kept or is new here (#1060)
