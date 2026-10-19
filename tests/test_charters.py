@@ -101,6 +101,36 @@ def test_the_arch_gate_reviews_as_an_architect():
     assert "are the security gate's" in text
 
 
+def test_a_breaking_change_is_a_semver_major_of_the_declared_public_api():
+    arch = ' '.join((PLUGIN / 'charters' / 'sentinel-arch.md').read_text(encoding='utf-8').split())
+    rule = arch.split(' 7. ', 1)[1].split(' Trust boundaries', 1)[0]
+    assert 'When unsure, say yes' not in arch and 'When unsure, ESCALATE with Breaking: yes.' in rule
+    for said in ('public API declared at the base commit', 'Yes is a SemVer major', 'an input every client must now give',
+                 "a documented exit code's meaning changed",
+                 'a patch only when the old behaviour contradicted the documented API'):
+        assert said in rule, said
+    assert 'is minor' not in rule
+    assert len(rule.split()) <= 79  # str.split words after the `7.` marker
+    builder = ' '.join((PLUGIN / 'charters' / 'builder.md').read_text(encoding='utf-8').split())
+    assert 'Only a major' in builder and 'A stricter check of a rule the docs already state is a `fix:`' in builder
+    for name in ('_common.md', 'builder.md', 'sentinel-arch.md'):
+        assert 'outward contract' not in (PLUGIN / 'charters' / name).read_text(encoding='utf-8'), name
+    docs = PLUGIN / 'docs'
+    section = (docs / 'site' / 'concepts' / 'evidence.md').read_text(encoding='utf-8').split('## Breaking changes', 1)[1]
+    section = ' '.join(section.split('\n## ', 1)[0].split())
+    for said in ('SemVer 2.0.0', 'public API', 'exit codes', 'config keys', 'verdict file formats', 'owner question shapes',
+                 'hook input and output', '`/wuwei-run`', 'its alias ships', 'marketplace', 'agent role names',
+                 '`.wuwei/goals.md`', '`.wuwei/standards.md`', 'plan file format', 'at the base commit',
+                 'contradicted the documented public API', 'an input every client must now give',
+                 'not by which inputs reach it', 'Before a major merges', 'with `Breaking: yes`', 'from 4.1.0'):
+        assert said in section, said
+    assert 'ESLint' not in section and 'refuse or report more (' not in section
+    for path in (docs / 'design.md', docs / 'site' / 'reference.md', docs / 'site' / 'concepts' / 'decisions.md'):
+        text = path.read_text(encoding='utf-8')
+        assert 'evidence.md#breaking-changes' in text and 'outward contract' not in text, path.name
+        assert 'refuse or report more is a minor' not in text, path.name
+
+
 def test_each_gate_names_the_frameworks_it_stands_on():
     for role, anchor in (('sentinel-security', 'OWASP Top 10 for LLM applications'), ('sentinel-security', 'CWE'),
                          ('sentinel-quality', 'mutation testing'), ('sentinel-arch', 'fitness functions'),
@@ -281,6 +311,120 @@ def test_the_steward_reads_outcomes_by_model_and_effort_and_the_watch_may_run_ch
     watch = ' '.join((PLUGIN / 'skills' / 'wuwei-watch' / 'SKILL.md').read_text(encoding='utf-8').split())
     assert 'Sonnet 5.5' in watch and '`effort: medium`' in watch and 'not a default' in watch
     assert 'mostly reads and records' not in watch
+
+
+SESSION_CAP = 10000  # Claude Code saves a longer additionalContext to a file and shows a 2,000-character preview
+
+
+def session_plan(root, items, newline='', pad=0, first=0):
+    from conftest import write_plan
+    from wuwei import ws
+    write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
+                       'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries,{newline} '
+                       'with its promise named in the title the way this plan writes them' + 'x' * (pad + (first if n == 0 else 0))}
+                      for n in range(items)])
+    ws.cache_put(root, 'board', None)
+
+
+def session_context(root):
+    from wuwei import hook
+    return hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+
+
+def left_out(cut):
+    return f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'
+
+
+@pytest.mark.parametrize('items', [0, 40])
+def test_the_session_start_context_fits_the_cap_and_says_what_it_left_out(root, fake, items):
+    from wuwei import ws
+    if items:
+        session_plan(root, items)
+    for name in ('goals.md', 'standards.md') if items else ():
+        (root / ws.DIR / name).write_text('- ' + 'x' * 3000 + '\n')
+    text = session_context(root)
+    assert len(text) < SESSION_CAP, f'{len(text)} characters: Claude Code caps additionalContext at {SESSION_CAP}'
+    charters = PLUGIN / 'charters'
+    assert f'WUWEI CLI: {PLUGIN / "bin" / "wuwei"}' in text and str(charters / 'planner.md') in text
+    assert (charters / '_way.md').read_text(encoding='utf-8').strip() in text
+    common = (charters / '_common.md').read_text(encoding='utf-8')
+    for rules in ('## Decisions', '## Done'):
+        assert common.split(rules, 1)[1].split('\n## ', 1)[0].strip() in text, rules
+    shown, left = len(re.findall(r'^- item-', text, re.M)), re.search(r'^(\d+) more items left out', text, re.M)
+    assert shown + (int(left[1]) if left else 0) == items and (left is None) == (items == 0)
+    assert items == 0 or shown >= 10, 'the board keeps the top items'
+    assert items == 0 or text.endswith('\n' + left_out(items - shown)), 'the left-out line is whole and last'
+
+
+def session_board(root, newline, pad, first=0):
+    session_plan(root, 40, newline, pad, first)
+    text = session_context(root)
+    return text, len(re.findall(r'^- item-', text, re.M))
+
+
+@pytest.mark.parametrize('pad', range(0, 200, 10))
+@pytest.mark.parametrize('newline', ['', '\n'])
+@pytest.mark.parametrize('deep', [0, 120])
+def test_the_board_fills_the_cap_to_the_character_at_any_title_and_path_length(root, fake, deep, newline, pad):
+    from wuwei import ws
+    work = root / ('r' * deep)
+    if deep:
+        (work / ws.DIR).mkdir(parents=True)
+        ws.write_config(work, ws.raw_config(root))
+    text, shown = session_board(work, newline, pad)
+    assert len(text) < SESSION_CAP and shown >= 10 and text.endswith('\n' + left_out(40 - shown)), (len(text), shown)
+    full, kept = session_board(work, newline, pad, SESSION_CAP - 1 - len(text))
+    assert len(full) == SESSION_CAP - 1 and kept == shown, 'one character under the cap keeps every item'
+    over, fewer = session_board(work, newline, pad, SESSION_CAP - len(text))
+    assert len(over) < SESSION_CAP and fewer == shown - 1 and over.endswith('\n' + left_out(41 - shown)), 'at the cap one goes'
+
+
+def test_an_andon_reason_that_reads_like_an_item_line_is_not_counted_or_trimmed(root, fake):
+    from wuwei import board
+    fragment, header = '\n- item-00, a fragment of the reason', '\nBoard (what each open item still lacks):\n'
+    board.andon(root, 'acme/lib', 'base branch red' + fragment)
+    room = SESSION_CAP - 20 - len(session_context(root)) + len('Board: nothing open in the plan.') - len(header + left_out(40)) + 1
+    session_plan(root, 40)
+    for over, size, end in ((0, SESSION_CAP - 20, left_out(40)), (40, SESSION_CAP, left_out(40)[:-20])):
+        board.andon(root, 'acme/lib', 'base branch red' + 'x' * (room + over) + fragment)
+        text = session_context(root)
+        assert len(text) == size and text.endswith(fragment + header + end), (over, len(text))
+
+
+def test_the_left_out_line_reads_one_item_in_the_singular_and_two_in_the_plural(root, fake):
+    session_plan(root, 40)
+    shown = len(re.findall(r'^- item-', session_context(root), re.M))
+    session_plan(root, shown)
+    pad = SESSION_CAP - 1 - len(session_context(root))
+    session_plan(root, shown, first=pad)
+    text = session_context(root)
+    assert len(text) == SESSION_CAP - 1 and len(re.findall(r'^- item-', text, re.M)) == shown, 'the whole board fits to the character'
+    session_plan(root, shown, first=pad + 1)
+    text = session_context(root)
+    assert len(re.findall(r'^- item-', text, re.M)) == shown - 1 and len(text) < SESSION_CAP
+    assert text.endswith('\n1 more item left out; `wuwei status` lists them all.')
+    session_plan(root, shown, first=pad + 1 + SESSION_CAP - len(text))
+    text = session_context(root)
+    assert len(re.findall(r'^- item-', text, re.M)) == shown - 2 and text.endswith('\n2 more items left out; `wuwei status` lists them all.')
+
+
+def test_a_title_with_a_newline_still_lets_the_board_trim(root, fake):
+    session_plan(root, 40, newline='\n')
+    text = session_context(root)
+    shown = len(re.findall(r'^- item-', text, re.M))
+    assert len(text) < SESSION_CAP and shown >= 10 and text.endswith('\n' + left_out(40 - shown))
+
+
+def test_the_session_start_context_holds_the_cap_when_the_board_has_no_item_line_to_drop(root):
+    from wuwei import board
+    for n in range(30):
+        board.andon(root, f'acme/app{n}', 'base branch red: ' + 'x' * 400)
+    text = session_context(root)
+    assert len(text) == SESSION_CAP and text.startswith(f'WUWEI CLI: {PLUGIN / "bin" / "wuwei"}') and 'ANDON acme/app0:' in text
+    common, board_at = (PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8'), text.index('ANDON acme/app0:')
+    rules = [(PLUGIN / 'charters' / '_way.md').read_text(encoding='utf-8').strip()]
+    rules += [common.split(heading, 1)[1].split('\n## ', 1)[0].strip() for heading in ('## Decisions', '## Done')]
+    assert all(rule in text[:board_at] for rule in rules), 'the rules come whole before the untrusted board text'
 
 
 def test_a_gate_puts_the_findings_its_fix_closed_under_probes():

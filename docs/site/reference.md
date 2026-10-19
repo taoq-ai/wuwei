@@ -25,7 +25,7 @@
 | `wuwei owe <thread link> "<what>" --who <name> [--within 4h \| --due <ISO>]` | Record a reply someone is waiting for |
 | `wuwei watch [--record "<summary>"]` | The last watch pass and replies owed; record a pass |
 | `wuwei status --all` | The board with process fit too (for the watch) |
-| `wuwei config [key value]` | Show, or set one of the five keys |
+| `wuwei config [key value]` | Show, or set one of the six keys |
 | `wuwei verify` | Check the ledger's hash chain |
 | `wuwei agents [check\|build]` | Check or build the role agents from the charters |
 | `wuwei --version` | The plugin version |
@@ -33,7 +33,7 @@
 
 ## Configuration
 
-`.wuwei/config.toml` has five keys. Everything else is discovered or part of the process.
+`.wuwei/config.toml` has six keys. Everything else is discovered or part of the process.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -42,6 +42,7 @@
 | `prioritisation` | `wsjf` | `wsjf` or `rice` |
 | `tracker` | `github` | where issues live |
 | `telemetry` | `true` | local tool-call traces |
+| `models` | `{}` | your rows over the [model table](concepts/models.md): `"<role>[ <tier>]" = "<model> <effort>"`; set with `wuwei config models "builder light=opus medium"` |
 
 ## Files
 
@@ -67,7 +68,7 @@
 | `No test: <reason>` | a change no test can hold |
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |
-| `BREAKING CHANGE: <what>` (and `!` in the title) | a change that breaks an outward contract |
+| `BREAKING CHANGE: <what>` (and `!` in the title) | a major only: an incompatible change to the public API, as [Breaking changes](concepts/evidence.md#breaking-changes) declares it; a stricter check of a rule the docs already state is a `fix:` (a patch) with release notes in the body |
 | `Announcement: <url>` | a breaking change: one http(s) URL alone on the line, without brackets, of a communication that already exists (a PR or issue comment, or a published release note or migration guide); a changelog entry written at release does not count |
 
 ## Verdict format

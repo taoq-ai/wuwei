@@ -1,0 +1,28 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "subagent_type": "sentinel-goal",
+    "description": "Goal gate X-1",
+    "model": "sonnet",
+    "effort": "high",
+    "prompt": "Gate: goal. Item: X-1 (scrubbed)",
+    "run_in_background": true
+  },
+  "tool_response": {
+    "isAsync": true,
+    "status": "async_launched",
+    "agentId": "a5d4687477f9bdfaa",
+    "description": "Goal gate X-1",
+    "resolvedModel": "claude-sonnet-5-5",
+    "prompt": "Gate: goal. Item: X-1 (scrubbed)",
+    "outputFile": "<scratch>/tasks/a5d4687477f9bdfaa.output",
+    "canReadOutputFile": true,
+    "canContinueAgent": true
+  },
+  "tool_use_id": "toolu_01BBBBBBBBBBBBBBBBBBBBBB"
+}

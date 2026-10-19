@@ -17,6 +17,7 @@ Each file has one provenance line, `- <file>: transcript | reconstructed: <sourc
 
 - claude-agent-pre-accepted.json: transcript: the Agent `tool_use` input of a sentinel-security launch on 2026-10-16
 - claude-agent-post-accepted.json: transcript: that launch's `toolUseResult` (status async_launched, agentId)
+- claude-agent-post-model-effort.json: transcript: the Agent `tool_use` input of a sentinel-goal launch on 2026-10-18 that passed `model` and `effort`, and its `toolUseResult` with `resolvedModel`
 - claude-agent-pre-rejected.json: reconstructed: the accepted PreToolUse with an unknown subagent_type
 - claude-agent-post-rejected.json: reconstructed: a string error response, the form tests/test_hook.py already uses; Claude Code may send a failed launch to PostToolUseFailure instead
 - codex-spawn-agent-post.json: reconstructed: the shape tests/test_codex.py uses, which is the shape hook.codex parses; not checked against a real Codex payload

@@ -44,7 +44,7 @@ def config(root):
     if not backup.exists():
         backup.write_text((Path(root) / ws.DIR / 'config.toml').read_text(encoding='utf-8'), encoding='utf-8')
     ws.write_config(root, ws.config(root))
-    return [f'config: rewritten to the five 1.0 keys (the old file is .wuwei/config.0x.toml); retired: '
+    return [f'config: rewritten to the six keys (the old file is .wuwei/config.0x.toml); retired: '
             + ', '.join(gone)]
 
 

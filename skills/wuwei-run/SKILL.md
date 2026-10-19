@@ -13,8 +13,9 @@ queue; this pass adds, drops or re-ranks.
    says, then ask the question it prints with Yes and No, the `<evidence>` replaced by that reading.
    WUWEI records the answer; a met goal gets no new items, and a No waits until the owner moves the
    goal's date.
-2. Read `.wuwei/goals.md`, `.wuwei/standards.md`, `wuwei plan` and `wuwei status`. On a later pass,
-   start from what changed since the last one.
+2. Read your charter `planner.md` (the session start names its path), `.wuwei/goals.md`,
+   `.wuwei/standards.md`, `wuwei plan` and `wuwei status`. On a later pass, start from what changed
+   since the last one.
 3. Start what is already approved before you launch the lead. An approved item with no pull
    request and no running seat shows on the board as `no pull request yet`. Start it now, as the
    last step says; it never waits on the lead or on this pass's plan question.

@@ -2,6 +2,8 @@
 name: steward
 description: Reads the WUWEI day at a close and writes the retro with the smallest rule changes.
 tools: Read, Glob, Grep, Bash, Write
+model: claude-opus-5-5
+effort: high
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->
@@ -40,8 +42,8 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 - the gates the diff needs, passed at the head before the PR turned ready;
 - green CI and every review thread answered;
 - owner review on `owner_paths`;
-- a breaking change to an outward contract announced (`Announcement: <url>`) and confirmed by the
-  owner (`breaking:`);
+- a breaking change (a SemVer major) announced (`Announcement: <url>`) and confirmed by the owner
+  (`breaking:`);
 - at `full`, the spec engine's artifacts.
 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
