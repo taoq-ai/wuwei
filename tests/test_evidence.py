@@ -1,5 +1,6 @@
 import pytest
 import hashlib
+import time
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
@@ -922,8 +923,64 @@ def breaking(root, fake, *said, title='feat: change 42'):
 
 
 OTHER = 'c' * 40  # a head that is no ancestor of the PR head
-ANNOUNCE = ['breaking change without an announcement: add "Announcement: <link to the client communication, '
-            'release note or migration guide>"']
+ANNOUNCE = ['breaking change without an announcement: add "Announcement: <http(s) URL of the published client '
+            'communication, release note or migration guide>", the URL alone on its line, without brackets']
+CONFIRM = ['breaking change needs the owner\'s confirmation: ask "breaking: acme/app#42 at aaaaaaa: <what breaks>. '
+           'Announced at <link>. Proceed?"']
+
+
+@pytest.mark.parametrize('line, found', [
+    ('Announcement: https://github.com/o/r/issues/1#issuecomment-1', CONFIRM),
+    ('Announcement: http://status.acme.test/2026-10-15-export-v1', CONFIRM),
+    ('Announcement:https://acme.test/n', CONFIRM),
+    ('Announcement: \t https://acme.test/n \t', CONFIRM),
+    ('Announcement: https://acme.test/n\r\nmore', CONFIRM),  # a CRLF body
+    ('Announcement: CHANGELOG.md\nAnnouncement: https://acme.test/n', CONFIRM),  # a URL line among others
+    ('Announcement: CHANGELOG.md (placeholder)', ANNOUNCE),
+    ('Announcement: CHANGELOG.md', ANNOUNCE),  # a bare path
+    ('Announcement: docs/migration.md', ANNOUNCE),
+    ('Announcement: see CHANGELOG', ANNOUNCE),
+    ('Announcement: TBD at release', ANNOUNCE),
+    ('Announcement: see https://acme.test/n', ANNOUNCE),  # a URL inside prose
+    ('Announcement: https://acme.test/n (written at release)', ANNOUNCE),
+    ('Announcement: https://acme.test/a https://acme.test/b', ANNOUNCE),
+    ('Announcement: [the note](https://acme.test/n)', ANNOUNCE),
+    ('Announcement: <https://acme.test/n>', ANNOUNCE),
+    ('Announcement: ftp://files.acme.test/notes.txt', ANNOUNCE),  # a non-http scheme
+    ('Announcement: file:///home/x/notes.md', ANNOUNCE),
+    ('Announcement: javascript:alert(1)', ANNOUNCE),
+    ('Announcement: HTTPS://acme.test/n', ANNOUNCE),
+    ('Announcement: www.acme.test/n', ANNOUNCE),
+    ('Announcement: https://', ANNOUNCE),
+    ('Announcement: https:// acme.test/n', ANNOUNCE),
+    ('Announcement: https:///n', ANNOUNCE),
+    ('Announcement:', ANNOUNCE),  # whitespace and blanks
+    ('Announcement: \t ', ANNOUNCE),
+    ('Announcement:\nhttps://acme.test/n', ANNOUNCE),
+    ('Announcement: https://acme.test/n', ANNOUNCE),
+    ('Announcement: https://acme.test/n ', ANNOUNCE),
+    ('  Announcement: https://acme.test/n', ANNOUNCE),
+    ('> Announcement: https://acme.test/n', ANNOUNCE),
+    ('announcement: https://acme.test/n', ANNOUNCE),
+])
+def test_an_announcement_counts_only_as_one_http_url_alone_on_its_line(root, fake, line, found):
+    standard(root)
+    fake.prs['42'] = {**make_pr(body=f'WUWEI-Item: I-1\n{line}'), 'title': 'feat!: drop the v1 export'}
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found
+
+
+def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
+    head = 'WUWEI-Item: I-1\nAnnouncement: https://'
+    body = head + 'a' * (65536 - len(head) - 2) + ' x'  # a host run that never reaches the end of the line
+    standard(root)
+    fake.prs['42'] = {**make_pr(body=body), 'title': 'feat!: drop the v1 export'}
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    started = time.perf_counter()
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ANNOUNCE
+    assert time.perf_counter() - started < 1
 
 
 @pytest.mark.parametrize('said, found', [
