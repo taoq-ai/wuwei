@@ -1494,3 +1494,142 @@ def test_segments_and_redirects_stay_linear_at_125_and_500_kb(root, word):
         assert guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), word
         took.append(time.monotonic() - start)
     assert took[0] < 2 and took[1] < 8 and took[1] < 8 * max(took[0], 0.1), (word, took)
+
+
+@pytest.fixture
+def scratch(tmp_path_factory):
+    """A scratch folder with no .wuwei above it: bare remotes r.git and s.git, and a clone c on main with origin ../s.git."""
+    base = tmp_path_factory.mktemp('scratch')
+    git = lambda *a, at='.': subprocess.run(['git', *a], cwd=base / at, check=True, capture_output=True)  # noqa: E731
+    git('init', '-q', '--bare', 'r.git')
+    git('init', '-q', '--bare', 's.git')
+    git('init', '-q', '-b', 'main', 'c')
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x', at='c')
+    git('remote', 'add', 'origin', '../s.git', at='c')
+    git('remote', 'add', 'gh', 'https://github.com/o/r.git', at='c')
+    (base / 'c' / 'sub').mkdir()
+    return base
+
+
+def landed(remote):
+    return subprocess.run(['git', '--git-dir', str(remote), 'rev-parse', '-q', '--verify', 'refs/heads/main'], capture_output=True).returncode == 0
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('command, at, remote', [
+    ('git push ../r.git main', 'c', 'r.git'), ('git push origin main', 'c', 's.git'), ('git push ../r.git main', 'c/sub', 'r.git'),
+    ('git push {s}/r.git main', 'c', 'r.git'), ('git push file://{s}/r.git main', 'c', 'r.git'), ('git -C c push ../r.git main', '.', 'r.git'),
+    ('git push {s}//r.git main', 'c', 'r.git'), ('git push {s}/./r.git main', 'c', 'r.git'), ('git push ../c/../r.git main', 'c', 'r.git'),
+    ('git push ../r.git HEAD:main', 'c', 'r.git'), ('git push ../r.git -u main', 'c', 'r.git'), ('git push ../r.git --force main', 'c', 'r.git'),
+    ('git push ../r.git +main', 'c', 'r.git'), ('git push origin +HEAD:main', 'c', 's.git')])
+def test_a_push_to_a_scratch_bare_remote_passes_the_door_and_lands(root, scratch, command, at, remote):
+    """Item scratch-remotes: the door passes a push whose remote is a local repository in a scratch folder, and real git pushes it."""
+    command = command.format(s=scratch)
+    assert guards.bash(root, command, str(scratch / at), 's1') is None, command
+    subprocess.run(['bash', '-c', command], cwd=scratch / at, check=True, capture_output=True, timeout=30)
+    assert landed(scratch / remote), command
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+@pytest.mark.parametrize('command', [
+    'git push {root}/.git main', 'git push /home/user/wuwei/.git main', 'git push ../link.git main', 'git push linked main',
+    'git push gh main', 'git push https://github.com/o/r.git main', 'git push ../ws/r.git main', 'git push ../c/.git main', 'git push . main',
+    'git push ../c main', 'git push ../none.git main', 'git push ../r main', 'git push ~/r.git main', 'git push $PWD/../r.git main',
+    'git push file://localhost{s}/r.git main', 'git push file://{s}/%72.git main', 'git push file:../r.git main',
+    'cd ../g && git push origin main', 'cd ../g; git push origin main', 'env -C ../g git push origin main', 'sudo -D ../g git push origin main',
+    'git -C ../g push origin main', 'git --git-dir=../g/.git push origin main', 'GIT_DIR=../g/.git git push origin main',
+    'git push -o ../r.git gh main', 'git push --repo ../r.git gh main', 'git push -u ../r.git main', 'git push -- ../r.git main',
+    'git push ../r.git main && git push gh main', 'git push ../r.git main | cat', 'git push "../r.git" main > log', 'bash -c "git push ../r.git main"',
+    'git push pushurl main', 'git push both main', 'git push rewritten main', '/usr/bin/git push ../r.git main',
+    'git push -u gh main', 'git push ../r.git/q main', 'git push file://{s}/%2e%2e/{root.name}/.git main',
+    'git push file://localhost{root}/.git main', 'git push ../p.git main', 'git push ../s.git main', 'git push pct main',
+    'git push ../r.git --receive-pack=./x main', 'git push ../r.git --exec=./x main', 'git push ../r.git --rece=./x main',
+    'git push ../r.git --e=./x main', 'git push ../r.git main --receive-pack ./x'])
+def test_a_push_the_scratch_rule_cannot_read_as_local_meets_the_push_door(root, fake, scratch, command):
+    """Item scratch-remotes: the working repository, a path holding .wuwei, a link out of scratch, a network remote and every
+    spelling that hides where git runs or which remote it names keep the push door. The last five plant a git directory where
+    the guard would look if it read the remote as git does not: git takes -u as an option, enters q.git when q is no repository,
+    decodes %2e and drops localhost in a file:// URL, and enters p.git/.git before p.git. git sends a typed ../s.git to GitHub
+    through the pushInsteadOf the setup writes, decodes the %2e in remote pct's url, and runs any program --receive-pack or
+    --exec names (any unique prefix)."""
+    git = lambda *a, at='c': subprocess.run(['git', *a], cwd=scratch / at, check=True, capture_output=True)  # noqa: E731
+    subprocess.run(['git', 'init', '-q', str(root)], check=True, capture_output=True)
+    for planted in ('c/-u', f'%2e%2e/{root.name}/.git', f'c/localhost{root}/.git', 'p.git'):
+        git('init', '-q', '--bare', planted, at='.')
+    (scratch / 'r.git' / 'q').mkdir()
+    (scratch / 'r.git' / 'q.git').symlink_to(root / '.git')
+    (scratch / 'p.git' / '.git').symlink_to(root / '.git')
+    (scratch / 'link.git').symlink_to(root / '.git')
+    (scratch / 'ws' / ws.DIR).mkdir(parents=True)
+    git('init', '-q', '--bare', 'ws/r.git', at='.')
+    git('clone', '-q', 'c', 'g', at='.')
+    git('remote', 'set-url', 'origin', 'https://github.com/o/r.git', at='g')
+    git('remote', 'add', 'linked', '../link.git')
+    git('remote', 'add', 'pushurl', '../r.git')
+    git('remote', 'set-url', '--push', 'pushurl', 'https://github.com/o/r.git')
+    git('remote', 'add', 'both', '../r.git')
+    git('remote', 'set-url', '--add', '--push', 'both', '../r.git')
+    git('remote', 'set-url', '--add', '--push', 'both', 'https://github.com/o/r.git')
+    git('remote', 'add', 'rewritten', '../s.git')
+    git('config', 'url.https://github.com/o/r.git.pushInsteadOf', '../s.git')
+    git('remote', 'add', 'pct', f'file://{scratch}/%2e%2e/{root.name}/.git')
+    command = command.format(s=scratch, root=root)
+    decision = guards.bash(root, command, str(scratch / 'c'), 's1')
+    assert decision and 'the default branch main' in decision['reason'], command
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+def test_a_push_from_a_worktree_to_its_own_repository_meets_the_push_door(root, scratch):
+    """Item scratch-remotes: a builder's worktree in scratch shares its main clone's refs, so that clone is the working repository."""
+    subprocess.run(['git', 'worktree', 'add', '-q', '-b', 'w', str(scratch / 'wt')], cwd=scratch / 'c', check=True, capture_output=True)
+    for command in ('git push ../c/.git main', 'git push . main'):
+        assert 'the default branch main' in guards.bash(root, command, str(scratch / 'wt'), 's1')['reason'], command
+    assert guards.bash(root, 'git push ../r.git main', str(scratch / 'wt'), 's1') is None
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+@pytest.mark.parametrize('key, value', [('remote.origin.vcs', 'x'), ('remote.gh.receivepack', 'x'), ('url.https://github.com/o/r.git.insteadOf', '..')])
+def test_config_that_sends_a_scratch_push_elsewhere_keeps_the_push_door(root, scratch, key, value):
+    """Item scratch-remotes: a remote helper, a receive-pack command or a rewrite of the typed path decides where git pushes."""
+    subprocess.run(['git', 'config', key, value], cwd=scratch / 'c', check=True, capture_output=True)
+    for command in ('git push ../r.git main', 'git push origin main'):
+        assert 'the default branch main' in guards.bash(root, command, str(scratch / 'c'), 's1')['reason'], command
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+@pytest.mark.parametrize('command, at, worktree', [
+    ('git --work-tree={s}/x push .git main', 'root', None), ('git --work-tree={s}/x push ./.git :main', 'root', None),
+    ('git --work-tree={s}/x push .git +main', 'root', None), ('git --work-tree={s}/x push ../.git main', 'root/sub', None),
+    ('git --git-dir=.git --work-tree={s}/x push .git main', 'root', None), ('git -C {root} --work-tree={s}/x push .git main', 's', None),
+    ('git -c core.worktree={s}/x push .git main', 'root', None), ('git push .git main', 'root', '{s}/x'),
+    ('git push ../.git main', 'root/sub', '{s}/x'), ('git --git-dir={s}/c/.git --work-tree={s}/w push .git main', 'root', None)])
+def test_a_push_from_outside_its_work_tree_meets_the_push_door(root, scratch, command, at, worktree):
+    """Gates at 6a5d00d: git reads a relative remote from the shell's directory when that lies outside the work tree, so a work
+    tree in scratch (an option or core.worktree) must not move the base the guard reads from the working repository to scratch."""
+    git = lambda *a, at=root: subprocess.run(['git', *a], cwd=at, check=True, capture_output=True)  # noqa: E731
+    git('init', '-q', '-b', 'main', str(root))
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x')
+    (root / 'sub').mkdir()
+    git('init', '-q', str(scratch / 'x'))
+    git('init', '-q', '--bare', str(scratch / '.git'))  # what ../.git from sub reads when joined to the work tree
+    git('init', '-q', '--bare', str(scratch / 'w' / '.git'))
+    if worktree:
+        git('config', 'core.worktree', worktree.format(s=scratch))
+    cwd = {'root': root, 'root/sub': root / 'sub', 's': scratch}[at]
+    assert door_reached(guards.bash(root, command.format(s=scratch, root=root), str(cwd), 's1')) == 'push', command
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+@pytest.mark.parametrize('name', ['../r.git', 'glob'])
+def test_a_remote_named_in_global_config_keeps_the_push_door(root, scratch, monkeypatch, name):
+    """Gates at 6a5d00d: git remote get-url knows only the repository's remotes, but git push uses one from global config too."""
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', str(scratch / 'global'))
+    subprocess.run(['git', 'config', '--global', f'remote.{name}.url', 'https://github.com/o/r.git'], check=True, capture_output=True)
+    subprocess.run(['git', 'init', '-q', '--bare', str(scratch / 'c' / 'glob')], check=True, capture_output=True)
+    assert 'the default branch main' in guards.bash(root, f'git push {name} main', str(scratch / 'c'), 's1')['reason'], name
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+def test_a_push_to_a_git_directory_outside_the_temporary_folders_meets_the_push_door(root, scratch, monkeypatch):
+    monkeypatch.setattr(guards, 'TEMP', (str(scratch / 'c'),))
+    assert 'the default branch main' in guards.bash(root, 'git push ../r.git main', str(scratch / 'c'), 's1')['reason']

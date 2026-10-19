@@ -727,9 +727,10 @@ def test_a_link_at_the_temporary_name_is_never_followed(root, tmp_path_factory, 
         target.write_text(verdict_text(verdict='FIX'))
     held = target.read_bytes()
     monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
     copy = root / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md'
     copy.parent.mkdir(parents=True, exist_ok=True)
-    copy.with_name(f'.{copy.name}.4242.tmp').symlink_to(target)
+    copy.with_name(f'.{copy.name}.4242.7.tmp').symlink_to(target)
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}') is None
     assert target.read_bytes()[:len(held)] == held and (aimed == 'ledger' or target.read_bytes() == held)
     assert not copy.is_symlink() and copy.read_text() == verdict_text() and ws.verify(root) == []
@@ -741,7 +742,8 @@ def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root
     ledger = next((root / ws.DIR / 'ledger').glob('*.jsonl'))
     held = ledger.read_bytes()
     monkeypatch.setattr(ws.os, 'getpid', lambda: 4242)
-    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.tmp'
+    monkeypatch.setattr(ws.threading, 'get_ident', lambda: 7)  # the temp name carries the thread id (#1121)
+    temp = root / ws.DIR / 'verdicts' / 'x' / '.quality-abc1234.md.4242.7.tmp'
     unlink = Path.unlink
 
     def replant(self, missing_ok=False):  # the race the exclusive create closes
@@ -815,3 +817,73 @@ def goal_met_probe(root, monkeypatch):
 def test_every_goal_met_question_records_exactly_the_goal_and_answer_asked(root, monkeypatch):
     generated, recorded, holes = goal_met_probe(root, monkeypatch)
     assert generated > 10000 and recorded > 400 and holes == [], holes[:5]
+
+
+CLOSED = 'Previous findings at e418c1d: all closed.'
+
+
+def test_a_delta_verdict_with_its_closed_findings_under_probes_is_attested(root):
+    write_verdict(root, verdict_text() + f'\n## Probes\n{CLOSED}\n', rel='.wuwei/verdicts/I-1/quality-abc1234.md')
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-abc1234.md') is None
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['PASS']
+
+
+def test_closed_findings_under_findings_name_the_next_free_file_to_write(root):
+    write_verdict(root, verdict_text(findings=CLOSED), rel='.wuwei/verdicts/I-1/quality-abc1234.md')
+    reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-abc1234.md')['reason']
+    assert 'Write the corrected verdict to quality-abc1234-2.md beside it (the next free number) in this shape' in reason
+    assert 'Rewrite' not in reason and CLOSED in reason and ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('named, held, expected', [
+    ('quality-abc1234.md', {}, 'quality-abc1234-2.md'),
+    ('quality-abc1234.md', {'quality-abc1234-2.md': 'file'}, 'quality-abc1234-3.md'),
+    ('quality-abc1234-2.md', {'quality-abc1234.md': 'file'}, 'quality-abc1234-3.md'),
+    ('quality-abc1234.md', {'quality-abc1234-2.md': 'file', 'quality-abc1234-3.md': 'file'}, 'quality-abc1234-4.md'),
+    ('quality-abc1234.md', {'quality-abc1234-2.md': 'dangling'}, 'quality-abc1234-3.md'),
+    ('quality-abc1234.md', {'quality-abc1234-2.md': 'link'}, 'quality-abc1234-3.md'),
+    ('quality-1234567.md', {}, 'quality-1234567-2.md'),
+    ('quality-abc1234-12.md', {}, 'quality-abc1234-2.md'),
+    ('I-1-quality-aaaaaaa.md', {}, 'I-1-quality-aaaaaaa-2.md'),
+    ('quality.md', {}, 'quality-2.md'),
+], ids=['first', 'taken', 'from-2', 'two-taken', 'dangling-link', 'link', 'digit-sha', 'from-12', 'flat', 'no-sha'])
+def test_a_shape_refusal_names_a_number_no_file_or_link_holds(root, tmp_path_factory, named, held, expected):
+    folder = root / ws.DIR / 'verdicts' / 'I-1'
+    folder.mkdir(parents=True)
+    outside = tmp_path_factory.mktemp('outside') / 'target.md'
+    outside.write_text('outside\n')
+    for name, kind in held.items():
+        (folder / name).write_text(verdict_text()) if kind == 'file' else \
+            (folder / name).symlink_to(outside if kind == 'link' else outside.with_name('gone.md'))
+    (folder / named).write_text(verdict_text(findings=CLOSED))
+    reason = reviewer_stop(root, f'Verdict file: {folder / named}')['reason']
+    assert f'Write the corrected verdict to {expected} beside it' in reason
+    assert not (folder / expected).exists() and not (folder / expected).is_symlink()
+    assert outside.read_text() == 'outside\n'
+
+
+def test_the_next_free_file_a_refusal_names_can_be_written_and_attested(root, tmp_path_factory):
+    folder = root / ws.DIR / 'verdicts' / 'x'
+    folder.mkdir(parents=True)
+    (folder / 'quality-abc1234-2.md').symlink_to(tmp_path_factory.mktemp('outside') / 'gone.md')
+    written = worktree_verdict(tmp_path_factory)
+    written.write_text(verdict_text(findings=CLOSED))
+    reason = reviewer_stop(root, f'Verdict file: {written}')['reason']
+    assert 'Write the corrected verdict to quality-abc1234-3.md beside it' in reason
+    fixed = written.with_name('quality-abc1234-3.md')
+    fixed.write_text(verdict_text() + f'\n## Probes\n{CLOSED}\n')
+    assert reviewer_stop(root, f'Verdict file: {fixed}') is None
+    assert [r['data']['path'] for r in ws.rows(root, 'attest')] == ['.wuwei/verdicts/x/quality-abc1234-3.md']
+
+
+def test_the_other_refusals_that_say_write_beside_it_name_the_next_free_file_too(root, tmp_path_factory):
+    folder = root / ws.DIR / 'verdicts' / 'x'
+    folder.mkdir(parents=True)
+    (folder / 'quality-abc1234.md').write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    (folder / 'quality-abc1234-2.md').write_text(verdict_text())
+    reason = reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['reason']
+    assert 'already holds another verdict: write yours beside it as quality-abc1234-3.md.' in reason
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev0') is None
+    (folder / 'quality-abc1234.md').write_text(verdict_text())
+    reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/x/quality-abc1234.md', agent='rev1')['reason']
+    assert 'Write yours to quality-abc1234-3.md beside it (the next free number)' in reason

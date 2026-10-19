@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import threading
 import tomllib
 
 DIR = '.wuwei'
@@ -39,7 +40,7 @@ def today():
 def atomic_write(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    temp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')  # threads share a pid (#1121)
     temp.unlink(missing_ok=True)  # a link planted at the temporary name is removed, never written through
     with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666), 'wb') as out:
         out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
