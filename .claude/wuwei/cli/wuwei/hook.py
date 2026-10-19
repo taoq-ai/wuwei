@@ -47,8 +47,8 @@ def context(event, text):
 def running(root):
     """Seats launched today, by agent id, with no stop under the same id."""
     ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
-           for kind in ('seat.started', 'seat.stopped')}
-    return len(ids['seat.started'] - ids['seat.stopped'])
+           for kind in ('seat.started', 'seat.stopped', 'seat.unconfirmed')}
+    return len(ids['seat.started'] - ids['seat.stopped'] - ids['seat.unconfirmed'])
 
 
 def pre_tool(root, payload):
@@ -152,9 +152,32 @@ def _settled(payload):
     return text
 
 
+def transcript_rows(path, key):  # the rows naming key in a regular file under ws.PROJECTS, links resolved (None: not one)
+    try:
+        real = Path(path).resolve(strict=True)
+        return [json.loads(line) for line in real.read_text(encoding='utf-8').splitlines() if key in line] if real.is_relative_to(
+            ws.PROJECTS.resolve()) and real.is_file() else None
+    except (OSError, TypeError, ValueError, RuntimeError):
+        return None
+
+
+def parts(rows, kind):
+    return [p for r in rows for p in (r.get('message') or {}).get('content') or () if isinstance(p, dict) and p.get('type') == kind]
+
+
 def subagent_stop(root, payload):
+    """A stop counts only when the harness shows the launch (#962): the meta file it keeps beside the seat's transcript names
+    the seat's type and Agent tool_use, which the session transcript holds. Else seat.unconfirmed, and nothing more."""
+    path, agent, role = str(payload.get('agent_transcript_path') or ''), payload.get('agent_id'), str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
+    meta = (transcript_rows(path.removesuffix('.jsonl') + '.meta.json', 'toolUseId') or [{}])[0] if Path(path).name == f'agent-{agent}.jsonl' else {}
+    use = meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None
+    if not use or not any(p.get('id') == use and p.get('name') in ('Agent', 'Task')
+                          for p in parts(transcript_rows(payload.get('transcript_path'), use) or [], 'tool_use')):
+        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': agent, 'session': payload.get('session_id'),
+                                             'reason': f'the session transcript shows no {role} launch for agent {agent}'})
+        return None
     payload = {**payload, 'last_assistant_message': _settled(payload)}
-    role, (_, tokens, ended) = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], transcript(payload)
+    _, tokens, ended = transcript(payload)
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip() \
             and Path(str(payload.get('agent_transcript_path') or '')).is_file():  # a Claude seat ends: keep what the harness drops
@@ -247,8 +270,13 @@ def post_tool(root, payload):
                                          'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
                                          'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
                                          'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
-    if tool == 'AskUserQuestion':
-        return _answers(root, data, payload.get('tool_response'))
+    if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
+        answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
+        kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
+                 'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
+        if transcript_rows(kept['path'], kept['id'] or '\0') is None:
+            return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
+        ws.cache_put(root, f"answer-{re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))}--{re.sub(r'[^\w-]', '', kept['id'])}", kept)
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         if named := sorted(evidence.refs(json.dumps(data))):
@@ -284,9 +312,40 @@ def _replied(root, tool, sent):
     return None
 
 
-def _answers(root, data, response):
-    questions = [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]
-    answers = response.get('answers', {}) if isinstance(response, dict) else {}
+def _shown(kept):  # why the transcript lacks the AskUserQuestion with this id and these answers in its last tool_result, or ''
+    if (rows := transcript_rows(kept.get('path'), tid := str(kept.get('id') or '\0'))) is None:
+        return f'{kept.get("path")} is not a transcript under {ws.PROJECTS}'
+    done = [r.get('toolUseResult') for r in rows if any(p.get('tool_use_id') == tid for p in parts([r], 'tool_result'))]
+    return '' if done and isinstance(done[-1], dict) and done[-1].get('answers') == kept.get('answers') and any(
+        p.get('id') == tid and p.get('name') == 'AskUserQuestion' for p in parts(rows, 'tool_use')) else \
+        f'the transcript holds no AskUserQuestion {tid} answered so'
+
+
+def _unconfirmed(root, kept, why):
+    ws.record(root, 'answer.unconfirmed', {**kept, 'reason': why[:300]})
+    return f'WUWEI: the answer to {kept.get("questions")} is not recorded: {why}.'[:1000]
+
+
+def _confirm(root, session, final):
+    """Notes for the answers this session asked, recorded once the transcript shows them (the harness writes the answer after
+    PostToolUse returns), or at a Stop, after up to WAIT seconds, as answer.unconfirmed. A racing hook skips one claimed."""
+    notes, end = [], time.monotonic() + WAIT * final
+    for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
+        kept = ws.cache_get(root, path.stem, 7 * 86400) or {}
+        while (why := _shown(kept)) and time.monotonic() < end:
+            time.sleep(0.1)
+        if why and not final:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        notes += [_unconfirmed(root, kept, why)] if why else _answers(root, kept)
+    return notes
+
+
+def _answers(root, kept):
+    questions, answers = kept.get('questions') or [], kept.get('answers') or {}
     ws.record(root, 'prompt', {'questions': questions, 'answers': answers if isinstance(answers, dict) else str(answers)[:500]})
     notes = []
     for question in questions:
@@ -321,11 +380,12 @@ def _answers(root, data, response):
         if question.lower().startswith('one-way:') and answer:
             notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
                          "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
-    return context('PostToolUse', '\n'.join(notes)) if notes else None
+    return notes
 
 
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
+WAIT = 1.5  # seconds a Stop rereads a transcript the harness may still be writing
 
 
 def exception_refs(question):
@@ -399,8 +459,8 @@ def codex(payload):
 
 
 def deliver(root, event, payload, out):
-    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode, and plain text never
-    reaches the caller), given once on the planner's next tool call or stop and kept under .wuwei/reports (#1160)."""
+    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode; plain text never reaches the
+    caller) and owner answers' notes (_confirm), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
@@ -414,10 +474,10 @@ def deliver(root, event, payload, out):
             continue
         _, agent, role, _ = kept.stem.split('--', 3)
         found.append((agent, f'## {role} {agent} (kept at {kept})\n{kept.read_text(encoding="utf-8")}'))
-    if not found:
+    if not (said := _confirm(root, session, event == 'Stop')) and not found:
         return out
-    note = ("WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their last "
-            'messages:\n\n' + '\n\n'.join(text for _, text in found))
+    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their "
+                             'last messages:\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
     if event == 'Stop':
         return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
     if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):

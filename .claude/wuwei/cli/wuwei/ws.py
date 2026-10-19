@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import threading
 import tomllib
 
@@ -15,6 +16,7 @@ DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker':
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
+PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'  # the harness's transcripts; never HOME, which a caller sets
 
 
 def find(start=None):

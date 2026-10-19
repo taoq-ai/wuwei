@@ -17,9 +17,13 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 | --- | --- |
 | SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
-| PostToolUse | a trace per call; what a new PR lacks; owner answers recorded as prompts, rulings, exceptions |
-| SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested |
+| PostToolUse | a trace per call; what a new PR lacks; owner answers recorded as prompts, rulings, exceptions once the session transcript shows them (on the planner's next call, since Claude Code writes the answer after the hook) |
+| SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested; only when the session transcript shows the seat's launch |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |
+
+**Why the transcript:** a hand-made hook call could otherwise write a ruling or a seat stop the owner never gave.
+An answer or stop the transcript does not show is recorded as `answer.unconfirmed` or
+`seat.unconfirmed` with the reason, never dropped.
 
 In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
 see [cloud sessions](cloud.md).
