@@ -54,6 +54,10 @@ The acceptance scenarios, restated:
   head.
 - FR-004: The small-delta carry rule and the delta gate choice are unchanged.
 - FR-005: Runtime within the item's budget of 5 lines and at or under 3,400.
+- FR-006: An arch `Breaking: no` clears a yes only when it names this PR or its repository alone
+  (round 1, from the security gate's note); a yes holds from any PR of the item.
+- FR-007: `gate_gaps` asks the code host once per verdict whether its head is under the PR head
+  (round 1, from the quality gate's finding).
 
 ## How this fails
 
@@ -77,7 +81,7 @@ The acceptance scenarios, restated:
 
 ## Probe results
 
-Read at main `d7c4f43` and at this branch's head with
+Read at main `5fe8347` and at this branch's head (round 1; round 0 read main `d7c4f43`) with
 `python3 -I specs/verdict-at-head/probe.py <main tree> <head tree>`; the main tree is
 `git archive origin/main` in a scratch folder. Heads: OLD, MID, HEAD on the PR's line, NEW a
 descendant of the PR head, OTHER off the line; PR forms: this PR, another PR, another repository,
@@ -95,8 +99,28 @@ cases whose gate result moves: 7479
   974: head owes more, from the walk
 distinct verdict shapes where the walk owes less: 26; each holds a PASS at the head attested before the last verdict: True
 main: ignored holes 6175, no-clear holes 864, compare calls 86944
-head: ignored holes 0, no-clear holes 0, compare calls 86095
+head: ignored holes 0, no-clear holes 0, compare calls 84454
 ```
+
+Round 0 made 86,095 compare calls; round 1 removed the repeated PR-head check. The moves file is
+byte-identical to round 0's (sorted, sha256
+`1069931ea5712ab2ac48c4f6bcf933795099915d01c73410178f15a169877ba8` both times), and main's
+`gate_gaps` did not change between `d7c4f43` and `5fe8347`, so the head's result is unchanged on
+every case.
+
+Long histories (`python3 -I specs/verdict-at-head/calls.py <tree> <scratch folder>`): one line of
+N heads, three gates verdicted per head, read at the last head, in three shapes (a FIX at every
+head but the last, a PASS at every head, alternating). Every shape gives the same counts:
+
+```
+heads   main   round 0   head
+   10     27        78     54
+   20     57       168    114
+   40    117       348    234
+```
+
+The head asks each verdict once whether it is under the PR head, as main does, and once whether
+it descends from the verdict held: 2.0x main on a long history.
 
 Every one of the 316 cases where the head owes less is a delta review on main ("no gate passed at
 head") that is clean at the head, and each holds a PASS for this PR at the PR head: main moved its
@@ -105,11 +129,12 @@ covers. Every other move owes more at the head. Both properties hold at the head
 main has 6,175 "ignored" and 864 "no-clear" holes.
 
 Route corpus (`tests/fixtures/routes.json`, sha256
-`12725ace6adab6f965422e9a2a010d13b93e0897f177fd00bda53b080bfe1cb1`), each route read through
-`guards.bash` with one quality PASS attested in each of six forms, at main and at the head:
+`9e099867c909e8400bd80bdcb7e6e4b5d8914785ac6171ed9a56e8aa3a7901b0` at main 5fe8347 and at the
+head), each route read through `guards.bash` with one quality PASS attested in each of six forms,
+at main and at the head (round 1; round 0 read 251 routes at d7c4f43 with the same 142 moves):
 
 ```
-reads 1506 1506 routes 251
+reads 1542 1542 routes 257
 moved 142
   13: PASS for acme/app#42: pass -> create
   23: PASS for acme/app#42: pass -> merge
@@ -148,6 +173,7 @@ is the same at main and at the head.
   rule did.
 - `breaking_gaps` compares heads on 7 characters through `newer` instead of in full; every arch
   verdict it reads is parsed, so its heads are 40 characters and the reading is unchanged.
-- Runtime: +5 over main (2,993 to 2,998), measured with `cat cli/wuwei/*.py | wc -l`; budget 5.
+- Runtime: +5 over main (3,026 at 5fe8347 to 3,031), measured with `cat cli/wuwei/*.py | wc -l`;
+  budget 5. Round 1 removed a repeated call without a line.
 
 Rollback: revert the commit; `gate_gaps` again takes the last verdict per gate in ledger order.

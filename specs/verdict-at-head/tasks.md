@@ -16,3 +16,12 @@
 - [x] T009 Re-vendor .claude/wuwei with setup.vendor('.')
 - [x] T010 Run the full suite green, runtime at or under 3,400 and within the item's budget of 5
 - [x] T011 Run the history probe and the route corpus probe at main and at the head
+
+## Phase 3: Gate round 1
+
+- [x] T012 The site page and design.md state the reading, naming the create and ready doors (docs/site/concepts/evidence.md, docs/design.md)
+- [x] T013 A test that the walk asks the code host about each pair of heads once, run red, then `gate_gaps` passes the verdict's own head to `newer` (tests/test_evidence.py, cli/wuwei/evidence.py)
+- [x] T014 Count compare calls on long histories at main and the head and correct plan.md (specs/verdict-at-head/calls.py)
+- [x] T015 Pin an imported 0.34 PASS counting for every PR of its item, and an imported short-head FIX holding against a PASS at that commit (tests/test_evidence.py)
+- [x] T016 An arch `Breaking: no` from another PR clears no yes, run red, then the filter (tests/test_evidence.py, cli/wuwei/evidence.py)
+- [x] T017 Merge origin/main, re-run the suite, the probes and the mutants

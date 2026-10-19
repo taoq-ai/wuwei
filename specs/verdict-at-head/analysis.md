@@ -12,6 +12,7 @@ and acceptance, the constitution, and #1135's walk in `breaking_gaps`.
 | A3 | Ambiguity | LOW | spec.md Clarifications | A finding at an older head after a finding at a newer head | Resolved: the newer one holds; fixture and the probe's no-clear property |
 | C1 | Coverage | LOW | tasks.md | FR-005 (runtime size) has no new test | Held by tests/test_setup.py::test_the_runtime_holds_its_size_budget and the measured +5 |
 | C2 | Coverage | LOW | tests/test_guards.py | Fixtures that named acme/app#42 while their door read o/r stop counting | Resolved: pointed at the PR their door reads; the route probe lists every moved route |
+| R1 | Coverage | LOW | spec.md FR-006, FR-007 | Round 1 adds two requirements from gate notes: the PR filter on an arch no, and one PR-head ancestry call per verdict | Resolved: T013 and T016 ran red then green; T014 counts the calls |
 
 No open finding above MEDIUM, and none open at CRITICAL or HIGH.
 
@@ -24,6 +25,8 @@ No open finding above MEDIUM, and none open at CRITICAL or HIGH.
 | FR-003 a finding displaces a pass | yes | T004, T006 | |
 | FR-004 the carry rule unchanged | yes | T010 | existing delta tests green |
 | FR-005 budget | yes | T010 | |
+| FR-006 an arch no for this PR | yes | T016 | |
+| FR-007 one PR-head call per verdict | yes | T013, T014 | |
 
 ## Constitution alignment
 
