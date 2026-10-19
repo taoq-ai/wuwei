@@ -583,11 +583,12 @@
    "promise": "guards gains one parser for exception: questions (refs, then ':' and the gap) and hook.exception_refs calls it, so every question the guard passes records exactly the refs and gap the owner read. The refusal names the cause (leading space, missing colon, a later ref in the gap). The property test asserts the recorded gap equals the text after the colon. Files: cli/wuwei/guards.py, cli/wuwei/hook.py, tests/test_guards.py, tests/test_hook.py, the vendored copies, docs naming the [and #m at <sha7>] form. Runtime lines: estimate -2 (one regex goes), budget +2. Order: after exception-shape merges, before goal-met (hook._answers). Rollback: revert the commit.",
    "acceptance": [
     "given 'exception: o/r#1 at abc1234\\t: gap. Accept?', when the guard and the hook read it, then either both refuse or the hook records the gap 'gap'",
-    "given a generated set of exception: questions, when each passes the guard, then exception_refs records the gap equal to the text between ':' and the first '. ' or '?'"
+    "given a generated set of exception: questions, when each passes the guard, then exception_refs records the gap equal to the text between ':' and the first '. ' or '?'",
+    "given 'exception: o/r#1 at abc1234: gap\\nAccept?' (a newline before the question), when the guard and the hook read it, then either the guard refuses it with the one-line shape or the hook records the gap 'gap', never 'gap\\nAccept' (arch on #1150: no planned item owned this)"
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": true
+   "approved": false
   },
   {
    "id": "db-recipe",
