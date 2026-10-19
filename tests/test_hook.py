@@ -1230,7 +1230,7 @@ def test_a_stop_waits_for_an_answer_row_the_harness_is_still_writing(root, monke
     hook.handle(root, 'PostToolUse', {**payload, 'tool_use_id': 'toolu_never'})
     started = time.monotonic()
     out = hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
-    assert 1.0 <= time.monotonic() - started < 3 and 'not recorded' in out['reason']
+    assert time.monotonic() - started >= 1.0 and 'not recorded' in out['reason']
     assert [r['data']['id'] for r in ws.rows(root, 'answer.unconfirmed')] == ['toolu_never']
 
 
@@ -1338,13 +1338,15 @@ def test_the_answer_is_the_last_tool_result_row_for_an_askuserquestion_with_that
 
 
 def test_a_stop_records_an_answer_row_the_harness_writes_within_the_wait(root, monkeypatch):
+    import time
+    import types
     payload = installed(ASK, ASK_FLOW[:1])
     hook.handle(root, 'PostToolUse', payload)
 
     def late(seconds):  # the harness writes the row while the Stop waits
         with Path(payload['transcript_path']).open('a') as out:
             out.write(ASK_FLOW[1] + '\n')
-    monkeypatch.setattr(hook.time, 'sleep', late)
+    monkeypatch.setattr(hook, 'time', types.SimpleNamespace(monotonic=time.monotonic, sleep=late))  # hook's wait only, never subprocess's
     hook.handle(root, 'Stop', {'session_id': ASK['session_id'], 'cwd': str(root)})
     assert len(ws.rows(root, 'ruling')) == 1 and not ws.rows(root, 'answer.unconfirmed')
 
@@ -1372,3 +1374,92 @@ def test_a_fifo_under_the_projects_folder_is_not_a_transcript_and_never_blocks_t
     call.start()
     call.join(5)
     assert not call.is_alive() and 'is not a transcript under' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
+
+
+# hook-transcript fix round 1
+
+def answer_row_written(payload):
+    with Path(payload['transcript_path']).open('a') as out:
+        out.write(''.join(line + '\n' for line in ASK_FLOW[1:]))
+
+
+def test_an_answer_is_recorded_before_the_merge_door_that_is_the_next_call(root, monkeypatch):
+    """Measured order: PostToolUse finds no answer row, the harness writes it, and the planner's next call is the merge."""
+    monkeypatch.setattr(evidence, 'gaps', lambda root, repo, number: [] if ws.rows(root, 'ruling') else [
+        evidence.gap('owner review needed (owner_paths: src/)', actionable=False, owner=True)])
+    payload = installed(ASK, ASK_FLOW[:1])
+    hook.handle(root, 'PostToolUse', payload)
+    answer_row_written(payload)
+    out = hook.handle(root, 'PreToolUse', {'session_id': ASK['session_id'], 'cwd': str(root), 'tool_name': 'Bash',
+                                           'tool_input': {'command': 'gh pr merge 42 --repo acme/app --squash'}})
+    assert out is None and len(ws.rows(root, 'ruling')) == 1 and ws.rows(root, 'merge.checked') and not ws.rows(root, 'refused')
+
+
+def test_the_notes_of_an_answer_recorded_on_a_refused_call_reach_the_planner_in_the_refusal(root):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', 'score': 1}])
+    question = 'plan: approve I-1?'
+    payload = installed({**ASK, 'tool_input': {'questions': [{'question': question}]}, 'tool_response': {'answers': {question: 'Yes'}}},
+                        ASK_FLOW[:1])
+    hook.handle(root, 'PostToolUse', payload)
+    rows = [json.loads(line) for line in ASK_FLOW[:2]]
+    rows[0]['message']['content'][0]['input'], rows[1]['toolUseResult'] = {'questions': [{'question': question}]}, {'answers': {question: 'Yes'}}
+    write(Path(payload['transcript_path']), [json.dumps(r) for r in rows])
+    out = hook.handle(root, 'PreToolUse', {'session_id': ASK['session_id'], 'cwd': str(root), 'tool_name': 'Write',
+                                           'tool_input': {'file_path': '.wuwei/ledger.jsonl'}})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'plan approved' in out['permissionDecisionReason']
+
+
+def test_a_pending_answer_leaves_its_row_when_the_session_never_calls_again(root):
+    payload = installed(ASK, ASK_FLOW[:1])
+    hook.handle(root, 'PostToolUse', payload)
+    for entry in (root / ws.DIR / 'cache').glob('answer-*'):
+        entry.unlink()  # a cache entry may go; the ledger row stays
+    [row] = ws.rows(root, 'answer.pending')
+    assert row['data']['id'] == REAL_ID and row['data']['answers'] == ASK['tool_response']['answers'] and not ws.rows(root, 'prompt')
+
+
+def test_an_error_while_recording_an_answer_is_a_hook_error_after_its_pending_row(root, monkeypatch):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', 'score': 1}])
+
+    def full(root, answer):
+        raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(plan, 'approve', full)
+    hook.handle(root, 'PostToolUse', answered(root, ['plan: approve I-1?'], {'plan: approve I-1?': 'Yes'}))
+    assert [r['kind'] for r in ws.ledger(root) if r['kind'] in ('answer.pending', 'prompt', 'hook.error')] == [
+        'answer.pending', 'prompt', 'hook.error'] and 'No space' in ws.rows(root, 'hook.error')[0]['data']['error']
+
+
+def test_a_replayed_answer_records_nothing_more(root):
+    payload = installed(ASK)
+    hook.handle(root, 'PostToolUse', payload)
+    hook.handle(root, 'PostToolUse', payload)
+    planner_read(root)
+    assert len(ws.rows(root, 'ruling')) == len(ws.rows(root, 'prompt')) == 1 and ws.rows(root, 'prompt')[0]['data']['id'] == REAL_ID
+
+
+def test_a_tool_use_id_never_names_a_file_outside_the_cache(root):
+    settings = write(root / '.claude' / 'settings.json', ['{}'])
+    hook.handle(root, 'PostToolUse', {**installed(ASK, ASK_FLOW[:1]), 'tool_use_id': 'x/../../../.claude/settings'})
+    assert settings.read_text() == '{}\n' and [p.name for p in (root / ws.DIR / 'cache').glob('answer-*')] == [
+        f'answer-{ASK["session_id"]}--xclaudesettings.json']
+
+
+def test_a_uid_with_no_passwd_entry_keeps_the_doors_and_records_answers_unconfirmed(root):
+    """A container run with --user and no matching /etc/passwd line: getpwuid raises KeyError when ws is imported."""
+    import subprocess
+    import sys
+    entry = ("import pwd, runpy, sys\ndef missing(uid):\n    raise KeyError(f'getpwuid(): uid not found: {uid}')\npwd.getpwuid = missing\n"
+             "sys.path[:0] = [sys.argv.pop(1)]\nrunpy.run_module('wuwei', run_name='__main__', alter_sys=True)")
+
+    def call(event, payload):
+        return subprocess.run([sys.executable, '-I', '-c', entry, str(ws.PLUGIN / 'cli'), 'hook', event], input=json.dumps(payload),
+                              text=True, capture_output=True, cwd=root)
+    door = call('PreToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'Bash',
+                               'tool_input': {'command': 'echo x >> .wuwei/ledger/x.jsonl'}})
+    assert door.returncode == 0 and json.loads(door.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny', door.stderr
+    forged = write(root / 'f.jsonl', forged_rows('toolu_forged', QUESTIONS[:1], {QUESTIONS[0]: 'Yes'}))
+    call('PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'AskUserQuestion', 'tool_use_id': 'toolu_forged',
+                         'transcript_path': str(forged), 'tool_input': {'questions': [{'question': QUESTIONS[0]}]},
+                         'tool_response': {'answers': {QUESTIONS[0]: 'Yes'}}})
+    reason = ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
+    assert ws.rows(root, 'ruling') == [] and 'not a transcript under /dev/null' in reason

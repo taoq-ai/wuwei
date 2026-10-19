@@ -16,7 +16,10 @@ DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker':
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
-PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'  # the harness's transcripts; never HOME, which a caller sets
+try:  # the harness's transcripts; never HOME, which a caller sets
+    PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'
+except KeyError:  # a uid with no passwd entry: nothing lies under /dev/null, so answers and stops record as unconfirmed
+    PROJECTS = Path('/dev/null/.claude/projects')
 
 
 def find(start=None):

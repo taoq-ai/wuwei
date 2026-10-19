@@ -1,7 +1,7 @@
 """hook-transcript mutants: python3 -I mutants.py <sha> <empty scratch folder> [name ...]
 
 Each mutant runs alone in a fresh `git archive` copy with both copies of the runtime (cli/ and .claude/wuwei/cli/) edited,
-on the test files that reach the mutated file, with the wall-clock tests (a test body that reads time.monotonic or
+on the test files that reach the mutated file, with the wall-clock tests (a test body that calls time.monotonic or
 time.perf_counter) deselected, and any test named in DESELECT (a generated probe that a mutant makes quadratic). A kill
 counts only when a behavioural test fails.
 """
@@ -29,14 +29,14 @@ MUTANTS = {
             path.unlink()
         except OSError:
             continue
-        notes +=""", '        notes +='),
+        if why or all(""", '        if why or all('),
     'H10 a lost claim still records': (H, """            path.unlink()
         except OSError:
             continue""", """            path.unlink()
         except OSError:
             pass"""),
-    'H11 no wait at a Stop': (H, 'end = [], time.monotonic() + WAIT * final', 'end = [], time.monotonic()'),
-    'H12 a Stop is not final': (H, "_confirm(root, session, event == 'Stop')", '_confirm(root, session, False)'),
+    'H11 no wait at a Stop': (H, 'time.monotonic() + WAIT * final', 'time.monotonic()'),
+    'H12 a Stop is not final': (H, "_confirm(root, payload, event == 'Stop')", '_confirm(root, payload, False)'),
     'H13 no answer.unconfirmed at once': (H, "if transcript_rows(kept['path'], kept['id'] or '\\0') is None:", 'if False:'),
     'H14 any agent transcript name': (H, " if Path(path).name == f'agent-{agent}.jsonl' else {}", ''),
     'H15 any seat type': (H, "meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None", "meta.get('toolUseId')"),
@@ -44,9 +44,20 @@ MUTANTS = {
                           for p in parts(transcript_rows(payload.get('transcript_path'), use) or [], 'tool_use')):""", '    if not use:'),
     'H17 a launch on any tool': (H, " and p.get('name') in ('Agent', 'Task')\n", '\n'),
     'H18 an unconfirmed seat still runs': (H, " - ids['seat.unconfirmed'])", ')'),
-    'H19 seat answers confirm too': (H, "    if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop')",
-                                    "    if event not in ('PreToolUse', 'PostToolUse', 'Stop')"),
+    'H19 seat answers confirm too': (H, "planner = not payload.get('agent_id') and event in", 'planner = event in'),
+    'F1 answers recorded after the door': (H, """if planner and event != 'PostToolUse' else []
+        out = handler(root, codex(payload))
+        said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []""", """if False else []
+        out = handler(root, codex(payload))
+        said += _confirm(root, payload, False) if planner else []"""),
+    'F2 no pending row': (H, "        ws.record(root, 'answer.pending', kept)", '        pass'),
+    'F3 a replay records again': (H, "if why or all(r['data'].get('id') != kept['id'] for r in ws.rows(root, 'prompt')):", 'if True:'),
+    'F4 no notes on a refusal': (H, "    if said and 'permissionDecisionReason' in spec:", '    if False:'),
+    'X1 no filename sanitiser': (H, "'--'.join(re.sub(r'[^\\w-]', '', str(v or '')) for v in (payload.get('session_id'), kept['id']))",
+                                 "'--'.join(str(v or '') for v in (payload.get('session_id'), kept['id']))"),
     'W1 the projects folder from HOME': (W, 'Path(pwd.getpwuid(os.getuid()).pw_dir)', 'Path.home()'),
+    'W2 no passwd entry kills the import': (W, 'except KeyError:', 'except ImportError:'),
+    'W3 the fallback is a real folder': (W, "Path('/dev/null/.claude/projects')", "Path('/tmp/.claude/projects')"),
     'G1 no transcript door': (G, "    return records(path, ('projects',), cap, '.claude')", '    return False'),
     'G2 redirects pass': (G, '        if any(map(harness, targets)) or writer', '        if writer'),
     'G3 writer arguments pass': (G, ' or writer and any(map(harness, words)) or held', ' or held'),
@@ -70,8 +81,8 @@ def wall_clock(tree, tests):
     found = []
     for name in tests:
         for node in ast.parse((tree / name).read_text(encoding='utf-8')).body:
-            if isinstance(node, ast.FunctionDef) and node.name.startswith('test_') and any(
-                    isinstance(n, ast.Attribute) and n.attr in ('monotonic', 'perf_counter') for n in ast.walk(node)):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith('test_') and any(  # a call: a test passing the function on is not timed
+                    isinstance(n, ast.Call) and getattr(n.func, 'attr', '') in ('monotonic', 'perf_counter') for n in ast.walk(node)):
                 found.append(f'{name}::{node.name}')
     return found
 

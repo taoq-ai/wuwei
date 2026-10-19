@@ -276,6 +276,7 @@ def post_tool(root, payload):
                 'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
         if transcript_rows(kept['path'], kept['id'] or '\0') is None:
             return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
+        ws.record(root, 'answer.pending', kept)  # never a silent drop: with no later prompt or answer.unconfirmed it reads as unconfirmed
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), kept['id']))  # no \ in an f-string on 3.11
         ws.cache_put(root, 'answer-' + name, kept)
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
@@ -327,10 +328,10 @@ def _unconfirmed(root, kept, why):
     return f'WUWEI: the answer to {kept.get("questions")} is not recorded: {why}.'[:1000]
 
 
-def _confirm(root, session, final):
+def _confirm(root, payload, final):
     """Notes for the answers this session asked, recorded once the transcript shows them (the harness writes the answer after
     PostToolUse returns), or at a Stop, after up to WAIT seconds, as answer.unconfirmed. A racing hook skips one claimed."""
-    notes, end = [], time.monotonic() + WAIT * final
+    notes, end, session = [], time.monotonic() + WAIT * final, re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
         kept = ws.cache_get(root, path.stem, 7 * 86400) or {}
         while (why := _shown(kept)) and time.monotonic() < end:
@@ -341,13 +342,14 @@ def _confirm(root, session, final):
             path.unlink()
         except OSError:
             continue
-        notes += [_unconfirmed(root, kept, why)] if why else _answers(root, kept)
+        if why or all(r['data'].get('id') != kept['id'] for r in ws.rows(root, 'prompt')):  # a replayed answer records nothing more
+            notes += [_unconfirmed(root, kept, why)] if why else _answers(root, kept)
     return notes
 
 
 def _answers(root, kept):
     questions, answers = kept.get('questions') or [], kept.get('answers') or {}
-    ws.record(root, 'prompt', {'questions': questions, 'answers': answers if isinstance(answers, dict) else str(answers)[:500]})
+    ws.record(root, 'prompt', {'id': kept.get('id'), 'questions': questions, 'answers': answers if isinstance(answers, dict) else str(answers)[:500]})
     notes = []
     for question in questions:
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
@@ -459,10 +461,12 @@ def codex(payload):
     return payload
 
 
-def deliver(root, event, payload, out):
+def deliver(root, event, payload, out, said):
     """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode; plain text never reaches the
-    caller) and owner answers' notes (_confirm), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
+    caller) and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
+    if said and 'permissionDecisionReason' in spec:  # a refused call still carries the notes of the answers recorded on it
+        spec['permissionDecisionReason'] += '\n\n' + '\n'.join(said)
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
@@ -475,7 +479,7 @@ def deliver(root, event, payload, out):
             continue
         _, agent, role, _ = kept.stem.split('--', 3)
         found.append((agent, f'## {role} {agent} (kept at {kept})\n{kept.read_text(encoding="utf-8")}'))
-    if not (said := _confirm(root, session, event == 'Stop')) and not found:
+    if not said and not found:
         return out
     note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their "
                              'last messages:\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
@@ -490,8 +494,11 @@ def deliver(root, event, payload, out):
 def handle(root, event, payload):
     if (handler := HANDLERS.get(event)) is None:
         return None
-    try:
+    planner = not payload.get('agent_id') and event in ('PreToolUse', 'PostToolUse', 'Stop')
+    try:  # answers are recorded before a door reads the ledger, and at PostToolUse after it kept its own
+        said = _confirm(root, payload, event == 'Stop') if planner and event != 'PostToolUse' else []
         out = handler(root, codex(payload))
+        said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []
     except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
         message = f'{type(exc).__name__}: {exc}'[:300]
         print(f'wuwei hook {event}: {message}', file=sys.stderr)
@@ -504,7 +511,7 @@ def handle(root, event, payload):
                     f'WUWEI: this call names a door and the hook failed while checking it ({message}); fix the cause and retry.'}}
         return None
     try:  # a delivery that fails never changes the decision
-        return deliver(root, event, payload, out)
+        return deliver(root, event, payload, out, said)
     except Exception as exc:
         print(f'wuwei hook {event}: report delivery failed: {exc}'[:300], file=sys.stderr)
         return out
