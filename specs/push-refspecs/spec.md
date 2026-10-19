@@ -61,7 +61,7 @@ recursion, `core.hooksPath`) are item push-git-runs.
   prefix of a long option. In git 2.43 push, `--a` is ambiguous (`--all`, `--atomic`) and fails;
   `--al` is `--all`; every prefix of `mirror` is `--mirror`, since no other push option starts with
   `m`. The guard on main refused only `--mirror` spelt in full, and real git moved main for `--mirr`
-  and `--m`. git 2.43 has no `--branches` (added later as a synonym of `--all`); the guard refuses
+  and `--m`. git 2.43 lists `--branches` as an alias of `--all` (`git push -h`); the guard refuses
   it and its prefixes, as the promise asks.
 - Q: Where may `--all` stand? A: anywhere: parse-options reads options before and after the remote
   and refspecs. The guard on main read `git push --all origin` as a push of the current branch, so
@@ -78,6 +78,26 @@ recursion, `core.hooksPath`) are item push-git-runs.
   unquoted glob that matches no file as typed. `$'..'` stays unreadable and is refused by the
   raw-text rule. The scratch exception's plain word class (`[\w./=@:+-]`) excludes `*` and quotes,
   so a quoted or glob refspec never passes through it: the door decides it as for any remote.
+- Q: Which words does an option take (gates at b16d799)? A: parse-options gives the next word
+  whole to `-o`, to a short cluster whose first `o` is last (`-vo`, `-4o`), and to any unique
+  prefix of `--push-option`, `--repo`, `--receive-pack`, `--exec` and `--recurse-submodules`
+  written without `=`. That word is neither an option nor a refspec. The guard now reads the
+  options with `_flags` and those names. At b16d799, `git push --repo --tags origin` and
+  `git push -o --tags origin` dropped the current-branch default; real git pushed main from a
+  clone on main, and main's guard refused them. `git push origin -o ci.skip` and
+  `git push --repo x origin` read `ci.skip` and `origin` as refspecs, on main too.
+- Q: Which of `--tags` and `--no-tags` wins? A: the last one (an `OPT_BOOL`). Real git pushed main
+  for `git push --tags --no-tags origin` from a clone on main; the guard reads the last of the two.
+- Q: What ends the options? A: the first `--` or `--end-of-options` that is not an option's value.
+  Every later word is a refspec, one that starts with a dash too: after
+  `git update-ref refs/heads/-x HEAD`, real git moved main for `git push origin -- -x:main`, which
+  the guard dropped as an option on main and at b16d799.
+- Q: Which destination does a source alone take? A: git's `match_explicit` (remote.c) resolves the
+  source and takes its full name, through a symbolic ref; `main-worktree/HEAD` and
+  `worktrees/<id>/HEAD` name another worktree's HEAD. The guard adds the name
+  `git rev-parse --verify --quiet --symbolic-full-name --end-of-options <word>` prints, beside the
+  text reading. When rev-parse prints nothing (no such ref, an ambiguous name, no repository), the
+  text reading stands: git push then finds no single source for the word and pushes nothing.
 
 ## How this fails
 
@@ -87,13 +107,17 @@ recursion, `core.hooksPath`) are item push-git-runs.
    under real git 2.43 on Linux; none moved main. A remote on a case-insensitive store stays a hole
    (GitHub's refs are case-sensitive).
 2. A source that resolves to main locally while the destination is spelt otherwise: a local
-   symbolic ref (`refs/heads/x` pointing at `refs/heads/main`) pushed with no colon. git resolves
-   it to `refs/heads/main` as its destination. That is a ref written before the call (Outside),
-   recorded as a candidate.
-3. An option that takes the next word hides `--all` or a refspec from the guard: `-o --all`,
-   `--repo origin`. The guard reads every word that starts with `--` as a possible `--all` or
-   `--mirror`, and every word without a dash as a possible refspec, so a swallowed word only
-   adds refusals. Probed with `-o x` in each position.
+   symbolic ref (`refs/heads/x` pointing at `refs/heads/main`) or `main-worktree/HEAD` pushed with
+   no colon. git resolves it to `refs/heads/main` as its destination. Round 1 closes it for a ref
+   that exists when the guard reads (the rev-parse name). A ref the same command writes first
+   (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`), or a HEAD it moves
+   (`git checkout main && git push origin HEAD`), stays open and is listed in SECURITY.md.
+3. An option that takes the next word hides a word from the guard. The first head claimed a
+   swallowed word only adds refusals; the gates showed it false. A taken `--tags` dropped the
+   current-branch default (`git push --repo --tags origin` moved main from main), and a taken `x`
+   or `origin` read as a refspec suppressed it (`git push origin -o ci.skip`). The guard now skips
+   the taken word. What remains: an option a later git adds that takes the next word. The probe's
+   valued class crosses each such option and prefix with the words it can take.
 
 ## Requirements
 
@@ -107,10 +131,17 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - FR-004: the route corpus on main moves no row; new rows hold the acceptance commands.
 - FR-005: the generated probe under real bash, a stub git and real git shows 0 holes at the head.
 - FR-006: design.md and doors.md name the spellings; the vendored copy matches.
+- FR-007: the word an option takes (`-o`, `-vo`, a prefix of `--push-option`, `--repo`,
+  `--receive-pack`, `--exec`, `--recurse-submodules`) is no option and no refspec; the last of
+  `--tags` and `--no-tags` wins; after the first `--` or `--end-of-options` every word is a refspec.
+- FR-008: a refspec with no colon also names the ref git resolves it to (`rev-parse
+  --symbolic-full-name`), so another worktree's HEAD and a symbolic ref to main meet the door.
 
 ## Breaking
 
-None. The change only refuses pushes that can reach the default branch and that main passed.
+None. The change refuses pushes that can reach the default branch and that main passed. One
+spelling main refused now passes: `--mirror` (or `--all`) taken as the value of `--repo` or `-o`,
+which git does not read as an option (`git push --repo --mirror origin feature` pushes feature).
 
 ## Assumptions
 
@@ -122,8 +153,16 @@ None. The change only refuses pushes that can reach the default branch and that 
 - A destination `HEAD` (or `@`, or empty) keeps main's reading: the current branch. Under real
   git 2.43, `feature:HEAD` from a clone on main left main alone, so the guard over-refuses it there;
   the rule is main's and the item does not ask to change it.
-- Runtime lines: 3,027 at the head against 3,026 at main 6682925 (+1; dc39cae held 3,011 and the
-  head on it 3,012), inside the item's budget (+4, ceiling 6). free-lines-5 is no longer needed:
-  the cap is 3,400.
+- Runtime lines: 3,098 at the head against 3,093 at main 7fd8f4b (+5), one over the item's budget
+  of +4 and inside its ceiling of 6. The first head took +1; round 1 adds the option reader through
+  `_flags` with a `PUSH_VALUED` set (+1 net), the `--tags`/`--no-tags` rule (+1) and the rev-parse
+  call for a source alone (+2).
+- When rev-parse prints nothing for a source alone, the text reading stands rather than a refusal
+  (Clarifications). Overturned if a probe finds a word rev-parse cannot resolve that git push
+  resolves to main; then the guard should refuse an unresolved source alone inside a work tree.
+- The force check still reads every word, an option's value and a word after `--` included, so
+  `git push -o -f origin feature` stays refused. Over-refusal only, as on main.
+- `-n` (dry run) reads as a prefix of `--no-tags`, so `git push --tags -n origin` from main is
+  refused. A dry run moves nothing; over-refusal only.
 
 Rollback: revert the commit; no data or config migrates.

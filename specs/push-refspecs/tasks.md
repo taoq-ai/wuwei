@@ -21,3 +21,11 @@
 - [x] T011 Route corpus at main 6682925 (sha256 9e099867...) and the head (sha256 3c80e7c1...): 0 of 257 move; 8 of the 12 new rows move
 - [x] T012 Mutants of each rule, applied to both guards.py copies, one at a time: each fails tests in tests/test_guards.py
 - [x] T013 Full suite green at the head
+
+## Phase 4: Fix round 1 (gates at b16d799)
+
+- [x] T014 Tests first: 27 real-git cases (16 from the main clone on main for option values and `--no-tags`, 11 for a dash refspec after `--` or `--end-of-options`, another worktree's HEAD and a symbolic ref); 26 red at b16d799, then `_flags` with `PUSH_VALUED`, the last of `--tags`/`--no-tags`, and the rev-parse name for a source alone; green
+- [x] T015 Merged origin/main 7fd8f4b; vendored guards.py copied; spec, plan, design.md, doors.md and SECURITY.md updated; runtime 3,098 against 3,093 (+5)
+- [x] T016 Route corpus: 4 rows added (sha256 a3ddc985...); through main 7fd8f4b's guard 11 rows move and 0 of main's 257; through b16d799's guard 4 rows move and 0 of its 269
+- [x] T017 Probe (`probe.py <main tree> <head tree> <folder>`) with the gates' classes added: 21,282 generated, 21,254 ran git push, 80 holes at the head, all force digit clusters held at main too; 1,064 at main; 0 regressions
+- [x] T018 Mutants of each rule, applied to both guards.py copies, one at a time, wall-clock tests excluded: each killed by a behavioural test

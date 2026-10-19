@@ -1747,7 +1747,8 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     ('git symbolic-ref refs/heads/x refs/heads/main', 'c', 'git push origin x'),
     ('git symbolic-ref refs/heads/x refs/heads/main', 'c', 'git push origin heads/x'),
     ('git symbolic-ref refs/tags/t refs/heads/main', 'c', 'git push origin t'),
-    ('git symbolic-ref refs/heads/-x refs/heads/main', 'c', 'git push origin -- -x')])
+    ('git symbolic-ref refs/heads/-x refs/heads/main', 'c', 'git push origin -- -x'),
+    ('git symbolic-ref refs/heads/-y refs/heads/main', 'c', 'git push origin --end-of-options -y')])
 def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeypatch, setup, at, command):
     """Gates push-refspecs at b16d799: every word after -- is a refspec, and a source alone takes the destination its ref resolves
     to (another worktree's HEAD, a symbolic ref). Real git moves main; the door refuses it."""

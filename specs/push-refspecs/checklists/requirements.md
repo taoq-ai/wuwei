@@ -6,7 +6,10 @@
 - [x] `--all` meets the door by rule in each position (before the remote, after it, last), not by option order
 - [x] Forced globs (`+refs/heads/*:refs/heads/*`) meet the force refusal; quoted, double-quoted and backslashed globs are read as git reads them; `$'..'` is refused as unreadable
 - [x] One normalisation input per path class (`//`, `%xx`, `/./`, `/../`) in a destination, and per working-directory wrapper (`cd`, `env -C`, `sudo -D`), is probed
-- [x] The generated probe reports its three counts (generated, ran the door program, holes) and 0 holes at the head, with main's count beside it
+- [x] The generated probe reports its three counts (generated, ran the door program, holes) and 0 holes at the head, with main's count beside it (round 1: 0 outside the force class, whose 80 digit-cluster holes main holds too and a separate item owns)
+- [x] Every option that takes the next word is probed with `--tags`, `--all` and `--mirror` as its value, before the remote, after it and last
+- [x] `--` and `--end-of-options` are probed before and after the operands, with an operand that starts with a dash
+- [x] The checks that do not rely on door words are read with this round's push shapes at main and the head
 - [x] The route corpus moves no existing row; its sha256 is recorded at main and the head; moved new rows are listed
 - [x] Each rule is held by a test (a mutant without it fails)
 - [x] Vendored copy matches; drift test passes
