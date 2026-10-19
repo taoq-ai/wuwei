@@ -43,7 +43,7 @@ def adopted(root, repo, prs, keep):
     since = (ws.now() - datetime.timedelta(days=ADOPT_DAYS)).isoformat()
     login = evidence.owner_login(root)
     return [{'item': 'unplanned', 'title': pr['title'], 'pr': f'{repo}#{pr["number"]}',
-             'gaps': keep(evidence.gaps(root, repo, pr['number']))}
+             'gaps': keep(evidence.gaps(root, repo, pr['number'], pr))}
             for pr in prs if (pr.get('author') or {}).get('login') == login and not pr.get('isDraft')
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
@@ -72,7 +72,7 @@ def compute(root, everything=False):
         print(f'wuwei: reading {repo}: {len(prs)} open PRs', file=sys.stderr)
         links = [[pr for pr in prs if names(root, pr, repo, item['id'])] for item in mine]
         with concurrent.futures.ThreadPoolExecutor(8) as pool:  # the host calls dominate a cold board (#1121)
-            read = dict(zip(want := {pr['number'] for linked in links for pr in linked}, pool.map(lambda n: keep(evidence.gaps(root, repo, n)), want)))
+            read = dict(zip(want := {pr['number']: pr for linked in links for pr in linked}, pool.map(lambda pr: keep(evidence.gaps(root, repo, pr['number'], pr)), want.values())))
         for item, linked in zip(mine, links):
             done = [pr for pr in merged if names(root, pr, repo, item['id'])]
             if not linked and done:
