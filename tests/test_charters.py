@@ -289,3 +289,9 @@ def test_a_gate_puts_the_findings_its_fix_closed_under_probes():
         assert 'Closed findings go under ## Probes' in text, path
         assert '`closed: <finding> at <sha7>`' in text and '## Findings holds only open findings, or none' in text, path
         assert 'refuses a wrong shape, naming the next free file: write the corrected verdict there' in text, path
+
+
+def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
+    text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text()
+    assert ".claude/wuwei/cli/wuwei/" in text
+    assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
