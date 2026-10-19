@@ -1512,9 +1512,10 @@ def test_a_release_pr_with_no_required_run_names_the_way_through(root, fake, sta
     assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith('required')] == [shown]
 
 
-def test_the_base_branch_name_is_encoded_in_the_required_reads(root, fake):
+@pytest.mark.parametrize('base, path', [('a#b', 'a%23b'), ('a/b', 'a/b'), ('a%b', 'a%25b')])
+def test_the_base_branch_name_is_encoded_in_the_required_reads(root, fake, base, path):
     complete(root, fake)
-    fake.prs['42']['baseRefName'] = 'a#b'
+    fake.prs['42']['baseRefName'] = base
     evidence.gaps(root, 'acme/app', 42)
-    assert ['api', 'repos/acme/app/branches/a%23b'] in fake.calls
-    assert ['api', 'repos/acme/app/rules/branches/a%23b?per_page=100&page=1'] in fake.calls
+    assert ['api', f'repos/acme/app/branches/{path}'] in fake.calls
+    assert ['api', f'repos/acme/app/rules/branches/{path}?per_page=100&page=1'] in fake.calls
