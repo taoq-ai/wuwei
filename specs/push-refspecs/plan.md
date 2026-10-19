@@ -25,7 +25,7 @@
    current branch, except the bare `:`, whose destination is the pattern `*`. A destination with a
    `*` is kept as a full-name pattern; any other becomes `refs/heads/` plus the name with a leading
    `refs/heads/` or `heads/` cut.
-3. A destination `@` reads as `HEAD`, and with no refspec the current branch is a target unless a
+3. A source alone `@` resolves to `HEAD` (round 1: through rev-parse), and with no refspec the current branch is a target unless a
    `--tags` prefix stands (git then sends `refs/tags/*` alone). Both came from the probe's first
    run at the head.
 4. The refusal: any default branch `b` with `fnmatchcase('refs/heads/' + b, target)` for a target.

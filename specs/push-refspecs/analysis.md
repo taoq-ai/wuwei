@@ -9,7 +9,7 @@ and acceptance and the constitution.
 |----|----------|----------|-------------|---------|----------------|
 | A1 | Ambiguity | MEDIUM | item promise (2) | "unless the refspec's source names no default-branch ref" can be read at the source pattern or at the local refs | Resolved in Clarifications: a glob is refused on its destination alone; local refs can be written in the same command. Over-refusal counted by the probe |
 | A2 | Ambiguity | LOW | item promise (2) | `--branches` in git 2.43 | git 2.43 lists it as an alias of `--all` (`git push -h`); refused with its prefixes; unit tests (the first text said 2.43 had none, corrected in round 1) |
-| C1 | Coverage | HIGH | probe at the first head | `git push origin @` from a clone on main moved main and passed | Resolved: `@` reads as `HEAD`; 2 real-git tests, a mutant; 0 holes at the head |
+| C1 | Coverage | HIGH | probe at the first head | `git push origin @` from a clone on main moved main and passed | Resolved: `@` reads as `HEAD` (round 1: a source alone through rev-parse; git rejects `@` as a destination); 2 real-git tests, a mutant; 0 holes at the head |
 | C2 | Coverage | MEDIUM | acceptance 3 | `git push --tags origin` was refused from a clone on main | Resolved: `--tags` alone adds no current branch; 2 real-git tests, 2 mutants |
 | C3 | Coverage | MEDIUM | git option parsing | `--mirr` and `--m` moved main and passed (any unique prefix) | Resolved: any prefix of `mirror` is a force push; 3 tests, a mutant |
 | C4 | Coverage | MEDIUM | refspec split | `:/x:main` split at the first colon passed and moved main | Resolved: the last colon; a real-git test, a mutant |

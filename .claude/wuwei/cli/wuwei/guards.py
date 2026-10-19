@@ -159,7 +159,7 @@ def git_push(root, args, cwd):  # git 2.43 (refspec.c parse_refspec): the last c
         deleting = deleting or bool(colon and not source and destination)
         if not colon:  # a source alone takes the name its ref resolves to: main-worktree/HEAD, a symbolic ref
             targets.append(_git(cwd, 'rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', ref))
-        if destination in ('', 'HEAD', '@'):  # git reads @ as HEAD
+        if destination in ('', 'HEAD'):
             destination = '*' if ref == ':' else current_branch(cwd)  # : pushes each branch both sides hold
         targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole
     protected = _default(root, origin(cwd))
