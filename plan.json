@@ -22,7 +22,31 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
+  },
+  {
+   "id": "hook-fail-closed",
+   "title": "fix(hook): a hook entry that fails before it can judge exits 2, so a broken install keeps the doors shut",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 34.0,
+   "why": "spec-key-encoding security gate (#1174, security-ebddd18.md): with plugin.json missing, the real bin/wuwei hook PreToolUse exits 1 at main, crashing in __main__.main (argparse's description calls ws.version()) before hook code runs; Claude Code reads any exit but 2 as non-blocking, so a broken install opens every door. hook-transcript gates (#1172) found the same class at import (pwd.getpwuid KeyError).",
+   "promise": "The hook entry path catches any exception raised before hook.handle can decide (import, argument parsing, version read) and exits 2 with the reason on stderr, so a PreToolUse door stays shut; other wuwei commands keep their exit codes. Files: cli/wuwei/__main__.py (or bin/wuwei), tests, the vendored copy. Runtime estimate +4, budget 6.",
+   "acceptance": [
+    "given plugin.json missing, when bin/wuwei hook PreToolUse reads a ledger write, then it exits 2 and the call is refused",
+    "given a working install, then hook exit codes are as on main"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": true
   },
   {
    "id": "sync-paths",
@@ -47,7 +71,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "spec-key-encoding",
@@ -70,7 +94,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "spike-962",
@@ -119,7 +143,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "ready-door-ref",
@@ -217,7 +241,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "push-git-runs",
@@ -265,7 +289,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "gh-args",
@@ -363,7 +387,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "merge-ref",
