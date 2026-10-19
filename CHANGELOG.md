@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.2.2](https://github.com/taoq-ai/wuwei/compare/v4.2.1...v4.2.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **evidence:** a PASS at the same head clears the FIX it names in Supersedes ([#1162](https://github.com/taoq-ai/wuwei/issues/1162)) ([#1166](https://github.com/taoq-ai/wuwei/issues/1166)) ([5a33509](https://github.com/taoq-ai/wuwei/commit/5a335090b6608e18a99817c5f3ceaee5d727caa0))
+* **evidence:** read each gate from its verdict at the newest head on this PR ([#1152](https://github.com/taoq-ai/wuwei/issues/1152)) ([f63c804](https://github.com/taoq-ai/wuwei/commit/f63c8048a2591b1ca522ff9cac477d6a38ea355a))
+* **hook:** a seat's report reaches the planner when SubagentHandback is refused outside auto mode ([#1160](https://github.com/taoq-ai/wuwei/issues/1160)) ([#1163](https://github.com/taoq-ai/wuwei/issues/1163)) ([0fc2755](https://github.com/taoq-ai/wuwei/commit/0fc2755512510eb772efdf48e3e52525ca6cb6a7))
+
+
+### Performance Improvements
+
+* **status:** a warm board re-reads only the PRs that moved ([#1161](https://github.com/taoq-ai/wuwei/issues/1161)) ([#1164](https://github.com/taoq-ai/wuwei/issues/1164)) ([f3aa6ad](https://github.com/taoq-ai/wuwei/commit/f3aa6adad1391e9022f05665044b29a50835e7b8))
+
 ## [4.2.1](https://github.com/taoq-ai/wuwei/compare/v4.2.0...v4.2.1) (2026-10-19)
 
 
