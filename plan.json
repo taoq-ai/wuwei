@@ -173,31 +173,6 @@
    "approved": false
   },
   {
-   "id": "release-sweep",
-   "title": "chore(release): merge the release-please PR that carries the push-door items and the bug sweep",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "light",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 16.0,
-   "why": "G-2 asks for the sweep in a release; this is the cut.",
-   "promise": "A run, not a change. release.yml opens or updates the release-please PR on each push to main; when the items named in after have merged, the shepherd merges that PR through `gh pr merge` so the merge door reads it (evidence reads a release-please PR as generated; #1128 and #1110 went outside the door, which the report flags). Version: 4.0.0 if any commit in it carries `!` (this repository has marked each door that refuses more as `!`, so push-refspecs and exception-shape likely do), else 3.0.2 (fix, perf, docs only). Record the tag with `wuwei plan run release-sweep --reason \"<tag, PR>\"`. Outside: editing the release PR.",
-   "acceptance": [
-    "given the release-please PR open after the sweep merges, when the shepherd merges it with gh pr merge, then the day report lists it as merged through WUWEI's check and the tag v4.0.0 or v3.0.2 exists"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true,
-   "kind": "run",
-   "reason": "release-please PR #1143 (4.0.0) merged as 8c1939e at 2026-10-18 after the owner's breaking: Proceed on #1142 and merge authorization; carries #1134-#1139 and #1142. Still lacks: the push-door items (scratch-remotes, push-refspecs, gh-args) and status-perf, which ride the next cut."
-  },
-  {
    "id": "session-context-cap",
    "title": "fix(hook): the SessionStart context fits Claude Code's 10,000-character additionalContext cap, so the planner reads its charter",
    "goal": "G-1",
@@ -1259,6 +1234,31 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "release-sweep",
+   "title": "chore(release): merge the release-please PR that carries the push-door items and the bug sweep",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "G-2 asks for the sweep in a release; this is the cut.",
+   "promise": "A run, not a change. release.yml opens or updates the release-please PR on each push to main; when the items named in after have merged, the shepherd merges that PR through `gh pr merge` so the merge door reads it (evidence reads a release-please PR as generated; #1128 and #1110 went outside the door, which the report flags). Version: 4.0.0 if any commit in it carries `!` (this repository has marked each door that refuses more as `!`, so push-refspecs and exception-shape likely do), else 3.0.2 (fix, perf, docs only). Record the tag with `wuwei plan run release-sweep --reason \"<tag, PR>\"`. Outside: editing the release PR.",
+   "acceptance": [
+    "given the release-please PR open after the sweep merges, when the shepherd merges it with gh pr merge, then the day report lists it as merged through WUWEI's check and the tag v4.0.0 or v3.0.2 exists"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "kind": "run",
+   "reason": "release PR #1147 merged as c7e0cd1 at 4.1.0 (Release-As from #1154, owner confirmed); carries #1140, #1141, #1144, #1145, #1148, #1150, #1153, #1154"
   },
   {
    "id": "verdict-symlink",
