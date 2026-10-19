@@ -13,8 +13,8 @@ x effort.
 ## Technical Context
 
 Python 3.11 stdlib. Tests in `tests/test_models.py`, plus the payload corpus in
-`tests/test_hook.py`. Runtime budget 3,400 lines; main is at 2,986 (`wc -l cli/wuwei/*.py` at
-3d2eb29).
+`tests/test_hook.py`. Runtime budget 3,400 lines; main is at 3,026 (`wc -l cli/wuwei/*.py` at
+c7e0cd1, the merged main).
 
 ## Constitution Check
 
@@ -22,7 +22,7 @@ Python 3.11 stdlib. Tests in `tests/test_models.py`, plus the payload corpus in
 - III. An auditor: no new door and no refusal. The note is `additionalContext`; the route corpus
   shows no Bash verdict moves and no Agent launch gets a permission decision.
 - V. Test first: 24 of the new tests ran red on main's code before the change.
-- VI. Budgets: the sixth key is the one constitution VI names; runtime at 3,045.
+- VI. Budgets: the sixth key is the one constitution VI names; runtime at 3,086.
 
 ## Design
 
@@ -57,15 +57,15 @@ Python 3.11 stdlib. Tests in `tests/test_models.py`, plus the payload corpus in
 
 ## Lines
 
-`git diff --numstat 3d2eb29 -- cli/wuwei/` at the head: agents.py +9 -3, hook.py +39 -4,
-report.py +14 -3, ws.py +9 -4, setup.py +2 -0, __main__.py +1 -1, upgrade.py +1 -1. Runtime 2,986
-to 3,045 (+59) by `wc -l cli/wuwei/*.py`. Fix round 1 dropped the unread `effort` on
+`git diff --numstat c7e0cd1 -- cli/wuwei/` at the merge: agents.py +9 -3, hook.py +40 -4,
+report.py +14 -3, ws.py +9 -4, setup.py +2 -0, __main__.py +1 -1, upgrade.py +1 -1. Runtime 3,026
+to 3,086 (+60) by `wc -l cli/wuwei/*.py`. Fix round 1 dropped the unread `effort` on
 `seat.stopped` (1 line); the `set_config` parse of `models` stays, since reference.md and the
 posted announcement name `wuwei config models`.
 The item's budget was 40 (estimate 27). The overrun is the advice: `asked` and `advise` take 30
 lines with their blank lines (`awk` from `def asked` to `def closed` in hook.py), where the
 estimate put 6. The tier lookup, the cached raise, the owner rows, the allowed settings, the two
-variables, the floor and the note each take a line or two. Headroom after this item: 355 lines.
+variables, the floor and the note each take a line or two. Headroom after this item: 314 lines.
 
 ## Guard testing (AGENTS.md)
 

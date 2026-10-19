@@ -149,8 +149,8 @@ Acceptance 5 (second half) and 6.
 - FR-005: `setup.doctor` names the two environment variables when set, in `note` rows that leave
   the exit code alone.
 - FR-006: `report.learning` prints the seat x model x effort lines and the unrecorded count.
-- FR-007: runtime stays at 3,400 or fewer. The item's budget was 40 lines; it lands at 59 (plan.md,
-  Lines), recorded for the planner.
+- FR-007: runtime stays at 3,400 or fewer. The item's budget was 40 lines; it lands at 60, runtime
+  3,086 (plan.md, Lines), recorded for the planner.
 
 ## Assumptions
 
