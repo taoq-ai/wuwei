@@ -1690,3 +1690,12 @@ def test_an_edit_under_the_projects_folder_is_refused(root, tool, key, path):
                                         ('Write', '/repo/.claude/wuwei/cli/wuwei/hook.py')])
 def test_reading_a_transcript_or_editing_beside_it_passes(root, tool, path):
     assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': path}, 'cwd': '/repo'}) is None
+
+
+@pytest.mark.parametrize('wrapper', ['env A=1', 'nice -n 1', 'timeout 5', 'sudo', 'stdbuf -o0'])
+@pytest.mark.parametrize('target, word', [('~/.claude/projects', 'transcripts'), ('.wuwei/ledger', 'ledger'), ('.wuwei/cache', 'cache')])
+def test_find_with_a_delete_after_a_wrapper_is_refused(root, repo, wrapper, target, word):
+    """The write probe's hole class at the head (39 of 1,527 under real bash): a wrapper hid find, for the ledger at main too."""
+    for action in ('-delete', '-exec rm {} +'):
+        assert word in guards.pre_tool(root, bash(f'{wrapper} find {target} {action}'))['reason']
+    assert guards.pre_tool(root, bash(f'{wrapper} find . -name x')) is None
