@@ -173,30 +173,6 @@
    "approved": false
   },
   {
-   "id": "session-context-cap",
-   "title": "fix(hook): the SessionStart context fits Claude Code's 10,000-character additionalContext cap, so the planner reads its charter",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 14.5,
-   "why": "models-table builder measured hook.session_start at 12,695 characters on main and 16,168 with #1138; Claude Code caps additionalContext at 10,000 and shows a file path plus a 2,000-character preview beyond it (hooks.md, read 2026-10-18). This session saw it: its SessionStart output was saved to a file (14.9KB) and the planner had to read it by hand.",
-   "promise": "hook.session_start sends at most 10,000 characters: the charters it injects (_way.md, _common.md, planner.md) are cut to what the planner needs at start, or replaced by a short pointer that names the charter files to read, with the board kept. A charter fitness test fails when the SessionStart context exceeds 10,000 characters for an empty workspace and for a workspace with a long board. Files: cli/wuwei/hook.py, tests/test_charters.py or tests/test_hook.py, the vendored copy, and charter text if trimmed. Runtime lines: estimate +3, budget 6. Order: after models-table, which grows planner.md. Rollback: revert the commit. Assumptions: the 10,000 cap is the harness's; overturned if a live SessionStart shows the full text inline.",
-   "acceptance": [
-    "given an empty workspace at the head, when hook.session_start runs, then its additionalContext is at most 10,000 characters and still names the WUWEI CLI path and the planner's charter",
-    "given a workspace with 40 open board items, when hook.session_start runs, then the context stays under 10,000 characters and says how many items were left out"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "verdict-at-head",
    "title": "fix(evidence): gate_gaps reads a verdict at the PR head above one attested later at an older or unrelated head",
    "goal": "G-2",
@@ -1359,6 +1335,31 @@
    "added": "2026-10-18",
    "approved": false,
    "reason": "merged as taoq-ai/wuwei#1125"
+  },
+  {
+   "id": "session-context-cap",
+   "title": "fix(hook): the SessionStart context fits Claude Code's 10,000-character additionalContext cap, so the planner reads its charter",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 14.5,
+   "why": "models-table builder measured hook.session_start at 12,695 characters on main and 16,168 with #1138; Claude Code caps additionalContext at 10,000 and shows a file path plus a 2,000-character preview beyond it (hooks.md, read 2026-10-18). This session saw it: its SessionStart output was saved to a file (14.9KB) and the planner had to read it by hand.",
+   "promise": "hook.session_start sends at most 10,000 characters: the charters it injects (_way.md, _common.md, planner.md) are cut to what the planner needs at start, or replaced by a short pointer that names the charter files to read, with the board kept. A charter fitness test fails when the SessionStart context exceeds 10,000 characters for an empty workspace and for a workspace with a long board. Files: cli/wuwei/hook.py, tests/test_charters.py or tests/test_hook.py, the vendored copy, and charter text if trimmed. Runtime lines: estimate +3, budget 6. Order: after models-table, which grows planner.md. Rollback: revert the commit. Assumptions: the 10,000 cap is the harness's; overturned if a live SessionStart shows the full text inline.",
+   "acceptance": [
+    "given an empty workspace at the head, when hook.session_start runs, then its additionalContext is at most 10,000 characters and still names the WUWEI CLI path and the planner's charter",
+    "given a workspace with 40 open board items, when hook.session_start runs, then the context stays under 10,000 characters and says how many items were left out"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1149 after goal, arch, security at 3fab3cb and quality at 8bd61d2 (redesign after two fix rounds), CI green, owner review approved at 8bd61d2"
   },
   {
    "id": "vendored-drift",
