@@ -241,11 +241,11 @@ def verdicts(root, item_id, ref=''):
         changed = hashlib.sha256(body).hexdigest() != data.get('sha256')
         if changed or data.get('imported'):  # a replaced finding still holds as recorded (#1039)
             if not changed or data.get('verdict') not in (None, 'PASS'):
-                found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
+                found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head'], 'path': data['path']})
             continue
         parsed = parse(body.decode('utf-8', 'replace'))
         if not parsed['errors']:
-            found.append(parsed)
+            found.append({**parsed, 'path': data['path']})
     return found
 
 
@@ -289,8 +289,11 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
     latest, last = {}, None
     for found in verdicts(root, item_id, ref):
         prior = latest.get(found['gate'])
-        if prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]:
-            continue  # at one head, a later pass does not outvote a finding
+        held = prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]
+        named = prior and prior['verdict'] == 'FIX' and any(  # <item>/<file> of the newest FIX, never an ESCALATE (#1162)
+            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ()))
+        if held and found['verdict'] == 'PASS' and not named:
+            continue  # at one head, a later pass does not outvote a finding unless it names the FIX it closes
         if gh.ancestor(repo, found['head'], head):
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
