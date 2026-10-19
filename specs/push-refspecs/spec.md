@@ -114,8 +114,8 @@ recursion, `core.hooksPath`) are item push-git-runs.
   --git-dir --git-common-dir` gives the git directories, whose root files (each worktree's `HEAD`,
   `ORIG_HEAD`, a one-level name) the guard reads when they start with `ref: `. The shared
   directory's files come first and this worktree's last, so HEAD is this worktree's own. The
-  current branch is read once too. 15,000 words with 15,000 tags behind them read in 0.25 s, where
-  round 1 took 77 s; 15,000 `:` words read in 0.12 s, where main takes 61 s. An empty or failed
+  current branch is read once too. 15,000 words with 15,000 tags behind them read in 0.28 s, where
+  round 1 took 74 s; 15,000 `:` words read in 0.11 s, where main takes 61 s. An empty or failed
   read adds no candidate and the text reading stands, never weaker than main's.
 - Q: Which end marker ends the options? A: only the first `--` or `--end-of-options` that no option
   takes as its value. A later one is a refspec: with `refs/heads/--end-of-options` a symbolic ref to

@@ -38,8 +38,8 @@
    `git rev-parse --verify --quiet --symbolic-full-name --end-of-options <word>` prints at the
    push's directory, through the guard's `_git`; an empty answer adds nothing and the text reading
    stands.
-7. Round 2 (gates at 9cb834a; the lead's design): `_sources(cwd)` reads the refs once per push,
-   only when a refspec has no colon. One `for-each-ref` gives each symbolic ref and its final
+7. Round 2 (gates at 9cb834a; the lead's design): `_sources(cwd)` reads the refs once per push.
+   One `for-each-ref` gives each symbolic ref and its final
    target; one `rev-parse --git-dir --git-common-dir` gives the directories whose root files
    starting with `ref: ` are root refs (the shared ones, `main-worktree/<name>`,
    `worktrees/<id>/<name>`, then this worktree's own, so HEAD is its own). A source alone adds

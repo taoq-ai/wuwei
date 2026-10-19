@@ -168,7 +168,7 @@ def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a 
     deleting = any('delete'.startswith(n) for n in named)  # -d, -vd, --del
     tags = [n for n in named if n[1:] and ('tags'.startswith(n) or 'no-tags'.startswith(n))]  # the last wins; -n is --dry-run
     refspecs = operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD'])  # --tags alone sends tags alone
-    refs, head = _sources(cwd) if any(':' not in r for r in refspecs) else {}, current_branch(cwd)  # one read per push
+    refs, head = _sources(cwd), current_branch(cwd)  # one read per push, whatever the number of refspecs
     targets = ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches
     for ref in refspecs:
         source, colon, destination = ref.rpartition(':')
