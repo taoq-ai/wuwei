@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "semver-policy",
-   "title": "docs(charters): a breaking change is an incompatible change to WUWEI's declared public API, per SemVer; a fix of a documented rule is a patch",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 20,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 26.5,
-   "why": "Owner, 2026-10-19: \"Yes, fix the concept of breaking change; use semver policy\". Arch rule 7 (charters/sentinel-arch.md:31) calls a change breaking when an existing client would behave differently, and says yes when unsure, so bug fixes that close guard bypasses or report more gaps were released as majors: 1.0.0 to 4.0.0 in four days, 5.0.0 pending (release PR #1147). SemVer 2.0.0 bumps the major only for an incompatible change to the declared public API; ESLint's published policy treats a bug fix that reports more errors as a minor.",
-   "promise": "One definition, stated once and pointed to elsewhere. (1) docs/site/concepts/evidence.md (Breaking changes) declares WUWEI's public API: CLI commands, flags, exit codes and output documented for scripts; config keys and defaults; ledger, state and verdict file formats; the PR body lines and owner question shapes seats and owners write; the hook input and output contract. (2) Classification: major is a removal, rename or changed meaning of a public API element, a newly required input, a changed exit code or format; minor is a new capability (feat:); patch is a fix of behaviour that contradicted the documented API at the base, refusing or reporting more included (fix:), plus docs and internals. When unsure, ESCALATE with Breaking: yes. (3) charters/sentinel-arch.md rule 7 says the same within the agent word ceiling (agents/sentinel-arch.md is at the 2,250-word ceiling), drops \"when unsure, say yes\" for \"when unsure, ESCALATE\", and Breaking: yes means a major only. (4) charters/builder.md rule 6 uses `!` and `BREAKING CHANGE:` for a major only. (5) docs/design.md and docs/site/reference.md match. (6) The squash commit of this PR carries `Release-As: 4.1.0` so the pending release (#1147) is cut as 4.1.0, the classification #1148 and #1150 get under this policy. No runtime change. Agents rebuilt, `.claude/` re-vendored.",
-   "acceptance": [
-    "given a gate brief for a fix that closes a guard bypass of a documented door, when the arch seat follows rule 7, then it writes Breaking: no and names the release as a patch",
-    "given a change that renames a CLI flag or changes an exit code, when the arch seat follows rule 7, then it writes Breaking: yes",
-    "given the merged policy, when release-please runs, then its release PR proposes 4.1.0",
-    "given agents/*.md after `bin/wuwei agents build`, then every file is at or under AGENT_WORDS"
-   ],
-   "status": "open",
-   "added": "2026-10-19",
-   "approved": false
-  },
-  {
    "id": "sync-paths",
    "title": "fix(sync): a state pull writes only inside .wuwei and a push reads no file through a link",
    "goal": "G-2",
@@ -964,6 +938,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "needs a machine with the Codex CLI; none in this cloud container (which codex: not found). Owner can run it locally."
+  },
+  {
+   "id": "semver-policy",
+   "title": "docs(charters): a breaking change is an incompatible change to WUWEI's declared public API, per SemVer; a fix of a documented rule is a patch",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 20,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 26.5,
+   "why": "Owner, 2026-10-19: \"Yes, fix the concept of breaking change; use semver policy\". Arch rule 7 (charters/sentinel-arch.md:31) calls a change breaking when an existing client would behave differently, and says yes when unsure, so bug fixes that close guard bypasses or report more gaps were released as majors: 1.0.0 to 4.0.0 in four days, 5.0.0 pending (release PR #1147). SemVer 2.0.0 bumps the major only for an incompatible change to the declared public API; ESLint's published policy treats a bug fix that reports more errors as a minor.",
+   "promise": "One definition, stated once and pointed to elsewhere. (1) docs/site/concepts/evidence.md (Breaking changes) declares WUWEI's public API: CLI commands, flags, exit codes and output documented for scripts; config keys and defaults; ledger, state and verdict file formats; the PR body lines and owner question shapes seats and owners write; the hook input and output contract. (2) Classification: major is a removal, rename or changed meaning of a public API element, a newly required input, a changed exit code or format; minor is a new capability (feat:); patch is a fix of behaviour that contradicted the documented API at the base, refusing or reporting more included (fix:), plus docs and internals. When unsure, ESCALATE with Breaking: yes. (3) charters/sentinel-arch.md rule 7 says the same within the agent word ceiling (agents/sentinel-arch.md is at the 2,250-word ceiling), drops \"when unsure, say yes\" for \"when unsure, ESCALATE\", and Breaking: yes means a major only. (4) charters/builder.md rule 6 uses `!` and `BREAKING CHANGE:` for a major only. (5) docs/design.md and docs/site/reference.md match. (6) The squash commit of this PR carries `Release-As: 4.1.0` so the pending release (#1147) is cut as 4.1.0, the classification #1148 and #1150 get under this policy. No runtime change. Agents rebuilt, `.claude/` re-vendored.",
+   "acceptance": [
+    "given a gate brief for a fix that closes a guard bypass of a documented door, when the arch seat follows rule 7, then it writes Breaking: no and names the release as a patch",
+    "given a change that renames a CLI flag or changes an exit code, when the arch seat follows rule 7, then it writes Breaking: yes",
+    "given the merged policy, when release-please runs, then its release PR proposes 4.1.0",
+    "given agents/*.md after `bin/wuwei agents build`, then every file is at or under AGENT_WORDS"
+   ],
+   "status": "done",
+   "added": "2026-10-19",
+   "approved": false,
+   "reason": "merged as #1154 (b5822fe) after four gates passed (arch re-read at 32cee4b), CI green, owner breaking: Proceed, release as 4.1.0; squash commit carries Release-As: 4.1.0"
   },
   {
    "id": "1068",
