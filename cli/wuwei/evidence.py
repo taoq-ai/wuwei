@@ -374,9 +374,17 @@ def ci_gaps(rollup, review=()):
     return found + ([gap('CI failing: ' + ', '.join(failed))] if failed else [gap('CI running', actionable=False)] if running else [])
 
 
-def gaps(root, repo, number):
+PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
+
+
+def gaps(root, repo, number, listed=None):
+    """What a PR lacks. Given its open-list summary, the host reads (the PR, its spec artifacts, its threads) come from the
+    cache while its head and update time hold and its CI had settled, so a warm board reads only what moved (#1161)."""
     try:
-        pr = gh.pr(repo, number)
+        name, sig = f'pr-{repo.replace("/", "__")}-{number}', listed and [listed.get('headRefOid'), listed.get('updatedAt')]
+        hit = (sig and ws.cache_get(root, name, PR_TTL)) or {}
+        hit = hit if hit.get('sig') == sig else {}
+        pr, spec = hit.get('pr') or gh.pr(repo, number), hit.get('spec', {})
         item, ref, generated = item_for(root, pr, repo), f'{repo}#{number}', release(repo, pr)
         found = [] if item else [gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
         tier = (item or {}).get('tier', 'standard')
@@ -386,7 +394,10 @@ def gaps(root, repo, number):
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
-            found += [dict(g, kind='safety') if tier == 'full' else g for g in spec_gaps(repo, spec_engine(root, repo), tier, files, head)]
+            key = f'{spec_engine(root, repo)} {tier}'
+            if key not in spec:
+                spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
+            found += [dict(g, kind='safety') if tier == 'full' else g for g in spec[key]]
         code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
@@ -407,7 +418,12 @@ def gaps(root, repo, number):
             ci, why = True, f' (Actions host unreadable: {exc})'
         found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
-        if threads := gh.unanswered_threads(repo, number, author):
+        threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, author)
+        if sig and not hit and rollup and all(c.get('status', 'COMPLETED') == 'COMPLETED' and c.get('state') not in (
+                'PENDING', 'EXPECTED') for c in rollup):  # written on a miss only, so its age is the read's; CI settled
+            ws.cache_put(root, name, {'sig': sig, 'pr': pr, 'threads': threads, 'spec': {  # a host error reads as missing
+                k: v for k, v in spec.items() if not any(' missing: ' in g['text'] for g in v)}})
+        if threads:
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
         if not pr.get('reviewRequests') and all((r.get('author') or {}).get('login') == author for r in pr.get('reviews') or ()):
             found.append(gap('no reviewer requested'))

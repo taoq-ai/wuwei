@@ -44,7 +44,7 @@ class FakeGh:
                 'state': 'open' if pr['state'] == 'OPEN' else 'closed', 'draft': pr['isDraft'],
                 'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName']},
                 'user': {'login': pr['author']['login']}, 'html_url': pr['url'], 'merged_at': pr['mergedAt'],
-                'created_at': pr['createdAt'], 'requested_reviewers': pr['reviewRequests'], 'requested_teams': []}
+                'created_at': pr['createdAt'], 'updated_at': pr.get('updatedAt'), 'requested_reviewers': pr['reviewRequests'], 'requested_teams': []}
 
     def pr(self, number):
         if number not in self.prs:
