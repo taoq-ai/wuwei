@@ -1710,3 +1710,50 @@ def test_a_refspec_reaching_the_default_branch_by_git_rules_meets_the_push_door(
                                              ('git push --mi origin', 'force push refused: history on a shared branch')])
 def test_a_refspec_refusal_keeps_the_push_door_text(root, fake, repo, command, reason):
     assert guards.pre_tool(root, bash(command))['reason'].startswith(reason), command
+
+
+VALUES_FROM_MAIN = ['git push --repo --tags origin', 'git push -o --tags origin', 'git push --push-option --tags origin',
+                    'git push -vo --ta origin', 'git push --rep --tags origin', 'git push origin -o --tags', 'git push origin -o ci.skip',
+                    'git push -o x origin', 'git push --repo x origin', 'git push origin --repo origin', 'git push -qo x origin',
+                    'git push --tags --no-tags origin', 'git push --tags origin --no-ta']
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('command, moves', [(c, True) for c in VALUES_FROM_MAIN] + [
+    ('git push --repo=x --tags origin', False), ('git push -o --all origin feature', False), ('git push --repo --mirror origin feature', False)])
+def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead, monkeypatch, command, moves):
+    """Gates push-refspecs at b16d799: -o, -vo and --repo (any unique prefix) take the next word as their value, and the last of
+    --tags and --no-tags wins. From the main clone on main with its upstream set, real git pushes main; the door refuses it."""
+    run = lambda *a, at='c': subprocess.run(['git', *a], cwd=ahead / at, check=True, capture_output=True)  # noqa: E731
+    run('config', 'receive.advertisePushOptions', 'true', at='s.git')
+    run('switch', '-q', 'main')
+    run('fetch', '-q', 'origin')
+    run('branch', '-q', '--set-upstream-to=origin/main', 'main')
+    before = main_at(ahead / 's.git')
+    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    assert (main_at(ahead / 's.git') != before) == moves, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.parametrize('setup, at, command', [
+    ('git update-ref refs/heads/-x HEAD', 'c', 'git push origin -- -x:main'),
+    ('git update-ref refs/heads/-x HEAD', 'c', 'git push -- origin -x:main'),
+    ('git update-ref refs/heads/-x HEAD', 'c', 'git push origin -- -x:refs/heads/main'),
+    ('git update-ref refs/heads/-x HEAD', 'c', 'git push origin --end-of-options -x:main'),
+    ('git switch -q main && git worktree add -q ../w feature', 'w', 'git push origin main-worktree/HEAD'),
+    ('git worktree add -q ../w main', 'c', 'git push origin worktrees/w/HEAD'),
+    ('git symbolic-ref refs/heads/x refs/heads/main', 'c', 'git push origin x'),
+    ('git symbolic-ref refs/heads/x refs/heads/main', 'c', 'git push origin heads/x'),
+    ('git symbolic-ref refs/tags/t refs/heads/main', 'c', 'git push origin t'),
+    ('git symbolic-ref refs/heads/-x refs/heads/main', 'c', 'git push origin -- -x')])
+def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeypatch, setup, at, command):
+    """Gates push-refspecs at b16d799: every word after -- is a refspec, and a source alone takes the destination its ref resolves
+    to (another worktree's HEAD, a symbolic ref). Real git moves main; the door refuses it."""
+    subprocess.run(['bash', '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    before = main_at(ahead / 's.git')
+    subprocess.run(['bash', '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
+    assert main_at(ahead / 's.git') != before, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    assert door_reached(guards.bash(root, command, str(ahead / at), 's1')) == 'push', command

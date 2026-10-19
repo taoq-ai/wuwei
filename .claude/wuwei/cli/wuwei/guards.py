@@ -49,6 +49,7 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
+PUSH_VALUED = {'o', *(n[:i] for n in ('push-option', 'repo', 'receive-pack', 'exec', 'recurse-submodules') for i in range(1, len(n) + 1))}
 TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -143,18 +144,21 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def git_push(root, args, cwd):  # git 2.43 (remote.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
-    longs = [a[2:] for a in args if re.fullmatch(r'--[a-z]+', a)]  # parse-options takes any unique prefix: --mirr is --mirror
+def git_push(root, args, cwd):  # git 2.43 (refspec.c parse_refspec): the last colon splits a refspec; main, heads/main, refs/heads/main name main
+    flags = _flags(['--' if a == '--end-of-options' else a for a in args], PUSH_VALUED)  # -o x, -vo x, --rep x: x is a value; after --, a refspec
+    operands, longs = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes any unique prefix: --mirr is --mirror
     if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in longs):
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
-    positional = [a for a in args if not a.startswith('-')]
     deleting = any(a in ('--delete', '-d') for a in args)
-    if any(ref.startswith('+') for ref in positional[1:]):
+    if any(ref.startswith('+') for ref in operands[1:]):
         return deny('force push refused (a + refspec): push a new commit instead.')
-    targets = ['refs/heads/*'] * any('all'.startswith(n) or 'branches'.startswith(n) for n in longs)  # --all, --branches: every branch
-    for ref in positional[1:] or ['HEAD'] * (not any('tags'.startswith(n) for n in longs)):  # --tags alone sends tags alone
+    tags = [n for n in longs if 'tags'.startswith(n) or 'no-tags'.startswith(n)]  # the last of --tags and --no-tags wins
+    targets = ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in longs) else []  # --all, --branches: every branch
+    for ref in operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD']):  # --tags alone sends tags alone
         source, colon, destination = ref.rpartition(':')
         deleting = deleting or bool(colon and not source and destination)
+        if not colon:  # a source alone takes the name its ref resolves to: main-worktree/HEAD, a symbolic ref
+            targets.append(_git(cwd, 'rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', ref))
         if destination in ('', 'HEAD', '@'):  # git reads @ as HEAD
             destination = '*' if ref == ':' else current_branch(cwd)  # : pushes each branch both sides hold
         targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole

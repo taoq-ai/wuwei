@@ -269,6 +269,10 @@
     {"command": "git push origin feature", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
     {"command": "git push origin feature:feature", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
     {"command": "git push --tags origin", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
-    {"command": "git push origin 'refs/heads/f/*:refs/heads/f/*'", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"}
+    {"command": "git push origin 'refs/heads/f/*:refs/heads/f/*'", "source": "item push-refspecs acceptance 3 (cannot reach main)", "verdict": "pass"},
+    {"command": "git push origin -- -x:main", "source": "gates push-refspecs at b16d799 (quality: a refspec after -- that starts with a dash; real git moved main)", "verdict": "push"},
+    {"command": "git push origin --end-of-options -x:main", "source": "item push-refspecs (--end-of-options ends the options as -- does; real git moved main)", "verdict": "push"},
+    {"command": "git push --repo --mirror origin feature", "source": "gates push-refspecs at b16d799 (--repo takes --mirror as its value; real git pushed feature only)", "verdict": "pass"},
+    {"command": "git push -o --all origin feature", "source": "gates push-refspecs at b16d799 (-o takes --all as its value; real git pushed feature only)", "verdict": "pass"}
   ]
 }
