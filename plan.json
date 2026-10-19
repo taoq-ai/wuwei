@@ -467,30 +467,6 @@
    "approved": true
   },
   {
-   "id": "verdict-dirfd",
-   "title": "fix(hook): the verdict copy-in walks .wuwei/verdicts with directory file descriptors, so a parent link swapped in after the check is never followed, and a loop at verdicts fails closed",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 8.0,
-   "why": "security gate on #1137 at 200f361: a parent link swapped between the lstat walk and os.replace still lands the write in the ledger (54 and 63 of 2000 copy-ins at the head with a swap loop, 1011 of 2000 at main); on 3.11 and 3.12 a loop at .wuwei/verdicts raises RuntimeError at hook.py:146-148 outside the except, so SubagentStop fails open with no verdict.missing row",
-   "promise": "The copy-in opens each component under the workspace root with O_DIRECTORY|O_NOFOLLOW, creates the temp with O_EXCL|O_NOFOLLOW relative to the final directory fd, and renames with src_dir_fd and dst_dir_fd, so no component swapped after the check is followed. A RuntimeError from resolving a looping path is caught and refused like an OSError, recording verdict.missing. Covers sync.py:82 if it writes under a folder a seat can write. Files: cli/wuwei/hook.py, cli/wuwei/ws.py, tests/test_hook.py, the vendored copy. Runtime lines: estimate +7, budget 10. Order: after verdict-symlink merges. Rollback: revert the commit.",
-   "acceptance": [
-    "given a background process swapping a parent of the copy path between a directory and a link to .wuwei/ledger, when 2000 copy-ins run at the head, then no ledger file changes",
-    "given .wuwei/verdicts as a link loop on Python 3.11, when a seat hands back a worktree verdict, then the hand-back is refused and verdict.missing is recorded"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "timing-tests",
    "title": "test: the wall-clock tests bound work done, not seconds, so a loaded runner does not fail them",
    "goal": "G-2",
@@ -2119,6 +2095,31 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "verdict-dirfd",
+   "title": "fix(hook): the verdict copy-in walks .wuwei/verdicts with directory file descriptors, so a parent link swapped in after the check is never followed, and a loop at verdicts fails closed",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 8.0,
+   "why": "security gate on #1137 at 200f361: a parent link swapped between the lstat walk and os.replace still lands the write in the ledger (54 and 63 of 2000 copy-ins at the head with a swap loop, 1011 of 2000 at main); on 3.11 and 3.12 a loop at .wuwei/verdicts raises RuntimeError at hook.py:146-148 outside the except, so SubagentStop fails open with no verdict.missing row",
+   "promise": "The copy-in opens each component under the workspace root with O_DIRECTORY|O_NOFOLLOW, creates the temp with O_EXCL|O_NOFOLLOW relative to the final directory fd, and renames with src_dir_fd and dst_dir_fd, so no component swapped after the check is followed. A RuntimeError from resolving a looping path is caught and refused like an OSError, recording verdict.missing. Covers sync.py:82 if it writes under a folder a seat can write. Files: cli/wuwei/hook.py, cli/wuwei/ws.py, tests/test_hook.py, the vendored copy. Runtime lines: estimate +7, budget 10. Order: after verdict-symlink merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given a background process swapping a parent of the copy path between a directory and a link to .wuwei/ledger, when 2000 copy-ins run at the head, then no ledger file changes",
+    "given .wuwei/verdicts as a link loop on Python 3.11, when a seat hands back a worktree verdict, then the hand-back is refused and verdict.missing is recorded"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1151 after four gates passed at c6626a5 (arch: Breaking no, patch), owner review approved, suite on the merge with main 7fd8f4b 2091 passed"
   },
   {
    "id": "close-1098",
