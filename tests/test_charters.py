@@ -342,3 +342,11 @@ def test_the_session_start_context_holds_the_cap_when_the_board_has_no_item_line
     rules = [(PLUGIN / 'charters' / '_way.md').read_text(encoding='utf-8').strip()]
     rules += [common.split(heading, 1)[1].split('\n## ', 1)[0].strip() for heading in ('## Decisions', '## Done')]
     assert all(rule in text[:board_at] for rule in rules), 'the rules come whole before the untrusted board text'
+
+
+def test_a_gate_puts_the_findings_its_fix_closed_under_probes():
+    for path in (PLUGIN / 'charters' / '_gate.md', PLUGIN / 'agents' / 'sentinel-quality.md'):
+        text = ' '.join(path.read_text(encoding='utf-8').split())
+        assert 'Closed findings go under ## Probes' in text, path
+        assert '`closed: <finding> at <sha7>`' in text and '## Findings holds only open findings, or none' in text, path
+        assert 'refuses a wrong shape, naming the next free file: write the corrected verdict there' in text, path
