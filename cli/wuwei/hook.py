@@ -276,7 +276,8 @@ def post_tool(root, payload):
                 'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
         if transcript_rows(kept['path'], kept['id'] or '\0') is None:
             return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
-        ws.cache_put(root, f"answer-{re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))}--{re.sub(r'[^\w-]', '', kept['id'])}", kept)
+        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), kept['id']))  # no \ in an f-string on 3.11
+        ws.cache_put(root, 'answer-' + name, kept)
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         if named := sorted(evidence.refs(json.dumps(data))):
