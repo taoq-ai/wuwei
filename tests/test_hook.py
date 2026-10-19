@@ -769,6 +769,57 @@ def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
     assert str((root / ws.DIR / 'verdicts').resolve()) in reason
 
 
+def test_a_yes_to_a_goal_met_question_records_the_goal_as_met(root):
+    (root / ws.DIR / 'goals.md').write_text('## G-1\nOutcome: ship\n\n## G-2\nOutcome: no bug open past three days\n')
+    question = 'goal: G-2 met? 0 bugs open past three days; 3.0.2 carries the sweep.'
+    out = answer(root, question, 'Yes')
+    assert [row['data'] for row in ws.rows(root, 'ruling')] == [{'kind': 'goal.met', 'goal': 'G-2', 'outcome': 'no bug open past three days',
+                                                                  'approved': True, 'question': question, 'answer': 'Yes'}]
+    assert 'goal G-2 recorded as met' in out['hookSpecificOutput']['additionalContext']
+    from wuwei import report
+    assert 'Met goals: G-2.' in report.day(root)
+
+
+def goal_met_probe(root, monkeypatch):
+    """Generated: prefixes x ids x joins x tails x answers, each asked through guards.pre_tool and answered through
+    the hook. A question the guard refuses, or a ruling other than the one asked (goal id, yes or no), is a hole.
+    The shape the owner reads: "goal: G-n met?" at the start, then the evidence. The rows the hook writes are
+    captured as written, so the probe stays linear."""
+    import itertools
+    rows = []
+    monkeypatch.setattr(ws, 'record', lambda root, kind, data: rows.append((kind, data)))
+    prefixes = [('goal: ', True), ('Goal:', True), ('  GOAL:  ', True), ('goal: is ', False), ('goal: not ', False),
+                ('scope: goal: ', False), ('goal: G-1 and ', False), ('goal:\n', False)]
+    ids = [('G-2', 'G-2'), ('g-2', 'G-2'), ('G-23', 'G-23'), ('G-٢', None), ('G-2a', None), ('G2', None),
+           ('G-', None), ('the release goal', None)]
+    joins = [(' met?', True), (' Met?', True), (' met ?', False), (' met', False), (' is met?', False),
+             (' met? ', True), (' not met?', False), (' met.', False), (' metric?', False)]
+    tails = ['', ' 100 percent at 2026-10-20.', ' and G-3 met?', '\ngoal: G-3 met? yes', ' Close G-4 too?', ' <evidence>']
+    answers = [('Yes', True), ('yes, met', True), ('Accept', True), ('No', False), ('Not yet', False), ('', None)]
+    generated, recorded, holes = 0, 0, []
+    for (prefix, p_ok), (written, goal), (join, j_ok), tail, (reply, yes) in itertools.product(
+            prefixes, ids, joins, tails, answers):
+        question = prefix + written + join + tail
+        generated += 1
+        if guards.pre_tool(root, {'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [{'question': question}]}}):
+            holes.append(('refused', question))
+            continue
+        before = len(rows)
+        answer(root, question, reply)
+        got = [(data['goal'], data['approved'], data['question'], data['answer'])
+               for kind, data in rows[before:] if kind == 'ruling' and data.get('kind') == 'goal.met']
+        want = [(goal, yes, question, reply)] if p_ok and j_ok and goal and yes is not None else []
+        recorded += len(got)
+        if got != want:
+            holes.append((question, reply, got))
+    return generated, recorded, holes
+
+
+def test_every_goal_met_question_records_exactly_the_goal_and_answer_asked(root, monkeypatch):
+    generated, recorded, holes = goal_met_probe(root, monkeypatch)
+    assert generated > 10000 and recorded > 400 and holes == [], holes[:5]
+
+
 CLOSED = 'Previous findings at e418c1d: all closed.'
 
 

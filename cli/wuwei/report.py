@@ -6,7 +6,7 @@ import hashlib
 import statistics
 from pathlib import Path
 
-from wuwei import board, evidence, gh, plan, ws
+from wuwei import board, evidence, gh, plan, view, ws
 
 
 def _repos(root):
@@ -26,6 +26,7 @@ def day(root, date=None):
     out += ['## Plan', f'Plan passes: {len(passes)}. Checkpoints: {len(closes)}. '
             f'Done today: {len(done)}. Parked today: {len(parked)}.']
     out += [f'- parked {r["data"]["id"]}: {r["data"].get("reason", "")}' for r in parked]
+    out += [f'Met goals: {", ".join(view.goal_status(root)[1]) or "none"}.']
     out += since_checkpoint(root, date)
     out += ['', '## Board', board.text(board.compute(root), root), '', '## Merges']
     checked = {r['data'].get('pr') for r in ws.rows(root, 'merge.checked')}

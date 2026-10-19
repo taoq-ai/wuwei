@@ -69,9 +69,9 @@ there are several. Everything else you decide, record and show in the report.
 
 - An owner's `one-way:` answer becomes a short ADR (context, decision, consequences) in the
   repository's `docs/adr/`, through the item's PR.
-- An owner may accept a gap as an exception (`exception: owner/repo#n at <sha7>: <gap>`). WUWEI
-  records it and adds an item that closes it later; exceptions expire into work, never into
-  silence.
+- An owner may accept a gap, as `wuwei evidence` prints it
+  (`exception: owner/repo#n at <sha7>: <gap>`). WUWEI records it and adds an item that closes it;
+  exceptions expire into work, not silence.
 
 ## Model and effort
 
