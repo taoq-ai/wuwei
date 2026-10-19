@@ -44,8 +44,10 @@ tests/test_hook.py and tests/test_sync.py. Runtime cap 3,400 lines; main d7c4f43
 
 ## Lines
 
-ws.py +12 (the walk, the import, a two-line docstring), hook.py +4 (`free()` with its `try`), sync.py
-0: runtime 2,993 to 3,009. The item's budget is 10; see the spec's Assumptions.
+ws.py +11 (the walk, the import, an explicit default root; fix round 1 turned the two-line
+docstring into a def-line comment), hook.py +4 (`free()` with its `try`), sync.py +3 (the pull names
+the file it stopped at): runtime 2,993 to 3,011 at the code, 3,044 after merging main 5fe8347. The
+item's budget is 10; see the spec's Assumptions.
 
 ## Guard testing (AGENTS.md)
 

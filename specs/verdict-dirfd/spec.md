@@ -42,8 +42,9 @@ the `try`, so the hook failed open with `hook.error` and the seat was never told
 1. A legitimate setup links a folder below the walk's root, for example `.wuwei/verdicts` shared
    between clones. The hook copy-in already refused that at main (the `lstat` check). `sync.pull`
    did not: it now raises OSError at that file, the cloud SessionStart wrapper (`hook._sync`)
-   prints it and goes on, and later files in that pull are not written. `wuwei sync` catches
-   RuntimeError only, so it prints a traceback. A linked `.wuwei` itself still syncs, because the
+   prints it and goes on, and later files in that pull are not written. `wuwei sync` prints
+   `wuwei sync: <reason>` naming the file the pull was writing, exits 1 and skips the push (fix
+   round 1; it printed a traceback before). A linked `.wuwei` itself still syncs, because the
    pull's walk starts at `.wuwei`.
 2. A platform without `renameat`, `mkdirat`, `unlinkat` or `openat` raises NotImplementedError,
    which no `except` catches, so the hook would fail open. Linux and macOS support all four, and
@@ -117,9 +118,13 @@ The folder is listed once per `free()` call.
 - A pull that stops at a planted link is the right failure: the link means tampering, and the
   rest of the pull is retried at the next session. Overturned if the owner wants a pull to skip
   the one file and go on.
-- The runtime budget is +10 for the item. This change adds 16 (see plan.md Lines): the walk needs
-  a `mkdir` per folder the item's estimate did not count, and the `free()` fix adds 4. Overturned
-  if the planner holds the item to 10, in which case the `free()` fix splits out.
+- The runtime budget is +10 for the item. This change adds 18 (see plan.md Lines): the walk needs
+  a `mkdir` per folder the item's estimate did not count, the `free()` fix adds 4, and naming the
+  file a stopped pull was writing adds 3 (fix round 1, less 1 from the docstring). Overturned if
+  the planner holds the item to 10, in which case the `free()` fix splits out.
+- Under the SemVer policy (#1154), a pull that refuses a write through a planted link is a patch:
+  it refuses a write it used to make. The PR carries it as a release note, not a breaking change.
+  Overturned if the owner rules that a working linked setup is an outward contract.
 
 ## Rollback
 

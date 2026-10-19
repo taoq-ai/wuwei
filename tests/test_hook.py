@@ -939,7 +939,8 @@ def test_a_parent_swapped_for_a_ledger_link_inside_the_write_never_lands_it_in_t
     monkeypatch.undo()
     after = ledger_files(root)
     assert after.keys() == before.keys() and all(after[p].startswith(before[p]) for p in before)
-    assert (folder.with_name('moved') / copy.relative_to(folder)).read_bytes() == written.read_bytes()
+    moved = folder.with_name('moved') / copy.relative_to(folder)
+    assert moved.is_file() and moved.read_bytes() == written.read_bytes()  # the copy landed in the folder the walk opened
 
 
 def test_a_looping_verdicts_folder_refuses_the_handback_and_records_verdict_missing(root, tmp_path_factory):

@@ -25,3 +25,11 @@
 - [x] T015 Route corpus differential at main and the head, with its sha256
 - [x] T016 Race probe at main and the head, both levels, 2000 copy-ins, on 3.13 and 3.11
 - [x] T017 Path and link probe at main and the head, on 3.13 and 3.11
+
+## Phase 4: Fix round 1 (security, quality and arch at f1c2f04)
+
+- [x] T018 A test swaps the walked folder for a ledger link at the first temporary name, killing each descriptor mutant of the unlink, create and rename (tests/test_hook.py)
+- [x] T019 `wuwei sync` catches OSError, and a pull stopped at a planted link names the file (cli/wuwei/__main__.py, cli/wuwei/sync.py, tests/test_sync.py)
+- [x] T020 `free()` carries "beside it (the next free number)", so the no-free-name text does not contradict it (cli/wuwei/hook.py)
+- [x] T021 The docstring becomes a def-line comment and the default root an explicit `if` (cli/wuwei/ws.py)
+- [x] T022 Merge origin/main 5fe8347; mutants, route differential and full suite at the merged head
