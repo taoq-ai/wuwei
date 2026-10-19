@@ -537,7 +537,9 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": true
+   "approved": true,
+   "kind": "run",
+   "reason": "docs read 2026-10-19 (code.claude.com sandboxing, sub-agents, hooks, permission-modes, env-vars, cloud pages): sandbox.filesystem denyWrite is OS-level (bubblewrap/Seatbelt) for Bash and its child processes, so a seat-written script cannot write a denied path; it is session-wide, not per agent (subagents share the parent's sandbox); hooks run outside the sandbox, so the hook can still write the ledger. Write/Edit tools need Edit() deny rules. GH_TOKEN withheld by sandbox.credentials.envVars deny (SUBPROCESS_ENV_SCRUB leaves GH_TOKEN). Seats can turn the sandbox off unless managed settings lock it. Trial not run: this cloud container has neither bwrap nor socat, and cloud-session sandbox support is unconfirmed. Still lacks: a local trial run; the cost that wuwei CLI ledger writes from Bash (plan, andon, owe) would be denied too unless routed through the hook"
   },
   {
    "id": "exception-parser",
