@@ -317,6 +317,16 @@ def test_an_exception_naming_the_printed_gap_waives_that_gap_alone(root, fake):
     assert f'- exception: acme/app#42 at aaaaaaa: {OWNER} [waiting]' in report.day(root)
 
 
+def test_a_ruling_without_a_head_or_of_another_kind_waives_nothing_and_marks_after_waiting_fold(root, fake):
+    owned_pr(root, fake)
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'gap': SECURITY, 'approved': True})
+    ws.record(root, 'ruling', {'kind': 'breaking', 'pr': 'acme/app#42', 'head': HEAD[:7], 'gap': SECURITY, 'approved': True})
+    except_gap(root, 'gates missing at head aaaaaaa: [waiting]security')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY, OWNER]
+    except_gap(root, OWNER + ' [waiting]!')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [SECURITY]
+
+
 def test_an_exception_naming_its_gate_list_exactly_waives_that_gate_gap(root, fake):
     standard(root)
     fake.prs['42'] = make_pr(files=('infra/main.tf', 'src/app.py', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: x')
