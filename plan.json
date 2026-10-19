@@ -49,6 +49,30 @@
    "approved": false
   },
   {
+   "id": "ready-door-ref",
+   "title": "fix(guards): the ready door reads gates for the PR it turns ready, so a PASS for another PR of the item no longer counts there",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "Arch gate on verdict-at-head (#1152, arch-362e6d6.md): create_door passes ref='' (guards.py:268), so at the ready flip a PASS for another PR of the same item in the same repository still counts. The merge door still holds such a PR, so it is a process gap (a PR turns ready early), not a way to merge.",
+   "promise": "ready_door passes `owner/repo#n` to gate_gaps, so the ready flip and gh pr ready read gates for that PR alone; create stays repository-wide. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy. Runtime estimate +1, budget 2. After verdict-at-head. AGENTS.md Testing the guards: route differential with PASS forms naming this PR, another PR and another repository.",
+   "acceptance": [
+    "given a PASS for o/r#7 and none for o/r#5 of the same item, when `gh pr ready 5` or the REST ready route runs, then the ready door refuses with the gates missing",
+    "given a PASS for o/r#5 at its head, then the ready door passes as on main"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "push-refspecs",
    "title": "fix(guards): the push door reads each refspec's destination the way git does, so feature:heads/main, :, --all and globs meet it",
    "goal": "G-2",
