@@ -67,7 +67,7 @@
 | `No test: <reason>` | a change no test can hold |
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |
-| `BREAKING CHANGE: <what>` (and `!` in the title) | a change that breaks an outward contract |
+| `BREAKING CHANGE: <what>` (and `!` in the title) | a major only: an incompatible change to the public API, as [Breaking changes](concepts/evidence.md#breaking-changes) declares it; a stricter check is a `fix:` with release notes in the body |
 | `Announcement: <url>` | a breaking change: one http(s) URL alone on the line, without brackets, of a communication that already exists (a PR or issue comment, or a published release note or migration guide); a changelog entry written at release does not count |
 
 ## Verdict format

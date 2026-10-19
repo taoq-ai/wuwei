@@ -37,9 +37,10 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
 4. The repository's own conventions over general preference, its PR template included. No dead or
    commented-out code; errors handled where the caller can act on them.
 5. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
-6. A breaking change to an outward contract (CLI, API, config, events, schemas) is declared with a
-   `!` in the PR title and a `BREAKING CHANGE:` line, with migration notes. Prefer a compatible
-   path (a deprecation window, a new version beside the old) when one exists.
+6. Only a major (an incompatible change to the declared public API, per SemVer) takes a `!` in
+   the PR title and a `BREAKING CHANGE:` line, with migration notes. A stricter check is a `fix:`
+   with release notes in the body. Prefer a compatible path (a deprecation window, a new version
+   beside the old) when one exists.
 
 ## Disagreeing with a finding
 

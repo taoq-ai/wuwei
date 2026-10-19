@@ -65,12 +65,44 @@ expensive.
 
 ## Breaking changes
 
-A change that breaks an outward contract (CLI commands and output, API endpoints and fields, config
-keys, events, schemas, formats other systems read) is close to a one-way door: the clients it
-breaks cannot be un-broken. WUWEI finds it three ways: the PR declares it (a `!` in the title, a
+A breaking change is a major version under [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html):
+an incompatible change to the public API a project declares. Its clients cannot be un-broken, so
+it is close to a one-way door. In a repository WUWEI audits, the arch gate reads that repository's
+declared public API, or what it documents for clients when it declares none.
+
+WUWEI's own public API is:
+
+- the CLI commands, flags, exit codes and the output documented for scripts;
+- the config keys and their defaults;
+- the ledger, state and verdict file formats;
+- the PR body lines and owner question shapes that seats and owners write;
+- the hook input and output contract.
+
+A change is classified by what it does to that API:
+
+| Bump | The change |
+| --- | --- |
+| major | an element is removed, renamed or changes meaning; an input becomes required; an exit code or a format changes |
+| minor | a new capability, or a fix that makes WUWEI refuse or report more (a guard bypass closed, a gap it missed) |
+| patch | a fix that makes WUWEI refuse or report less, docs, internals |
+
+WUWEI is an auditor, so a gap is its lint error and a door refusal is its rule. It follows the
+reading in [ESLint's semantic versioning policy](https://github.com/eslint/eslint#semantic-versioning-policy):
+a bug fix that reports more errors is a minor, and one that reports fewer is a patch. A behaviour
+that contradicted the docs was a bug, so fixing it is not a major, even when the fix is stricter.
+Closing a hole in a rule WUWEI already documents is such a fix. A new rule that asks every PR for
+something WUWEI never asked before is a newly required input, so a major, as ESLint treats a new
+default error. A change with any major part is a major. When the gate is unsure which bump
+applies, it escalates to you.
+
+Versions 2.0.0 to 4.0.0 were bumped under the earlier rule, where any visible change in behaviour
+counted as breaking, and from 4.1.0 the SemVer policy applies.
+
+WUWEI finds a breaking change three ways: the PR declares it (a `!` in the title, a
 `BREAKING CHANGE:` line), the architecture gate states it (every arch verdict carries
-`Breaking: no` or `Breaking: yes: <what breaks for which clients>`), and a change to a contract
-file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier so it looks.
+`Breaking: no` or `Breaking: yes: <what breaks for which clients>`, and yes means a major), and a
+change to a contract file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier
+so it looks. A stricter check is a `fix:` commit with release notes in its body, never a `!`.
 
 Before such a change merges it needs evidence, in order:
 
@@ -82,7 +114,8 @@ Before such a change merges it needs evidence, in order:
    head; a change after it asks again.
 
 **Why:** a break nobody announced is an outage for someone else. The team does the work of finding
-and announcing it; you decide whether it ships.
+and announcing it; you decide whether it ships. A major that is not one costs clients an upgrade
+review for nothing, so a stricter check ships as a minor.
 
 ## Gates before the PR, chosen by the diff
 

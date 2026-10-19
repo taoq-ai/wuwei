@@ -101,6 +101,27 @@ def test_the_arch_gate_reviews_as_an_architect():
     assert "are the security gate's" in text
 
 
+def test_a_breaking_change_is_a_semver_major_of_the_declared_public_api():
+    arch = ' '.join((PLUGIN / 'charters' / 'sentinel-arch.md').read_text(encoding='utf-8').split())
+    rule = arch.split(' 7. ', 1)[1].split(' Trust boundaries', 1)[0]
+    assert 'When unsure, say yes' not in arch and 'When unsure, ESCALATE' in rule
+    assert 'public API' in rule and 'Yes is a SemVer major' in rule and 'reports more, is minor' in rule
+    assert len(rule.split()) <= 66
+    builder = ' '.join((PLUGIN / 'charters' / 'builder.md').read_text(encoding='utf-8').split())
+    assert 'Only a major' in builder and 'A stricter check is a `fix:` with release notes in the body' in builder
+    for name in ('_common.md', 'builder.md', 'sentinel-arch.md'):
+        assert 'outward contract' not in (PLUGIN / 'charters' / name).read_text(encoding='utf-8'), name
+    docs = PLUGIN / 'docs'
+    section = (docs / 'site' / 'concepts' / 'evidence.md').read_text(encoding='utf-8').split('## Breaking changes', 1)[1]
+    section = ' '.join(section.split('\n## ', 1)[0].split())
+    for said in ('SemVer 2.0.0', 'public API', 'exit codes', 'config keys', 'verdict file formats', 'owner question shapes',
+                 'hook input and output', 'refuse or report more', 'ESLint', 'from 4.1.0'):
+        assert said in section, said
+    for path in (docs / 'design.md', docs / 'site' / 'reference.md', docs / 'site' / 'concepts' / 'decisions.md'):
+        text = path.read_text(encoding='utf-8')
+        assert 'evidence.md#breaking-changes' in text and 'outward contract' not in text, path.name
+
+
 def test_each_gate_names_the_frameworks_it_stands_on():
     for role, anchor in (('sentinel-security', 'OWASP Top 10 for LLM applications'), ('sentinel-security', 'CWE'),
                          ('sentinel-quality', 'mutation testing'), ('sentinel-arch', 'fitness functions'),

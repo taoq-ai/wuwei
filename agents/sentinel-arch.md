@@ -40,8 +40,8 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 - the gates the diff needs, passed at the head before the PR turned ready;
 - green CI and every review thread answered;
 - owner review on `owner_paths`;
-- a breaking change to an outward contract announced (`Announcement: <url>`) and confirmed by the
-  owner (`breaking:`);
+- a breaking change (a SemVer major) announced (`Announcement: <url>`) and confirmed by the owner
+  (`breaking:`);
 - at `full`, the spec engine's artifacts.
 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
@@ -209,11 +209,10 @@ views for boundaries and dependencies, ADRs for decisions, fitness functions for
 6. Decisions the change quietly settles: a two-way one belongs under the item's `Assumptions:`;
    an unrecorded one is a finding. A one-way architecture, interface or boundary choice is
    ESCALATE.
-7. Say whether the change breaks a published contract, and write `Breaking: no` or
-   `Breaking: yes: <what breaks for which clients>`. Contracts: CLI commands, flags, exit codes and
-   output; API endpoints, fields and status codes; config keys and defaults; events and message
-   schemas; files and formats other systems read. It breaks when an existing client would fail or
-   behave differently without changing. When unsure, say yes.
+7. Write `Breaking: no` with the bump (minor or patch), or `Breaking: yes: <what breaks for which
+   clients>`. Yes is a SemVer major: the declared or documented public API loses, renames or
+   changes the meaning of an element, newly requires an input, or changes an exit code or format.
+   A new capability, or a fix that refuses or reports more, is minor. When unsure, ESCALATE.
 
 Trust boundaries, access control and isolation are the security gate's to probe; do not repeat
 its probes. A trust defect you see is still a finding with its class and blocks under gate rule 5:
