@@ -2,6 +2,7 @@
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
 read a command lets it through unless it names a door program (the audit still sees it)."""
 
+from contextlib import suppress
 from fnmatch import fnmatchcase
 import json
 from os.path import join, normpath, realpath
@@ -50,6 +51,7 @@ OPEN = 'opens ready for review only once its gates pass at its head: open a draf
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
 PUSH_VALUED = {'o', *(n[:i] for n in ('push-option', 'repo', 'receive-pack', 'exec', 'recurse-submodules') for i in range(1, len(n) + 1))}
+REF_RULES = ('{}', 'refs/{}', 'refs/tags/{}', 'refs/heads/{}', 'refs/remotes/{}', 'refs/remotes/{}/HEAD')  # refs.c ref_rev_parse_rules
 TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -144,26 +146,40 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def git_push(root, args, cwd):  # git 2.43 (refspec.c parse_refspec): the last colon splits a refspec; main, heads/main, refs/heads/main name main
-    flags = _flags(['--' if a == '--end-of-options' else a for a in args], PUSH_VALUED)  # -o x, -vo x, --rep x: x is a value; after --, a refspec
-    operands, longs = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes any unique prefix: --mirr is --mirror
-    if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in longs):
+def _sources(cwd):  # name -> the ref a source alone is sent to: each symbolic ref (a plain one names itself), then each root ref file
+    refs = dict(re.findall(r'(?m)^([^ \n]+) ([^ \n]+)$', _git(cwd, 'for-each-ref', '--format=%(refname) %(symref)')))
+    own, common = (_git(cwd, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir') + '\n\n').split('\n')[:2]
+    roots = [(Path(common), ''), (Path(common), 'main-worktree/'), *((w, f'worktrees/{w.name}/') for w in Path(common).glob('worktrees/*')),
+             (Path(own), '')] if own and common else []  # HEAD, ORIG_HEAD, main-worktree/HEAD, worktrees/<id>/HEAD; this tree's HEAD last
+    for f, at in [(f, at) for d, at in roots for f in d.glob('*') if f.is_file()]:  # two git calls and a few small files per push
+        with suppress(OSError), open(f, 'rb') as text:  # an error reads no ref: the text reading stands
+            if (head := text.read(256)).startswith(b'ref: '):
+                refs[at + f.name] = refs.get(t := head[5:].decode(errors='replace').strip(), t)
+    return refs
+
+
+def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
+    flags = _flags(args, PUSH_VALUED, ('--', '--end-of-options'))  # -o x, -vo x, --rep x: x is a value; after the first end, a refspec
+    operands, named = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes a unique prefix: --mirr is --mirror
+    if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in named):
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
-    deleting = any(a in ('--delete', '-d') for a in args)
     if any(ref.startswith('+') for ref in operands[1:]):
         return deny('force push refused (a + refspec): push a new commit instead.')
-    tags = [n for n in longs if 'tags'.startswith(n) or 'no-tags'.startswith(n)]  # the last of --tags and --no-tags wins
-    targets = ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in longs) else []  # --all, --branches: every branch
-    for ref in operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD']):  # --tags alone sends tags alone
+    deleting = any('delete'.startswith(n) for n in named)  # -d, -vd, --del
+    tags = [n for n in named if n[1:] and ('tags'.startswith(n) or 'no-tags'.startswith(n))]  # the last wins; -n is --dry-run
+    refspecs = operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD'])  # --tags alone sends tags alone
+    refs, head = _sources(cwd) if any(':' not in r for r in refspecs) else {}, current_branch(cwd)  # one read per push
+    targets = ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches
+    for ref in refspecs:
         source, colon, destination = ref.rpartition(':')
         deleting = deleting or bool(colon and not source and destination)
-        if not colon:  # a source alone takes the name its ref resolves to: main-worktree/HEAD, a symbolic ref
-            targets.append(_git(cwd, 'rev-parse', '--verify', '--quiet', '--symbolic-full-name', '--end-of-options', ref))
+        if not colon:  # a source alone goes to the ref its name finds by git's rules: any candidate counts, as git may take any one
+            targets += [refs[n] for rule in REF_RULES if (n := rule.format('HEAD' if ref == '@' else ref)) in refs]
         if destination in ('', 'HEAD'):
-            destination = '*' if ref == ':' else current_branch(cwd)  # : pushes each branch both sides hold
+            destination = '*' if ref == ':' else head  # : pushes each branch both sides hold
         targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole
     protected = _default(root, origin(cwd))
-    if hit := [b for b in protected for t in targets if fnmatchcase('refs/heads/' + b, t)]:
+    if hit := [b for b in protected for t in targets if t == 'refs/heads/' + b or '*' in t and fnmatchcase('refs/heads/' + b, t)]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
@@ -184,11 +200,11 @@ def scratch(cwd, opts, args, command):  # one plain git call pushing to git dire
         and not any((p / ws.DIR).exists() for p in (c, *c.parents)) for h in homes)
 
 
-def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
+def _flags(args, valued, ends=('--',)):  # (name, value) per flag as pflag reads it (a value takes =x, the cluster's rest or the next word)
     out, words = [], iter(args)
     for word in words:
-        if word == '--' or word[:1] != '-' or word == '-':
-            out += [('', w) for w in (words if word == '--' else [word])]
+        if word in ends or word[:1] != '-' or word == '-':
+            out += [('', w) for w in (words if word in ends else [word])]
         elif long := re.fullmatch(r'--([^=]+)(?:=(.*))?', word, re.S):
             out.append((long[1], long[2] if long[2] is not None or long[1] not in valued else next(words, None)))
         elif rest := word[1:]:

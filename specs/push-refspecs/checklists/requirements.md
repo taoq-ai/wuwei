@@ -13,5 +13,7 @@
 - [x] The route corpus moves no existing row; its sha256 is recorded at main and the head; moved new rows are listed
 - [x] Each rule is held by a test (a mutant without it fails)
 - [x] Vendored copy matches; drift test passes
+- [x] Every valued option is probed with a value git accepts (round 2), and each name set member is held by a real-git test
+- [x] The guard reads 15,000 refspecs in under 1 s, in a timed test, with the refs read once per push (round 2)
 - [x] Runtime lines stated against the item's budget
 - [x] No emojis, no em dashes

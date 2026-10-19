@@ -19,12 +19,19 @@ Classes (each from c and from w):
   dash (refs/heads/-x at feature, -y a symbolic ref to main, -z at local main) and option-like operands.
 - resolve: a source alone whose ref resolves to main, written before the call (a symbolic ref in refs/heads, refs/, refs/tags,
   a chain of two), another worktree's HEAD (main-worktree/HEAD, worktrees/w/HEAD), and controls that resolve to feature.
+- valued-accepted (round 2): each valued option with a value git accepts (-o ci.skip, --repo origin or the remote's path,
+  --receive-pack and --exec git-receive-pack, --recurse-submodules no, check, on-demand, only) x tails x three positions.
+- rootref (round 2): a source alone that only the ref read finds, written before the call: root refs (ORIG_HEAD, FOO_HEAD, a
+  .git/zz file), refs/remotes/<w> and refs/remotes/<w>/HEAD, the ambiguous origin (refs/heads/origin beside
+  refs/remotes/origin/HEAD), refs/heads/HEAD, a name with @, a worktree whose id is not its folder's name; controls to feature.
+- end-marker (round 2): two end markers in each order (only the first ends the options; a later one is a refspec, here a
+  symbolic ref to main) x operands x positions, with -o and --repo taking the first marker.
 - force: force spellings on the diverged branch (digit clusters are a known gap outside the item).
 A hole: the guard passes and the remote's main moved, appeared or vanished (force class: div moved). Each command is read by
 the guard of both trees, with guards.TEMP moved off the probe folder (gh.git is not a scratch remote) and the origin read as
 o/r, default branch main.
 
-Usage: python3 -I probe.py <main tree> <head tree> <empty folder>
+Usage: python3 -I probe.py <main tree> <head tree> <empty folder> [class,...]
 Prints per class: generated, ran (the stub logged a git push), holes at head and at main, regressions; then each hole."""
 import importlib
 import json
@@ -90,6 +97,10 @@ X0 = dict(line.split() for line in START[GH])
 
 
 def restore():
+    for name in ('ORIG_HEAD', 'FOO_HEAD', 'zz'):  # root refs a rootref setup wrote
+        (C / '.git' / name).unlink(missing_ok=True)
+    if (BASE / 'w3').exists():
+        git('worktree', 'remove', '-f', '-f', str(BASE / 'w3'), at=C)
     for at, start in START.items():
         now = snap(at)
         if now == start:
@@ -200,6 +211,30 @@ for setup, names in SYMREFS.items():
     for n in names:
         add('resolve', f'git push origin {n}', setup)
         add('resolve', f'git push origin feature {n}', setup)
+ACCEPTED = {('-o', '--push-option', '--pu', '-vo', '-qo'): ['ci.skip'], ('--repo', '--rep'): ['origin', str(GH)],
+            ('--receive-pack', '--rece', '--exec', '--e'): ['git-receive-pack'],
+            ('--recurse-submodules', '--recu'): ['no', 'check', 'on-demand', 'only']}
+for spellings, values in ACCEPTED.items():
+    for v, s, t in product(spellings, values, ['', 'feature', 'main', 'HEAD', 'feature:feature']):
+        for form in ('git push {v} {s} origin {t}', 'git push origin {v} {s} {t}', 'git push origin {t} {v} {s}'):
+            add('valued-accepted', form.format(v=v, s=s, t=t))
+WT2 = f'git worktree add -q -f {BASE / "w2"} main && mv {BASE / "w2"} {BASE / "w3"} && git worktree repair {BASE / "w3"}'
+ROOTREFS = {'git symbolic-ref ORIG_HEAD refs/heads/main': ['ORIG_HEAD'], 'git symbolic-ref FOO_HEAD refs/heads/main': ['FOO_HEAD'],
+            "printf 'ref: refs/heads/main\\n' > .git/zz": ['zz'], 'git symbolic-ref refs/remotes/zr refs/heads/main': ['zr', 'remotes/zr'],
+            'git symbolic-ref refs/remotes/zq/HEAD refs/heads/main': ['zq', 'remotes/zq/HEAD'],
+            'git symbolic-ref refs/heads/origin refs/heads/main && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main':
+                ['origin', 'heads/origin'],
+            'git symbolic-ref refs/tags/main refs/heads/feature': ['main', 'tags/main'], WT2: ['worktrees/w2/HEAD', 'worktrees/w3/HEAD'],
+            'git symbolic-ref refs/heads/a@b refs/heads/main': ['a@b'], 'git symbolic-ref refs/heads/HEAD refs/heads/main': ['HEAD']}
+for setup, names in ROOTREFS.items():
+    for n, form in product(names, ('git push origin {n}', 'git push origin feature {n}', 'git push origin -- {n}', 'git push -u origin {n}',
+                                   'git push origin {n} --dry-run', 'git push --tags origin {n}', 'git push origin {n}:')):
+        add('rootref', form.format(n=n), setup)
+ENDS = 'git symbolic-ref refs/heads/--end-of-options refs/heads/main && git symbolic-ref refs/heads/-- refs/heads/main && ' + DASH
+for a, b, w in product(['--', '--end-of-options'], ['--', '--end-of-options'], ['', '-x:main', '-y', 'feature']):
+    for form in ('git push origin {a} {b} {w}', 'git push {a} origin {b} {w}', 'git push origin feature {a} {b} {w}', 'git push -o {a} {b} origin {w}',
+                 'git push --repo {a} {b} origin {w}', 'git push origin {a} {w} {b}'):
+        add('end-marker', form.format(a=a, b=b, w=w), ENDS)
 FORCE = ['-f', '-4f', '-f4', '-6f', '-vf', '-uf', '-qf6', '-4vf', '-nf', '--force', '--forc', '--force-w', '--force-with-lease',
          '--force-i', '--fo', '--f', '-o f', '--no-force', '--mirror', '--mirr', '-df', '--force-with-lease=div',
          '--force-with-lease=div:', '--force-if-includes']
@@ -208,7 +243,7 @@ for f, t in product(FORCE, ('div', 'div:div', 'div:refs/heads/div', 'refs/heads/
     add('force', f'git push origin {t} {f}')
 for t in ('+div', '+div:div', "'+refs/heads/d*:refs/heads/d*'"):
     add('force', f'git push origin {t}')
-cmds = list(dict.fromkeys(cmds))
+cmds = [c for c in dict.fromkeys(cmds) if len(sys.argv) < 5 or c[0] in sys.argv[4].split(",")]
 
 
 def remote_ref(name):

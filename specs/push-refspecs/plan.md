@@ -6,7 +6,7 @@
 ## Technical context
 
 - Stdlib-only Python 3.11+, runtime under `cli/wuwei/`, cap 3,400 lines. Main dc39cae held 3,011; main 6682925 held 3,026;
-  main 7fd8f4b holds 3,093. The item's budget is +4, ceiling 6; free-lines-5 is no longer a prerequisite.
+  main 7fd8f4b held 3,093; main 5a33509 holds 3,178. The item's budget is +4, ceiling 6; free-lines-5 is no longer a prerequisite.
 - `guards.bash` reads git's options before the subcommand (git-globals) and calls
   `git_push(root, rest[i + 1:], here)`; a refusal passes only when `scratch()` reads the remote as
   a git directory in a scratch folder (scratch-remotes).
@@ -38,6 +38,15 @@
    `git rev-parse --verify --quiet --symbolic-full-name --end-of-options <word>` prints at the
    push's directory, through the guard's `_git`; an empty answer adds nothing and the text reading
    stands.
+7. Round 2 (gates at 9cb834a; the lead's design): `_sources(cwd)` reads the refs once per push,
+   only when a refspec has no colon. One `for-each-ref` gives each symbolic ref and its final
+   target; one `rev-parse --git-dir --git-common-dir` gives the directories whose root files
+   starting with `ref: ` are root refs (the shared ones, `main-worktree/<name>`,
+   `worktrees/<id>/<name>`, then this worktree's own, so HEAD is its own). A source alone adds
+   the target of every name `REF_RULES` makes of it (`@` is `HEAD`). The current branch is read
+   once per push. `_flags` takes its end markers as an argument, so only the first `--` or
+   `--end-of-options` ends the push's options. A one-letter name is no `--tags` prefix, and any
+   name `delete` starts with says "deleting". A target with no `*` is compared as a string.
 
 ## Evidence
 
@@ -60,7 +69,7 @@
 - Stdlib only (`fnmatch`, `re`): pass.
 - Test first: the first 32 cases ran 22 red on dc39cae's guard before the change; the 4 from the
   probe ran red before their fix. All 36 run 26 red on main 6682925's guard and green at the head.
-- Simplest: one function changed, no new helper; git's rules written as one normalisation and one
-  pattern match.
-- Runtime: 3,098 against main 7fd8f4b's 3,093 (+5), one over the budget of +4, inside the ceiling of 6
-  (spec Assumptions).
+- Simplest: `git_push` changed and one helper added in round 2, `_sources`, the ref read once per
+  push; git's rules written as one normalisation, one table of ref rules and one pattern match.
+- Runtime: 3,199 against main 5a33509's 3,178 (+21), over the budget of +4 and the ceiling of 6,
+  under the cap of 3,400; round 2's 16 lines are the ref read (spec Assumptions).

@@ -96,10 +96,31 @@ recursion, `core.hooksPath`) are item push-git-runs.
   the guard dropped as an option on main and at b16d799.
 - Q: Which destination does a source alone take? A: git's `match_explicit` (remote.c) resolves the
   source and takes its full name, through a symbolic ref; `main-worktree/HEAD` and
-  `worktrees/<id>/HEAD` name another worktree's HEAD. The guard adds the name
-  `git rev-parse --verify --quiet --symbolic-full-name --end-of-options <word>` prints, beside the
-  text reading. When rev-parse prints nothing (no such ref, an ambiguous name, no repository), the
-  text reading stands: git push then finds no single source for the word and pushes nothing.
+  `worktrees/<id>/HEAD` name another worktree's HEAD. Round 1 added the name `git rev-parse
+  --symbolic-full-name` printed for the word. Round 2 (gates at 9cb834a) replaces it; see the next
+  two answers.
+- Q: How does git pick the ref for a source alone? A: `count_refspec_match` (remote.c) tries the
+  word under each of git's ref rules (`%s`, `refs/%s`, `refs/tags/%s`, `refs/heads/%s`,
+  `refs/remotes/%s`, `refs/remotes/%s/HEAD`). One match under `refs/heads/` or `refs/tags/`, or a
+  name spelt in full, beats any number under `refs/remotes/`. With no match, git resolves the word
+  itself as a ref: HEAD, `@`, a root ref such as `ORIG_HEAD`, `main-worktree/HEAD`,
+  `worktrees/<id>/HEAD`. rev-parse disambiguates another way and printed nothing for
+  `git push origin origin` with `refs/heads/origin` a symbolic ref to main beside
+  `refs/remotes/origin/HEAD`; real git moved main. The guard now takes every candidate the rules
+  give and refuses when any of them ends at the default branch, so it never has to disambiguate.
+- Q: How does the guard read the refs, and what does it cost? A: once per push, not once per word.
+  One `git for-each-ref --format='%(refname) %(symref)'` gives every symbolic ref with its final
+  target (a plain ref names itself, which the text reading already gives). One `git rev-parse
+  --git-dir --git-common-dir` gives the git directories, whose root files (each worktree's `HEAD`,
+  `ORIG_HEAD`, a one-level name) the guard reads when they start with `ref: `. The shared
+  directory's files come first and this worktree's last, so HEAD is this worktree's own. The
+  current branch is read once too. 15,000 words with 15,000 tags behind them read in 0.25 s, where
+  round 1 took 77 s; 15,000 `:` words read in 0.12 s, where main takes 61 s. An empty or failed
+  read adds no candidate and the text reading stands, never weaker than main's.
+- Q: Which end marker ends the options? A: only the first `--` or `--end-of-options` that no option
+  takes as its value. A later one is a refspec: with `refs/heads/--end-of-options` a symbolic ref to
+  main, real git moved main for `git push origin -- --end-of-options`. `_flags` takes the end
+  markers as an argument, so the push reads both and gh keeps `--` alone.
 
 ## How this fails
 
@@ -110,8 +131,9 @@ recursion, `core.hooksPath`) are item push-git-runs.
    (GitHub's refs are case-sensitive).
 2. A source that resolves to main locally while the destination is spelt otherwise: a local
    symbolic ref (`refs/heads/x` pointing at `refs/heads/main`) or `main-worktree/HEAD` pushed with
-   no colon. git resolves it to `refs/heads/main` as its destination. Round 1 closes it for a ref
-   that exists when the guard reads (the rev-parse name). A ref the same command writes first
+   no colon. git resolves it to `refs/heads/main` as its destination. Round 2 closes it for a ref
+   that exists when the guard reads (every candidate of git's rules, the root ref files). A ref
+   on the reftable store is read only through `for-each-ref`. A ref the same command writes first
    (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`), or a HEAD it moves
    (`git checkout main && git push origin HEAD`), stays open and is listed in SECURITY.md.
 3. An option that takes the next word hides a word from the guard. The first head claimed a
@@ -136,8 +158,11 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - FR-007: the word an option takes (`-o`, `-vo`, a prefix of `--push-option`, `--repo`,
   `--receive-pack`, `--exec`, `--recurse-submodules`) is no option and no refspec; the last of
   `--tags` and `--no-tags` wins; after the first `--` or `--end-of-options` every word is a refspec.
-- FR-008: a refspec with no colon also names the ref git resolves it to (`rev-parse
-  --symbolic-full-name`), so another worktree's HEAD and a symbolic ref to main meet the door.
+- FR-008: a refspec with no colon also names the ref each candidate of git's ref rules ends at
+  (symbolic refs and root ref files read once per push), so another worktree's HEAD, a root ref
+  and a symbolic ref to main meet the door, an ambiguous name too.
+- FR-009: the guard's time does not grow with git calls per refspec: 15,000 refspecs read in
+  under 1 s.
 
 ## Breaking
 
@@ -155,16 +180,25 @@ which git does not read as an option (`git push --repo --mirror origin feature` 
 - A destination `HEAD` (or empty) keeps main's reading: the current branch. Under real
   git 2.43, `feature:HEAD` from a clone on main left main alone, so the guard over-refuses it there;
   the rule is main's and the item does not ask to change it.
-- Runtime lines: 3,098 at the head against 3,093 at main 7fd8f4b (+5), one over the item's budget
-  of +4 and inside its ceiling of 6. The first head took +1; round 1 adds the option reader through
-  `_flags` with a `PUSH_VALUED` set (+1 net), the `--tags`/`--no-tags` rule (+1) and the rev-parse
-  call for a source alone (+2).
-- When rev-parse prints nothing for a source alone, the text reading stands rather than a refusal
-  (Clarifications). Overturned if a probe finds a word rev-parse cannot resolve that git push
-  resolves to main; then the guard should refuse an unresolved source alone inside a work tree.
+- Runtime lines: 3,199 at the head against 3,178 at main 5a33509 (+21), over the item's budget of
+  +4 and its ceiling of 6, under the 3,400 cap. Round 1 ended at +5. Round 2 adds 16: the ref read
+  `_sources` (10 lines and 2 blank), the `suppress` import, `REF_RULES`, and two lines in
+  `git_push` (the refspec list, read once, and the one ref read per push). The lead chose the
+  design for round 2: one ref read per push in place of one git call per word, which the gates
+  found let a 94 KB push run 77 s, past the hook's timeout.
+- An empty or failed ref read adds no candidate and the text reading stands rather than a refusal
+  (security upheld it at 9cb834a). Overturned if a probe finds a source alone that git resolves to
+  main from a ref the read cannot see; reftable is the known one (SECURITY.md).
+- Every candidate counts, though git takes one strong match over weak ones and fails on two
+  strong ones. Over-refusal only: a branch and a tag of one name, one a symbolic ref to main, make
+  git fail while the guard refuses. The probe counts such refusals.
+- The root ref files are read with `open` only when `is_file` holds, 256 bytes at most, so a FIFO
+  or a large file there cannot hold the guard (a test plants a FIFO as `ORIG_HEAD`).
 - The force check still reads every word, an option's value and a word after `--` included, so
   `git push -o -f origin feature` stays refused. Over-refusal only, as on main.
-- `-n` (dry run) reads as a prefix of `--no-tags`, so `git push --tags -n origin` from main is
-  refused. A dry run moves nothing; over-refusal only.
+- A one-letter name never reads as a `--tags` or `--no-tags` prefix (round 2), so `-n` is the dry
+  run it is and `git push --tags -n origin` from main passes. `--t` and `--n` are ambiguous in
+  git 2.43 and exit 129. A short `-d` in a cluster (`-vd`) and any prefix of `--delete` from
+  `--de` say "deleting".
 
 Rollback: revert the commit; no data or config migrates.

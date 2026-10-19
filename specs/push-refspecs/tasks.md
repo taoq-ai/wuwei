@@ -29,3 +29,9 @@
 - [x] T016 Route corpus: 4 rows added (sha256 a3ddc985...); through main 7fd8f4b's guard 11 rows move and 0 of main's 257; through b16d799's guard 4 rows move and 0 of its 269
 - [x] T017 Probe (`probe.py <main tree> <head tree> <folder>`) with the gates' classes added: 21,282 generated, 21,254 ran git push, 80 holes at the head, all force digit clusters held at main too; 1,064 at main; 0 regressions
 - [x] T018 Mutants of each rule, applied to both guards.py copies, one at a time, wall-clock tests excluded: each killed by a behavioural test
+
+## Phase 5: Fix round 2 (gates at 9cb834a)
+
+- [x] T019 Merged origin/main 5a33509; tests first: 7 valued rows from main (`--exec`, `--receive-pack`, `--rece`, `--recurse-submodules`, `--recu`), `--tags -n`, `-vd`, the ambiguous `origin`, two later end markers, and a push of 15,000 refspecs in under 1 s; 7 red at 9cb834a
+- [x] T020 `_sources` reads the refs once per push; every candidate of git's ref rules counts; the first end marker only; the current branch read once; green, with rows for root refs, remote-tracking symbolic refs, a worktree id that is not its folder's name, a linked worktree's own HEAD, and a FIFO in the git directory
+- [x] T021 Route corpus read through main, 9cb834a and the head; probe with the round 2 classes; the gates' probe re-run; non-door checks with the new shapes; mutants of each name set member and each candidate
