@@ -41,3 +41,11 @@ read them here and in the standards lines of their brief; the charters stay gene
 - A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head differential:
   every route in `tests/fixtures/routes.json` read through the guards at main and at the head,
   naming each route whose verdict moves.
+
+## Mutants
+
+- Apply a mutant to both `cli/wuwei/` and `.claude/wuwei/cli/wuwei/`, or deselect `test_the_vendored_plugin_matches_the_tree_it_was_copied_from`; a kill counts only when a behavioural test fails.
+- Run mutant suites one at a time; the wall-clock guard tests fail under parallel load and are not kills.
+- A test whose output holds machine paths kills a mutant only if it is killed across input lengths (sweep the input), not at one path length.
+- A generated probe writes and deletes its case folders under the seat's scratch folder, never the system temp.
+- A change to the gaps or exceptions in `cli/wuwei/evidence.py` runs the route differential with an approved exception or PASS ruling on the PR the door reads.

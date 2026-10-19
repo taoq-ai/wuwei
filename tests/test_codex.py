@@ -101,3 +101,12 @@ def test_doctor_says_when_the_codex_roles_drift_from_the_charters(tmp_path, monk
     assert ('codex roles', 'ok', 'match the charters') in setup.doctor(tmp_path)
     (tmp_path / '.codex' / 'agents' / 'lead.toml').write_text('name = "lead"\n')
     assert ('codex roles', 'warn', 'stale: lead: run wuwei init --codex') in setup.doctor(tmp_path)
+
+
+def test_a_codex_goal_met_answer_records_the_goal(root):
+    question = 'goal: G-2 met? 0 bugs open past three days.'
+    asked = {'questions': [{'id': 'q1', 'header': 'Met', 'question': question}], 'isBlocking': True}
+    assert pre(root, 'request_user_input', asked) is None
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input',
+                                      'tool_input': asked, 'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
+    assert [(r['data']['kind'], r['data']['goal'], r['data']['approved']) for r in ws.rows(root, 'ruling')] == [('goal.met', 'G-2', True)]

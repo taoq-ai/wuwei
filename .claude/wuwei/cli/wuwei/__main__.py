@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from wuwei import agents, board, evidence, hook, plan, report, setup, ws
+from wuwei import agents, board, evidence, hook, plan, report, setup, view, ws
 
 
 def _root():
@@ -37,7 +37,6 @@ def cmd_plan(args):
         plan.mark(root, args.id, status, args.reason or '')
         print(f'{args.id} {status}')
     elif args.action == 'view':
-        from wuwei import view
         path, summary, line = view.write(root)
         if args.html:
             print(view.render(root)[0])
@@ -56,6 +55,8 @@ def cmd_plan(args):
     elif args.action == 'pass':
         ws.record(root, 'plan.pass', {'note': args.reason or ''})
         print('plan pass recorded; the day is open')
+        for name, date in view.goal_status(root)[0]:
+            print(f"goal {name} dated {date}: ask the owner 'goal: {name} met? <evidence>'")
     else:
         rows = plan.items(root)
         if args.json:
