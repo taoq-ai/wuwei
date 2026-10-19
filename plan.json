@@ -195,6 +195,29 @@
    "approved": true
   },
   {
+   "id": "status-curl",
+   "title": "fix(guards): a curl or wget write to a commit status or check run meets the same door as gh api",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 19.0,
+   "why": "required-checks security gate (#1176, security-19ede00.md): the guards refuse `gh api .../statuses/` writes in four spellings but allow `curl -X POST https://api.github.com/repos/o/r/statuses/<sha>`, and the route corpus has no curl write route, so a seat can forge a required check's status.",
+   "promise": "A curl or wget POST to the statuses or check-runs endpoints of a repository is refused as the gh api form is. Files: cli/wuwei/guards.py, tests, routes.json rows, the vendored copy. Runtime estimate +3, budget 4. AGENTS.md Testing the guards in full.",
+   "acceptance": [
+    "given `curl -X POST https://api.github.com/repos/o/r/statuses/abc -d '{\"state\":\"success\"}'` from a seat, when guards.bash reads it, then it is refused"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "yes-word",
    "title": "fix(hook): an owner answer reads as yes only when its first word is a yes word, so Yesterday or Proceed to keep it open never approves",
    "goal": "G-2",
@@ -390,6 +413,29 @@
    "approved": true
   },
   {
+   "id": "answer-visibility",
+   "title": "feat(report): the report counts answers left pending or unconfirmed and seat stops left unconfirmed, with why",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 2,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 10.0,
+   "why": "hook-transcript gates (#1172, goal-cea7561.md and arch-cea7561-2.md): answer.pending, answer.unconfirmed and seat.unconfirmed rows reach the ledger, but no board or report line shows them, so the 'reads as unconfirmed' rule in design.md and hooks.md is computed by no code.",
+   "promise": "The report prints an Unconfirmed line next to Hook errors: answers with an answer.unconfirmed row, answer.pending rows with no later prompt or unconfirmed row for their id, and seat.unconfirmed rows, each with its reason. Files: cli/wuwei/report.py, tests, the vendored copy. Runtime estimate +3, budget 4. After hook-transcript.",
+   "acceptance": [
+    "given an answer.pending row with no later prompt for its id, when the report runs, then it lists that answer as unconfirmed with its reason"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
+  },
+  {
    "id": "merge-ref",
    "title": "feat(gates): gates run the item's checks on the merge with the base, and evidence says when the base moved since the gates",
    "goal": "G-2",
@@ -437,6 +483,29 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "checks-app-id",
+   "title": "fix(evidence): a required check counts only when its run comes from the app the rule binds",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "required-checks security gate (#1176, security-19ede00.md, medium note): checks are matched by name only while main binds all three to app_id 15368, so a commit status or foreign check run named `test (3.11)` clears the not-run gap; the blocked gap covers it only when GitHub has already computed mergeable_state.",
+   "promise": "Evidence reads the app_id (protection checks[].app_id, ruleset integration_id) of each required check and counts a run only from that app; a status of the name counts only when the rule binds no app. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py, tests, the vendored copy. Runtime estimate +4, budget 6. After required-checks.",
+   "acceptance": [
+    "given main requires test (3.11) bound to app 15368 and the head holds a success status named test (3.11) and no check run from that app, when the merge door reads it, then it refuses naming test (3.11)"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
   },
   {
    "id": "release-features",
@@ -855,6 +924,29 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
+  },
+  {
+   "id": "codex-transcript",
+   "title": "feat(hook): Codex answers and seat stops are confirmed against Codex's own session transcript",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 1,
+    "risk": 3,
+    "size": 5
+   },
+   "score": 1.4,
+   "why": "hook-transcript (#1172) makes every Codex request_user_input answer and Codex seat stop record as unconfirmed until a reader for Codex's transcript exists; no item covered it (codex-attest-probe is parked).",
+   "promise": "Spike first: where Codex writes its session transcript, whether a hook payload names it, and whether it holds the answer and the seat launch; then build the reader behind the same trust model. Files: cli/wuwei/hook.py, tests, docs/site/concepts/codex.md. Size after the spike.",
+   "acceptance": [
+    "given a recorded real Codex flow, when hook.handle runs, then the answer records its ruling as in Claude Code"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": false
   },
   {
    "id": "git-globals",
