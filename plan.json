@@ -46,7 +46,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "ready-door-ref",
@@ -70,7 +70,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "push-refspecs",
@@ -98,30 +98,6 @@
    "approved": true
   },
   {
-   "id": "announcement-url",
-   "title": "fix(evidence): an Announcement: line counts only when it names a URL, so a placeholder never clears a breaking-change gap",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 19.0,
-   "why": "arch gate on #1142 at 4b535bd: breaking_gaps (evidence.py:338) accepts any non-space text after Announcement:, so 'Announcement: CHANGELOG.md (placeholder ...)' clears a safety gap before any announcement exists",
-   "promise": "breaking_gaps counts an Announcement: line only when it carries an http(s) URL; any other text leaves the gap, with a reason naming the expected shape. The shepherd charter says the announcement must exist at the head (a PR or issue comment, or a release note already published), not after release. Files: cli/wuwei/evidence.py, tests/test_evidence.py, charters/shepherd.md, agents rebuilt, the vendored copy. Runtime lines: estimate +1, budget 2. Order: after breaking-latest merges (same function). Rollback: revert the commit.",
-   "acceptance": [
-    "given a breaking PR whose body says 'Announcement: CHANGELOG.md (placeholder)', when evidence reads it, then the announcement gap shows and names the URL shape",
-    "given 'Announcement: https://github.com/o/r/issues/1#issuecomment-1', when evidence reads it, then the announcement gap clears and only the owner's breaking: confirmation remains"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "forge-door",
    "title": "fix(guards): a hook call made through Python or a script (python3 -m wuwei hook, ws.record, a script path) meets the forged-hook door",
    "goal": "G-2",
@@ -140,30 +116,6 @@
    "acceptance": [
     "given the 7 passing shapes from the goal-met security verdict, when guards.bash reads each from a seat, then each is refused and no ruling row is written",
     "given a generated probe of runner x spelling x position classes under real bash with a stub wuwei, then every command that ran the stub hook is refused (holes 0) and `wuwei status`, `wuwei evidence` and `python3 -m pytest` still pass"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": false
-  },
-  {
-   "id": "excepted-exact",
-   "title": "fix(evidence): an owner's exception waives only the gap it names, matched exactly, never by substring",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "security gate on #1136 at 353b6f7, shown end to end: evidence.excepted matches gaps by substring in both directions, so an accepted gap 'e' waives every gap at that head, security and owner review included; any exception: question the owner accepts with a short gap can drop safety gaps it never named",
-   "promise": "evidence.excepted waives a gap only when the accepted gap text equals the gap's text (whitespace-normalised), or names its gate exactly; a short or partial gap waives nothing. A waived gap is listed in the report as waived by the ruling. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs naming the rule. Runtime lines: estimate +1, budget 3. Order: after exception-shape merges. Rollback: revert the commit.",
-   "acceptance": [
-    "given an accepted exception with gap 'e' at a head with a security gap and an owner review gap, when evidence reads the PR, then both gaps still show",
-    "given an accepted exception whose gap equals the printed gap text, when evidence reads the PR, then that gap alone is waived"
    ],
    "status": "open",
    "added": "2026-10-18",
@@ -191,6 +143,31 @@
    ],
    "status": "open",
    "added": "2026-10-18",
+   "approved": true
+  },
+  {
+   "id": "config-door",
+   "title": "fix(guards): a seat's write to .wuwei/config.toml meets a door, so only the owner changes owner_paths, models and the other config keys",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "Security gate on models-record (#1146, security-e0351a1.md): .wuwei/config.toml takes Edit, Write, a Bash redirect and `wuwei config ...` from builder and sentinel seats, so a seat can rewrite owner_paths or a models row. The owner answered trust: Yes, owner only (2026-10-19).",
+   "promise": "The guards refuse a seat's write to .wuwei/config.toml by every route they already cover for the ledger and cache (Edit, Write, NotebookEdit, Bash redirects and the spellings sh expands), and refuse `wuwei config <key> <value>` from a seat (agent_type set). The owner's own session (no agent_type) keeps both. Reads stay open. Refusal text names the owner. SECURITY.md says config is owner-only. Files: cli/wuwei/guards.py, tests, tests/fixtures/routes.json, the vendored copy, SECURITY.md, docs/site/reference.md. Runtime estimate +4, budget 6. AGENTS.md Testing the guards in full, including normalisation probes for the path.",
+   "acceptance": [
+    "given a builder or sentinel seat, when it runs Edit or Write on .wuwei/config.toml, `echo x >> .wuwei/config.toml`, `wuwei config owner_paths x` or `wuwei config models \"builder=haiku low\"`, then each is refused",
+    "given the owner's session, when it runs `wuwei config models \"builder light=opus medium\"`, then it passes and writes the row as on main",
+    "given a generated probe of path spellings (//, %xx, /./, /../, cd, env -C, sudo -D) x write routes under real bash, then every seat write that changed config.toml is refused (holes 0)"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
    "approved": false
   },
   {
@@ -289,7 +266,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "gh-args",
@@ -339,7 +316,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "goal-held",
@@ -363,7 +340,7 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": false
+   "approved": true
   },
   {
    "id": "merge-ref",
@@ -534,7 +511,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "models-record",
@@ -636,7 +613,7 @@
    ],
    "status": "open",
    "added": "2026-10-18",
-   "approved": false
+   "approved": true
   },
   {
    "id": "db-recipe",
@@ -1101,6 +1078,31 @@
    "reason": "merged as taoq-ai/wuwei#1136"
   },
   {
+   "id": "announcement-url",
+   "title": "fix(evidence): an Announcement: line counts only when it names a URL, so a placeholder never clears a breaking-change gap",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 19.0,
+   "why": "arch gate on #1142 at 4b535bd: breaking_gaps (evidence.py:338) accepts any non-space text after Announcement:, so 'Announcement: CHANGELOG.md (placeholder ...)' clears a safety gap before any announcement exists",
+   "promise": "breaking_gaps counts an Announcement: line only when it carries an http(s) URL; any other text leaves the gap, with a reason naming the expected shape. The shepherd charter says the announcement must exist at the head (a PR or issue comment, or a release note already published), not after release. Files: cli/wuwei/evidence.py, tests/test_evidence.py, charters/shepherd.md, agents rebuilt, the vendored copy. Runtime lines: estimate +1, budget 2. Order: after breaking-latest merges (same function). Rollback: revert the commit.",
+   "acceptance": [
+    "given a breaking PR whose body says 'Announcement: CHANGELOG.md (placeholder)', when evidence reads it, then the announcement gap shows and names the URL shape",
+    "given 'Announcement: https://github.com/o/r/issues/1#issuecomment-1', when evidence reads it, then the announcement gap clears and only the owner's breaking: confirmation remains"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1148 (4eafb0c) after four gates passed (arch and security re-read at a1052b4), CI green, owner breaking: Proceed at a1052b4"
+  },
+  {
    "id": "breaking-latest",
    "title": "fix(evidence): a breaking change is read from the latest arch verdict, not any verdict ever",
    "goal": "G-2",
@@ -1152,6 +1154,31 @@
    "added": "2026-10-17",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1112"
+  },
+  {
+   "id": "excepted-exact",
+   "title": "fix(evidence): an owner's exception waives only the gap it names, matched exactly, never by substring",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "security gate on #1136 at 353b6f7, shown end to end: evidence.excepted matches gaps by substring in both directions, so an accepted gap 'e' waives every gap at that head, security and owner review included; any exception: question the owner accepts with a short gap can drop safety gaps it never named",
+   "promise": "evidence.excepted waives a gap only when the accepted gap text equals the gap's text (whitespace-normalised), or names its gate exactly; a short or partial gap waives nothing. A waived gap is listed in the report as waived by the ruling. Files: cli/wuwei/evidence.py, tests/test_evidence.py, the vendored copy, docs naming the rule. Runtime lines: estimate +1, budget 3. Order: after exception-shape merges. Rollback: revert the commit.",
+   "acceptance": [
+    "given an accepted exception with gap 'e' at a head with a security gap and an owner review gap, when evidence reads the PR, then both gaps still show",
+    "given an accepted exception whose gap equals the printed gap text, when evidence reads the PR, then that gap alone is waived"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1150 (6682925) after four gates passed (arch re-read at 59f2c9b), CI green, owner breaking: Proceed at 59f2c9b"
   },
   {
    "id": "route-fixtures",
