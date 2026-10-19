@@ -491,34 +491,6 @@
    "approved": true
   },
   {
-   "id": "models-record",
-   "title": "feat(agents): agent files carry the table's model and effort, the hook advises on a departure and records what ran, and the report shows outcomes by model and effort",
-   "goal": "G-3",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 5,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 7.67,
-   "why": "Without frontmatter, advice and records the table is opinion; this slice makes it the default, nudges on departures and lets the retro move rows on evidence.",
-   "promise": "The runtime slice of the model table. (1) One TABLE in agents.py replaces MODELS: per role a default model and effort, and the tier and trust-path rows; `wuwei agents build` writes `model:` and `effort:` frontmatter per role from the defaults. (2) hook.pre_tool, for an Agent call, reads subagent_type and model (the hook input has no effort field) and the item's tier from the plan item the prompt names (raised one step when the cached change-failure budget says so); on a departure from the table it returns additionalContext \"table says <model> <effort> for <role> at <tier>; record a 'Model reason:' line in the brief\". It never denies and never sends updatedInput. (3) hook.post_tool records on seat.started tool_response.resolvedModel, the requested model and effort from tool_input (\"unrecorded\" when absent) and the brief's \"Model reason:\" line; the attest row copies model and effort from the seat.started row with the same agent id. (4) Config: one `models` key in .wuwei/config.toml (a table of \"<role>[ <tier>]\" = \"<model> <effort>\") overrides rows; config keys go from five to six, which budget-3400 amends in constitution VI. (5) `wuwei doctor` names CLAUDE_CODE_EFFORT_LEVEL and CLAUDE_CODE_SUBAGENT_MODEL when set, saying effort or model advice is then off. (6) report.learning shows, per seat x model x effort: launches, fix rounds per item, blocking findings, escapes traced to a passing gate, tokens, and \"model or effort unrecorded on <n> launches\". Codex: recorded as unmeasured. Runtime lines: +27 estimated (TABLE +8, frontmatter +1, advice +6, record +2, config key +2, doctor +1, report +7), budget 40; under 400 changed lines with tests. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after models-table and budget-3400; retro-followups (report.learning) and hook-transcript (hook.post_tool) start after it. Rollback: revert the commit; rows already written keep fields readers ignore. Outside: refusing or rewriting a launch; Codex model fields. Assumptions: the Claude Code PostToolUse payload for Agent carries tool_response.resolvedModel and tool_input.model and effort as the docs say; overturned if a recorded payload shows other names, in which case the builder records what is there and says so.",
-   "acceptance": [
-    "given the head, when `bin/wuwei agents build` runs, then each agents/<role>.md has the table's model: and effort: lines, git status is clean, and agents.py no longer defines MODELS",
-    "given a PreToolUse Agent payload for sentinel-goal with model opus on an item at standard tier, when hook.handle runs, then it returns additionalContext naming \"Sonnet 5.5 high\" and the Model reason line, and no permissionDecision",
-    "given a PreToolUse Agent payload that matches the table, when hook.handle runs, then it returns nothing",
-    "given a PostToolUse Agent payload with tool_response.resolvedModel \"claude-opus-5-5\", tool_input effort \"high\" and a brief holding \"Model reason: conflict in logic\", when hook.handle runs, then seat.started holds that model, effort and reason, and the seat's later attest row holds the same model and effort",
-    "given config.toml with models = {\"builder light\" = \"opus medium\"}, when the hook reads a light builder launch on opus medium, then it gives no advice; and given CLAUDE_CODE_EFFORT_LEVEL=low in the environment, when wuwei doctor runs, then it names the variable and says effort advice is off",
-    "given a ledger with gates on two models, when wuwei report runs, then Learning shows one line per seat x model x effort with launches, fix rounds, blocking findings, escapes and tokens"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
    "id": "plan-after",
    "title": "feat(plan): an item names what it waits on, the board shows it waiting, and the Stop hook leaves it out",
    "goal": "G-1",
@@ -2147,6 +2119,35 @@
    "added": "2026-10-17",
    "approved": true,
    "reason": "merged as 9c637ab (#1123): four gates pass at a287d44; runtime 2,976 on main"
+  },
+  {
+   "id": "models-record",
+   "title": "feat(agents): agent files carry the table's model and effort, the hook advises on a departure and records what ran, and the report shows outcomes by model and effort",
+   "goal": "G-3",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 7.67,
+   "why": "Without frontmatter, advice and records the table is opinion; this slice makes it the default, nudges on departures and lets the retro move rows on evidence.",
+   "promise": "The runtime slice of the model table. (1) One TABLE in agents.py replaces MODELS: per role a default model and effort, and the tier and trust-path rows; `wuwei agents build` writes `model:` and `effort:` frontmatter per role from the defaults. (2) hook.pre_tool, for an Agent call, reads subagent_type and model (the hook input has no effort field) and the item's tier from the plan item the prompt names (raised one step when the cached change-failure budget says so); on a departure from the table it returns additionalContext \"table says <model> <effort> for <role> at <tier>; record a 'Model reason:' line in the brief\". It never denies and never sends updatedInput. (3) hook.post_tool records on seat.started tool_response.resolvedModel, the requested model and effort from tool_input (\"unrecorded\" when absent) and the brief's \"Model reason:\" line; the attest row copies model and effort from the seat.started row with the same agent id. (4) Config: one `models` key in .wuwei/config.toml (a table of \"<role>[ <tier>]\" = \"<model> <effort>\") overrides rows; config keys go from five to six, which budget-3400 amends in constitution VI. (5) `wuwei doctor` names CLAUDE_CODE_EFFORT_LEVEL and CLAUDE_CODE_SUBAGENT_MODEL when set, saying effort or model advice is then off. (6) report.learning shows, per seat x model x effort: launches, fix rounds per item, blocking findings, escapes traced to a passing gate, tokens, and \"model or effort unrecorded on <n> launches\". Codex: recorded as unmeasured. Runtime lines: +27 estimated (TABLE +8, frontmatter +1, advice +6, record +2, config key +2, doctor +1, report +7), budget 40; under 400 changed lines with tests. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after models-table and budget-3400; retro-followups (report.learning) and hook-transcript (hook.post_tool) start after it. Rollback: revert the commit; rows already written keep fields readers ignore. Outside: refusing or rewriting a launch; Codex model fields. Assumptions: the Claude Code PostToolUse payload for Agent carries tool_response.resolvedModel and tool_input.model and effort as the docs say; overturned if a recorded payload shows other names, in which case the builder records what is there and says so.",
+   "acceptance": [
+    "given the head, when `bin/wuwei agents build` runs, then each agents/<role>.md has the table's model: and effort: lines, git status is clean, and agents.py no longer defines MODELS",
+    "given a PreToolUse Agent payload for sentinel-goal with model opus on an item at standard tier, when hook.handle runs, then it returns additionalContext naming \"Sonnet 5.5 high\" and the Model reason line, and no permissionDecision",
+    "given a PreToolUse Agent payload that matches the table, when hook.handle runs, then it returns nothing",
+    "given a PostToolUse Agent payload with tool_response.resolvedModel \"claude-opus-5-5\", tool_input effort \"high\" and a brief holding \"Model reason: conflict in logic\", when hook.handle runs, then seat.started holds that model, effort and reason, and the seat's later attest row holds the same model and effort",
+    "given config.toml with models = {\"builder light\" = \"opus medium\"}, when the hook reads a light builder launch on opus medium, then it gives no advice; and given CLAUDE_CODE_EFFORT_LEVEL=low in the environment, when wuwei doctor runs, then it names the variable and says effort advice is off",
+    "given a ledger with gates on two models, when wuwei report runs, then Learning shows one line per seat x model x effort with launches, fix rounds, blocking findings, escapes and tokens"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as #1146 after four gates passed (arch delta at a05fc61, Breaking: no (minor)), CI green, owner review approved at a05fc61"
   },
   {
    "id": "board-links",
