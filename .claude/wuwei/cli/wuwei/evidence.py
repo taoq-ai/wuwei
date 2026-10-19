@@ -245,8 +245,14 @@ def verdicts(root, item_id, ref=''):
             continue
         parsed = parse(body.decode('utf-8', 'replace'))
         if not parsed['errors']:
-            found.append({**parsed, 'path': data['path']})
+            found.append(dict(parsed, path=data['path'], ref=f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo']))
     return found
+
+
+def newer(repo, v, held, head):
+    """The ancestry walk: v replaces the verdict held when none is, or when v read newer code on the PR head's line."""
+    return not held or v['head'][:7] != held['head'][:7] and gh.ancestor(repo, held['head'], v['head']) \
+        and gh.ancestor(repo, v['head'], head)
 
 
 def needed(root, tier, files):
@@ -284,17 +290,17 @@ def gates_for(root, repo, pr, files, item):
 
 
 def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard'):
-    """Each gate the change needs passed at an ancestor of the head. Code moved since the last pass is
-    re-read by the one gate the delta needs; docs or a small change off risky paths carries the passes."""
+    """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR
+    (its repository before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head
+    a later finding replaces a FIX, and a pass clears it only by naming it in Supersedes (#1162). Code moved since the
+    last pass is re-read by the one gate the delta needs; docs or a small change off risky paths carries it."""
     latest, last = {}, None
-    for found in verdicts(root, item_id, ref):
-        prior = latest.get(found['gate'])
-        held = prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]
-        named = prior and prior['verdict'] == 'FIX' and any(  # <item>/<file> of the newest FIX, never an ESCALATE (#1162)
-            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ()))
-        if held and found['verdict'] == 'PASS' and not named:
-            continue  # at one head, a later pass does not outvote a finding unless it names the FIX it closes
-        if gh.ancestor(repo, found['head'], head):
+    for found in verdicts(root, item_id, ref):  # oldest first
+        prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
+        named = prior and prior['verdict'] == 'FIX' and prior['head'][:7] == found['head'][:7] and (fix or any(  # #1162
+            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
+        if (fix or (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) and gh.ancestor(repo, found['head'], head) \
+                and (newer(repo, found, prior, found['head']) or fix and prior['verdict'] == 'PASS' or named):  # head asked above
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
@@ -337,8 +343,7 @@ def breaking_gaps(root, ref, pr, item_id):
     body, head, repo, said = pr.get('body') or '', pr['headRefOid'], ref.split('#')[0], None
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
     for v in (v for v in verdicts(root, item_id, ref) if v['gate'] == 'arch' and 'breaking' in v):  # oldest first
-        if v['breaking'] or not said or v['head'] != said['head'] and gh.ancestor(repo, said['head'], v['head']) \
-                and gh.ancestor(repo, v['head'], head):
+        if v['breaking'] or v['ref'].lower() in (ref.lower(), repo.lower()) and newer(repo, v, said, head):
             said = v
     if not (declared or said and said['breaking']):
         return []

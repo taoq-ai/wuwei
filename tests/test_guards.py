@@ -886,7 +886,8 @@ def test_every_merge_route_passes_on_a_pr_without_gaps(root, fake, monkeypatch, 
     monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
     fake.prs['5'] = make_pr(number=5)
-    attest(root, 'quality')
+    attest(root, 'quality', pr='o/r#5')
+    attest(root, 'quality', pr='other/x#5', name='quality-other.md')  # the PR a URL route reads
     assert guards.bash(root, command, '/repo', 's1') is None, command
 
 
@@ -929,7 +930,7 @@ def test_a_rest_pr_create_meets_the_create_door_as_gh_pr_create_does(root, cloud
 def test_a_rest_pr_create_reads_the_item_from_the_body_file(root, cloud, tmp_path, flags):
     from test_evidence import attest
     write_plan(root, [{'id': 'doors-by-rest', 'title': 'c', 'goal': 'G-2', 'repo': 'o/r', 'tier': 'light'}])
-    attest(root, 'quality', item='doors-by-rest')
+    attest(root, 'quality', item='doors-by-rest', pr='o/r')
     (tmp_path / 'pr.md').write_text('What and why\n\nWUWEI-Item: doors-by-rest\n')
     (tmp_path / 'in.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'body': 'WUWEI-Item: doors-by-rest'}))
     fields = '' if 'input' in flags else '-f head=x -f base=main '
@@ -1212,7 +1213,7 @@ def test_a_draft_leaves_draft_or_asks_reviewers_only_once_its_gates_pass(root, d
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
     decision = guards.bash(root, command, str(root), 's1')
     assert door_reached(decision) == 'ready' and 'gates missing at head aaaaaaa: quality' in decision['reason'], command
-    attest(root, 'quality')
+    attest(root, 'quality', pr='o/r#7')
     assert guards.bash(root, command, str(root), 's1') is None, command
 
 
