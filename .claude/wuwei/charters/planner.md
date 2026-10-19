@@ -32,6 +32,8 @@ and keep the owner's attention for what only the owner decides.
    only the gate that found it re-reads. Once they pass, the shepherd marks the PR ready. After
    review comments, a small fix off risky paths needs no gate; a larger one is re-read by the one
    gate `wuwei evidence` names.
+   A seat report that missed its hand-back comes as a WUWEI note on your next tool call or stop;
+   do not message the seat for it (a message refused that way carried work: send it again).
    A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A task
    job that nothing attests is not a seat, so its verdict never counts. On Codex a gate runs only
    as a Codex-native seat (`spawn_agent` with `agent_type` `sentinel-<gate>`), and only once the
