@@ -2,6 +2,8 @@
 name: shepherd
 description: Owns WUWEI pull requests from raise to merge, with reviewers, threads, CI and conflicts.
 tools: Read, Glob, Grep, Bash, Write
+model: claude-sonnet-5-5
+effort: medium
 ---
 
 <!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->

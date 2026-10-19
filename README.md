@@ -73,7 +73,7 @@ moving while you are away.
 2. The plugin install is a slash command; if you cannot run it, ask the user to.
 3. Locate the CLI with `find ~/.claude/plugins -type f -path '*/bin/wuwei'`. Never assume it is on
    PATH. Once set up, each session prints it as `WUWEI CLI: <path>`.
-4. Run `<path> init` then `<path> doctor` from the repository root (exit 0 ok, 1 warnings, 2 fail).
+4. Run `<path> init` then `<path> doctor` from the repository root (exit 0 ok, 1 warnings, 2 fail; a `note` row never changes it).
 5. Never edit `.wuwei/plan.json` or `.wuwei/ledger/` by hand. The `wuwei-rules` skill explains the rules.
 
 ## Troubleshooting
@@ -98,7 +98,7 @@ Codex, cloud sessions and several repositories: see [getting started](https://ta
 | `report` | The day report; `--dora` for the DORA keys |
 | `close` | Checkpoint the day |
 | `andon` | Pull or clear the cord on one repository |
-| `init`, `doctor`, `config`, `verify`, `agents` | Set up, check, five config keys, the ledger chain, the role agents |
+| `init`, `doctor`, `config`, `verify`, `agents` | Set up, check, six config keys, the ledger chain, the role agents |
 
 ## Learn more
 
