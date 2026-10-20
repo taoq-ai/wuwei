@@ -502,7 +502,9 @@ def excepted(root, ref, head, found):
     accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
                 and row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}
-    return [g for g in found if not {norm(g['text']), norm((GATES.match(g['text']) or ('', ''))[1])} & accepted]
+    kept = [g for g in found if not {norm(g['text']), norm((GATES.match(g['text']) or ('', ''))[1])} & accepted]
+    gone = any(GATES.match(g['text']) for g in found if g not in kept)  # its "verdict ... not counted" lines go with it (#1168)
+    return [g for g in kept if not (gone and g['text'].startswith('verdict ') and ' not counted: ' in g['text'])]
 
 
 def owner_approved(root, repo, pr):

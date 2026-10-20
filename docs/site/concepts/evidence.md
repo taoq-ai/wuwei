@@ -244,7 +244,8 @@ fit this change. The audit still sees every misfit, and the process learns from 
 For a safety gap only, you can accept one gap at one head as an exception (see [decisions](decisions.md#exceptions)). The
 gap disappears from that head's evidence, the exception stays on the record, and a follow-up item
 in the plan closes it later. Only the gap the exception names exactly disappears; a part of a gap
-waives nothing.
+waives nothing. When it is a gate gap, the `verdict ... not counted` lines under it go too, and the
+ready door lets that draft turn ready or ask reviewers at that head.
 
 ## When evidence cannot be read
 

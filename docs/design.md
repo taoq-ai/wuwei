@@ -72,7 +72,8 @@ question is refused back to the model. A `one-way:` answer becomes an ADR in the
 accepted exception drops that gap at that head and adds a follow-up item that closes it. The
 accepted gap must equal the printed gap text (case, spacing, end marks and a printed `[waiting]`
 aside), or equal the gates a gate gap names (`security` for `gates missing at head <sha7>:
-security`); a part of either waives nothing.
+security`); a part of either waives nothing. `wuwei evidence`, the merge door and the ready door read
+exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
 
 ## 6. The evidence contract
 
@@ -175,7 +176,7 @@ CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_f
 `update_pull_request` with `draft` false) and a reviewer request on a draft (`gh pr edit
 --add-reviewer`, a REST POST on `pulls/<n>/requested_reviewers`, MCP `reviewers` or
 `request_copilot_review`) before the gates pass at the PR head, so review starts at a gated head
-(#1050, #1074);
+(#1050, #1074), unless the owner accepted the gate gap for that PR at that head (#1168);
 `--admin` (and `--admin=true` in any spelling pflag reads as true; `--auto` counts only where pflag
 reads it as the flag); a `gh api` write to an endpoint under `repositories/<id>` (spell it
 `repos/<owner>/<repo>`); a `gh api graphql` query WUWEI cannot read (`--input -`, `-F query=@-`, a
