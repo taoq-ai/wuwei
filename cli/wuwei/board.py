@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import datetime
+import os
 import sys
 
 from wuwei import evidence, gh, plan, ws
@@ -43,13 +44,20 @@ ADOPT_DAYS = 7
 
 
 def adopted(root, repo, prs, keep):
-    """Open PRs this session's identity raised on the repository without a plan link: shepherded all the same."""
+    """Open PRs, drafts too, this session's identity raised on the repository without a plan link: shepherded all the same."""
     since = (ws.now() - datetime.timedelta(days=ADOPT_DAYS)).isoformat()
     login = evidence.owner_login(root)
     return [{'item': 'unplanned', 'title': pr['title'], 'pr': f'{repo}#{pr["number"]}',
              'gaps': keep(evidence.gaps(root, repo, pr['number'], pr))}
-            for pr in prs if (pr.get('author') or {}).get('login') == login and not pr.get('isDraft')
+            for pr in prs if (pr.get('author') or {}).get('login') == login
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
+
+
+def running(root, session):
+    """Roles of the seats the session started today with no stop or unconfirmed row: a dead session's never count (1180-probe)."""
+    gone = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k, ws.today()) if isinstance(a := r['data'].get('agent'), str)}
+    return {r['data'].get('role') for r in ws.rows(root, 'seat.started', ws.today()) if session and r['data'].get('session') == session
+            and isinstance(a := r['data'].get('agent'), str) and a not in gone}
 
 
 def names(root, pr, repo, item_id):
@@ -69,7 +77,7 @@ def compute(root, everything=False):
             slug = repo.replace('/', '__')  # a list read also drops PR and compare entries a day old (#1161)
             prs = evidence._cached(root, 'prs-' + slug, lambda: ws.cache_prune(root, 86400, f'pr-{slug}-*', f'cmp-{slug}-*')
                                    or gh.open_prs(repo), TTL)
-            merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
+            merged = gh.merged_prs(repo, since, limit=1) if mine else []  # read fresh, one page: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]} for i in mine]
@@ -77,6 +85,7 @@ def compute(root, everything=False):
         out += adopted(root, repo, prs, keep)
         print(f'wuwei: reading {repo}: {len(prs)} open PRs', file=sys.stderr)
         links = [[pr for pr in prs if names(root, pr, repo, item['id'])] for item in mine]
+        any(links) and evidence.budget(root, repo)  # read once here: each pool thread would read it again (#1177)
         with concurrent.futures.ThreadPoolExecutor(8) as pool:  # the host calls dominate a cold board (#1121)
             read = dict(zip(want := {pr['number']: pr for linked in links for pr in linked}, pool.map(lambda pr: keep(evidence.gaps(root, repo, pr['number'], pr)), want.values())))
         for item, linked in zip(mine, links):
@@ -96,7 +105,11 @@ def compute(root, everything=False):
     for item in (i for i in open_items if not i.get('repo')):  # a reply has no repository; see replies()
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
-    return out
+    seats, prs = running(root, os.environ.get('CLAUDE_CODE_SESSION_ID')), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
+    owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
+    duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
+        evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
+    return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
 
 
 def rows(root):

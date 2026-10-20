@@ -193,7 +193,7 @@ def test_an_exception_for_a_process_gap_goes_back_to_the_model(root):
 def test_a_merge_flows_past_process_gaps_and_records_them(root, fake, repo):
     import hashlib
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
-    fake.prs['42'] = make_pr(lines=300, requests=())
+    fake.prs['42'] = make_pr(lines=300, requests=(), body='WUWEI-Item: I-1')
     path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text())
@@ -201,6 +201,7 @@ def test_a_merge_flows_past_process_gaps_and_records_them(root, fake, repo):
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     assert guards.pre_tool(root, bash('gh pr merge 42 --squash')) is None
     assert ws.rows(root, 'merge.checked')[-1]['data']['process'] == [
+        'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer',
         '600 changed lines: split it, or add a Size: <reason> line', 'no reviewer requested']
 
 
@@ -869,7 +870,7 @@ def test_the_route_corpus_names_a_source_and_a_known_verdict_for_each_route():
 
 
 @pytest.mark.parametrize('route', ROUTES, ids=[r['command'] for r in ROUTES])
-def test_every_route_reads_as_recorded(root, fake, monkeypatch, route):
+def test_every_route_reads_as_recorded(root, fake, monkeypatch, memory, route):
     """A guard change that moves a verdict edits tests/fixtures/routes.json, so its diff shows the move."""
     monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
     monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'i-1-change')
@@ -1215,6 +1216,52 @@ def test_a_draft_leaves_draft_or_asks_reviewers_only_once_its_gates_pass(root, d
     assert door_reached(decision) == 'ready' and 'gates missing at head aaaaaaa: quality' in decision['reason'], command
     attest(root, 'quality', pr='o/r#7')
     assert guards.bash(root, command, str(root), 's1') is None, command
+
+
+def except_gap(root, gap, pr='o/r#7', head='aaaaaaa', approved=True):
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': pr, 'head': head, 'gap': gap, 'approved': approved})
+
+
+@pytest.mark.parametrize('command', READY)
+def test_an_owner_exception_for_the_gate_gap_opens_the_ready_door_at_its_head_only(root, drafts, command):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    except_gap(root, 'gates missing at head aaaaaaa: quality', pr='o/r#8')  # another PR's ruling
+    except_gap(root, 'gates missing at head aaaaaaa: quality', approved=False)
+    except_gap(root, 'quality', head='bbbbbbb')  # another head
+    assert door_reached(guards.bash(root, command, str(root), 's1')) == 'ready', command
+    except_gap(root, 'Gates missing at head aaaaaaa: quality.')
+    except_gap(root, 'quality')
+    assert guards.bash(root, command, str(root), 's1') is None, command
+    drafts.prs['7']['headRefOid'] = 'd' * 40  # the head moved: the exception at aaaaaaa no longer holds
+    decision = guards.bash(root, command, str(root), 's1')
+    assert door_reached(decision) == 'ready' and 'gates missing at head ddddddd: quality' in decision['reason'], command
+
+
+def test_an_exception_naming_part_of_the_gate_list_keeps_the_ready_door_shut_and_the_mcp_routes_honour_one(root, drafts):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'full'}])
+    attest(root, 'quality', pr='o/r#7')
+    attest(root, 'arch', pr='o/r#7')
+    except_gap(root, 'security')
+    except_gap(root, 'goal')
+    for call in ({'draft': False}, {'reviewers': ['bob']}):
+        decision = guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **call))
+        assert 'gates missing at head aaaaaaa: security, goal' in decision['reason'], call
+    except_gap(root, 'gates missing at head aaaaaaa: security, goal')
+    for call in ({'draft': False}, {'reviewers': ['bob']}):
+        assert guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **call)) is None, call
+    assert guards.pre_tool(root, mcp('request_copilot_review', pullNumber=7)) is None
+
+
+def test_the_not_counted_lines_go_with_the_accepted_gate_gap_at_the_ready_door(root, drafts):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    stray = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    stray.parent.mkdir(parents=True)
+    stray.write_text(verdict_text(gate='quality', head='a' * 40, pr='o/r#7'))  # never attested
+    decision = guards.bash(root, 'gh pr ready 7', str(root), 's1')
+    assert 'quality-aaaaaaa.md not counted: not attested' in decision['reason']
+    except_gap(root, 'quality')
+    assert guards.bash(root, 'gh pr ready 7', str(root), 's1') is None
 
 
 @pytest.mark.parametrize('command', ['gh pr ready 7 --undo', 'gh pr ready 7 --undo=true', 'gh pr ready 5',
@@ -1919,6 +1966,85 @@ def test_an_edit_under_the_projects_folder_is_refused(root, tool, key, path):
                                         ('Write', '/repo/.claude/wuwei/cli/wuwei/hook.py')])
 def test_reading_a_transcript_or_editing_beside_it_passes(root, tool, path):
     assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': path}, 'cwd': '/repo'}) is None
+
+
+# memory-writable (#1196): Claude Code's memory (<project>/memory/<file>) stays writable; the transcripts beside it do not
+
+@pytest.fixture
+def memory(tmp_path, monkeypatch):
+    """A home with one project folder and its memory folder; ws.PROJECTS and HOME point at it."""
+    home = tmp_path / 'home'
+    (home / '.claude' / 'projects' / '-repo' / 'memory').mkdir(parents=True)
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setattr(ws, 'PROJECTS', home / '.claude' / 'projects')
+    return home / '.claude' / 'projects' / '-repo'
+
+
+MEMORY_PATHS = ['~/.claude/projects/-repo/memory/note.md', '~/.claude/projects/-repo/memory/MEMORY.md', '$HOME/.claude/projects/-repo/memory/n.md',
+                '"$HOME"/.claude/projects/-repo/memory/n.md', '${HOME}/.claude/projects/-repo/memory/n.md', '~//.claude//projects//-repo//memory/n.md',
+                '~/./.claude/./projects/-repo/./memory/n.md', '~/x/../.claude/projects/-repo/memory/n.md']
+MEMORY_WRITES = ['echo x >> {p}', 'printf x > {p}', 'tee -a {p}', 'cat f | tee -a {p}', 'sed -i s/a/b/ {p}', 'rm -f {p}', 'truncate -s 0 {p}',
+                 'bash -c "echo x >> {p}"', 'env A=1 tee -a {p}', 'echo x >> {p} && cat {p}']
+
+
+@pytest.mark.parametrize('path', MEMORY_PATHS)
+@pytest.mark.parametrize('write', MEMORY_WRITES)
+def test_a_write_to_a_memory_file_passes(root, repo, memory, write, path):
+    assert guards.pre_tool(root, bash(write.format(p=path))) is None, write.format(p=path)
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit'])
+@pytest.mark.parametrize('name', ['note.md', 'MEMORY.md'])
+def test_an_edit_of_a_memory_file_passes(root, memory, tool, name):
+    assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': str(memory / 'memory' / name)}, 'cwd': '/repo'}) is None
+
+
+@pytest.mark.parametrize('path', [
+    '~/.claude/projects/-repo/memory/../s.jsonl', '~/.claude/projects/-repo/memory/../tool-results/r.txt',
+    '~/.claude/projects/-repo/memory/../s/subagents/agent-a.jsonl', '~/.claude/projects/-repo/memory', '~/.claude/projects/-repo/memory/',
+    '~/.claude/projects/-repo/memory/sub/n.md', '~/.claude/projects/-repo/%6demory/n.md', '~/.claude/projects/-repo/memory%2f..%2fs.jsonl',
+    '~/.claude/projects/-repo/memor?/n.md', '~/.claude/projects/-repo/{memory,x}/n.md', '~/.claude/projects/-repo/memory/*.md',
+    '~/.claude/projects/-repo/memory/link.md', '~/.claude/projects/-repo/memory/up/s.jsonl', '~/.claude/projects/-repo/memory/up',
+    '~/.claude/projects/-repo/s.jsonl', '$X/.claude/projects/-repo/memory/n.md', '.claude/projects/-repo/memory/n.md', '~/.claude/projects/memory/n.md',
+    '~/.claude/projects/memory/tool-results/r.txt'])
+@pytest.mark.parametrize('write', ['echo x >> {p}', 'tee -a {p}', 'rm -f {p}'])
+def test_a_path_that_only_looks_like_memory_is_refused(root, repo, memory, write, path):
+    (memory / 'memory' / 'link.md').symlink_to('../s.jsonl')
+    (memory / 'memory' / 'up').symlink_to('..')
+    found = guards.pre_tool(root, bash(write.format(p=path)))
+    assert found and 'transcripts' in found['reason'], write.format(p=path)
+
+
+def test_a_memory_folder_that_is_a_link_is_refused(root, repo, memory):
+    (memory / 'memory').rmdir()
+    (memory / 'memory').symlink_to('.')
+    assert 'transcripts' in guards.pre_tool(root, bash('echo x >> ~/.claude/projects/-repo/memory/s.jsonl'))['reason']
+    found = guards.pre_tool(root, {'tool_name': 'Write', 'tool_input': {'file_path': str(memory / 'memory' / 's.jsonl')}, 'cwd': '/repo'})
+    assert 'transcripts' in found['reason']
+
+
+@pytest.mark.parametrize('command', [
+    'ln -s ../s.jsonl ~/.claude/projects/-repo/memory/n.md && echo x >> ~/.claude/projects/-repo/memory/n.md',
+    'mv /tmp/l ~/.claude/projects/-repo/memory/n.md', 'cp -P /tmp/l ~/.claude/projects/-repo/memory/n.md',
+    'python3 -c "open(\'~/.claude/projects/-repo/memory/n.md\', \'a\').write(1)"', 'find ~/.claude/projects/-repo/memory/n.md -delete',
+    'cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl', 'env -C ~/.claude/projects/-repo/memory tee -a ../s.jsonl',
+    'sudo -D ~/.claude/projects/-repo/memory tee ../s.jsonl', 'cd ~/.claude/projects/-repo/memory/sub && echo x >> ../../s.jsonl',
+    'env -C ~/.claude/projects/-repo/memory/sub tee -a ../../s.jsonl'])
+def test_a_link_maker_or_a_working_directory_in_memory_is_refused(root, repo, memory, command):
+    """ln, mv, cp, python and find can stage a link in memory that a later write follows, and a working directory there climbs out."""
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert 'transcripts' in reason and 'memory (<project>/memory/<file>) takes Write, Edit, a redirect' in reason, command
+
+
+@pytest.mark.parametrize('folder, up', [('memory', '..'), ('memory/sub', '../..')])
+def test_a_session_inside_the_memory_folder_is_refused(root, repo, memory, folder, up):
+    found = guards.pre_tool(root, {**bash(f'echo x >> {up}/s.jsonl'), 'cwd': str(memory / folder)})
+    assert 'transcripts' in found['reason']
+
+
+def test_a_memory_file_outside_the_account_projects_folder_is_refused(root, repo, memory, monkeypatch):
+    monkeypatch.setattr(ws, 'PROJECTS', memory.parent.parent / 'elsewhere')
+    assert 'transcripts' in guards.pre_tool(root, bash('echo x >> ~/.claude/projects/-repo/memory/n.md'))['reason']
 
 
 @pytest.mark.parametrize('wrapper', ['env A=1', 'nice -n 1', 'timeout 5', 'sudo', 'stdbuf -o0'])

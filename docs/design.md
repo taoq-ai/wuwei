@@ -72,13 +72,14 @@ question is refused back to the model. A `one-way:` answer becomes an ADR in the
 accepted exception drops that gap at that head and adds a follow-up item that closes it. The
 accepted gap must equal the printed gap text (case, spacing, end marks and a printed `[waiting]`
 aside), or equal the gates a gate gap names (`security` for `gates missing at head <sha7>:
-security`); a part of either waives nothing.
+security`); a part of either waives nothing. `wuwei evidence`, the merge door and the ready door read
+exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
 
 ## 6. The evidence contract
 
 | Evidence | Applies |
 |---|---|
-| The WUWEI footer (or a `WUWEI-Item: <id>` line) names a plan item | every PR |
+| The WUWEI footer names a plan item (the older `WUWEI-Item: <id>` line still links, with a process-fit line naming the footer) | every PR |
 | The repository's PR template sections | when it has a template |
 | A test in the diff, or `No test: <reason>` (docs-only exempt) | every PR |
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
@@ -138,9 +139,15 @@ confirmation at the head. Both are safety gaps. The line holds one http(s) URL a
 brackets, of a communication that already exists: a PR or issue comment, or a published release
 note or migration guide. A changelog entry written at release does not count.
 
-Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
-merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
-the diff. Verdicts count only when attested at
+Error budget: when a repository's 28-day change failure rate (change failures over merges, at most 1,
+with at least five merges) is over 15 percent, every tier there rises one step and takes its full gate
+set, untrimmed by the diff. A change failure is a merged PR whose title starts with the word revert
+(any case), or a run of failed production deployments up to the next successful deployment of the
+same environment. A deployment is production when GitHub flags its environment as production, or
+when the environment name holds prod or production as a word not led by pre or non. Only the newest
+100 production deployments in the window are read, one status read each. When the deployments cannot
+be read, the reverts alone count. Time to restore runs from the first failed deployment of a run to
+the green one. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
@@ -169,7 +176,7 @@ CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_f
 `update_pull_request` with `draft` false) and a reviewer request on a draft (`gh pr edit
 --add-reviewer`, a REST POST on `pulls/<n>/requested_reviewers`, MCP `reviewers` or
 `request_copilot_review`) before the gates pass at the PR head, so review starts at a gated head
-(#1050, #1074);
+(#1050, #1074), unless the owner accepted the gate gap for that PR at that head (#1168);
 `--admin` (and `--admin=true` in any spelling pflag reads as true; `--auto` counts only where pflag
 reads it as the flag); a `gh api` write to an endpoint under `repositories/<id>` (spell it
 `repos/<owner>/<repo>`); a `gh api graphql` query WUWEI cannot read (`--input -`, `-F query=@-`, a

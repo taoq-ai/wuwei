@@ -62,7 +62,8 @@ Take your recommendation, record it under Assumptions in the spec or PR body (wh
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
 HARNESS = ("the harness's session transcripts (.claude/projects) are written only by the harness: WUWEI confirms owner answers and "
-           'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>.')
+           'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>. Claude Code\'s memory '
+           '(<project>/memory/<file>) takes Write, Edit, a redirect, tee, sed -i, truncate or rm on its literal path, from outside memory.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
@@ -78,8 +79,10 @@ def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or w
         fnmatchcase(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
-def harness(path, cap=512):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    return records(path, ('projects',), cap, '.claude')
+def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: str(Path.home()), path)  # keep: a file in <project>/memory, as a literal path
+    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'/[\w./@+-]*', full) and (  # resolves, links read
+        real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
 
 
 def deny(reason):
@@ -299,7 +302,7 @@ def gh_command(root, args, cwd, session, command=''):
     return None
 
 
-def create_door(root, repo, branch, base, text, act=OPEN):
+def create_door(root, repo, branch, base, text, act=OPEN, ref=''):
     """Gates run on the pushed head before review (#1050): a PR opens ready, or a draft leaves draft, at a gated head."""
     try:
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
@@ -307,7 +310,9 @@ def create_door(root, repo, branch, base, text, act=OPEN):
         return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; it {act}.')
     pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
-    found = evidence.gate_gaps(root, repo, item_id, gates, (diff.get('commits') or [{}])[-1].get('sha', ''), why, '', tier)
+    head = (diff.get('commits') or [{}])[-1].get('sha', '')
+    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier)
+    found = evidence.excepted(root, ref, head, found) if ref else found  # the owner's exception for this PR at this head (#1168)
     found += [{'text': 'no plan item is named, so no gate verdict can count: end the PR body with the WUWEI footer or a '
                'WUWEI-Item line, passed by --body or a --body-file path WUWEI can read (a literal path, not $VAR)'}] if found and not item_id else []
     return deny(f'{repo} {branch} {act}:\n' + '\n'.join('- ' + g['text'] for g in found)) if found else None
@@ -321,7 +326,7 @@ def ready_door(root, repo, number):
         pr = gh.pr(repo, number)
     except gh.GhError as exc:
         return deny(f'cannot read {repo}#{number} ({exc}): a draft {READY}.')
-    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY) if pr['isDraft'] else None
+    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}') if pr['isDraft'] else None
 
 
 def merge_door(root, repo, number, auto=False):
@@ -370,8 +375,8 @@ def bash(root, command, cwd, session):
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
-        if any(map(harness, targets)) or writer and any(map(harness, words)) or held and (writer or any(
-                not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets)):
+        if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
+                held and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):  # ln, mv, cp, find, python can stage a link
             return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
@@ -408,7 +413,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(map(harness, paths)) else None
+        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(harness(p, keep=True) for p in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(

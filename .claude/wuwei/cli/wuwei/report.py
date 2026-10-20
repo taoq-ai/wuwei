@@ -161,17 +161,16 @@ def dora(root, window=28, today=None):
     for repo in _repos(root):
         try:
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
-            deploys, source = [d for d in gh.deployments(repo) if d.get('created_at', '') >= since], 'deployments'
-            if not deploys:
-                deploys, source = [r for r in gh.releases(repo) if (r.get('published_at') or '') >= since], 'releases'
+            deploys = gh.deployments(repo, since)
+            source, deploys = ('deployments', deploys) if deploys else ('releases', [r for r in gh.releases(repo, since) if (r.get('published_at') or '') >= since])
+            failed, restored = evidence.failures(repo, merged, deploys)
         except gh.GhError as exc:
             table[repo] = {'unmeasured': str(exc)}
             continue
-        reverts = sum(1 for pr in merged if pr.get('title', '').startswith('Revert'))
         table[repo] = {
             'lead_time_hours': round(statistics.median(_hours(pr['createdAt'], pr['mergedAt']) for pr in merged), 1)
             if merged else 'unmeasured',
-            'deploys': len(deploys), 'deploy_source': source,
-            'change_failure_rate': round(reverts / len(merged), 2) if merged else 'unmeasured',
-            'merged': len(merged), 'time_to_restore': 'unmeasured'}
+            'deploys': len(deploys), 'deploy_source': source, 'merged': len(merged),
+            'change_failure_rate': round(min(failed / len(merged), 1), 2) if merged else 'unmeasured',
+            'time_to_restore': round(statistics.median(_hours(*r) for r in restored), 1) if restored else 'unmeasured'}
     return table

@@ -1,5 +1,9 @@
+import datetime
+
+import pytest
+
 from conftest import answered, make_pr, write_plan
-from wuwei import report, ws
+from wuwei import evidence, report, ws
 
 
 def test_the_report_lists_the_day_and_what_slipped(root, fake):
@@ -26,14 +30,145 @@ def test_close_is_a_checkpoint_the_next_pass_reopens(root, fake):
     assert report.close(root) == path
 
 
-def test_dora_reads_the_code_host(root, fake, monkeypatch):
-    rows = [{'number': 1, 'title': 'feat: a', 'createdAt': '2026-10-01T00:00:00Z', 'mergedAt': '2026-10-01T10:00:00Z'},
-            {'number': 2, 'title': 'Revert "feat: a"', 'createdAt': '2026-10-02T00:00:00Z', 'mergedAt': '2026-10-02T02:00:00Z'}]
-    monkeypatch.setattr(report.gh, 'merged_prs', lambda repo, since: rows)
-    monkeypatch.setattr(report.gh, 'deployments', lambda repo: [{'created_at': '2026-10-03T00:00:00Z'}])
+def merged(fake, number, title, at, created=None):
+    pr = make_pr(number=number, state='MERGED', body='')
+    pr.update(title=title, createdAt=created or at, mergedAt=at, updatedAt=at)
+    fake.prs[str(number)] = pr
+
+
+REVERTS = ['revert(infra/TIN-817): drop the issuer', 'revert: x', 'Revert "y"', 'fix: a revert-proof parser']
+
+
+def test_dora_reads_the_code_host(root, fake):
+    merged(fake, 2, 'Revert "feat: a"', '2026-10-02T02:00:00Z', '2026-10-02T00:00:00Z')
+    merged(fake, 1, 'feat: a', '2026-10-01T10:00:00Z', '2026-10-01T00:00:00Z')
+    fake.deployments = [{'created_at': '2026-10-03T00:00:00Z'}]
     table = report.dora(root, window=28, today='2026-10-15')
     assert table['acme/app'] == {'lead_time_hours': 6.0, 'deploys': 1, 'deploy_source': 'deployments',
                                  'change_failure_rate': 0.5, 'merged': 2, 'time_to_restore': 'unmeasured'}
+
+
+def test_dora_counts_a_revert_by_its_first_word_in_any_case(root, fake):
+    for number, title in enumerate(REVERTS, 1):
+        merged(fake, number, title, '2026-10-01T00:00:00Z')
+    table = report.dora(root, window=28, today='2026-10-15')['acme/app']
+    assert (table['change_failure_rate'], table['merged']) == (0.75, 4)
+
+
+@pytest.mark.parametrize('source', ['deployments', 'releases'])
+def test_dora_counts_every_deploy_in_the_window_past_the_first_page(root, fake, source):
+    rows = [{'created_at': f'2026-{day}T00:00:00Z', 'published_at': f'2026-{day}T00:00:00Z'}
+            for day in ['10-10'] * 150 + ['09-01'] * 150]
+    setattr(fake, source, rows)
+    table = report.dora(root, window=28, today='2026-10-15')['acme/app']
+    assert (table['deploys'], table['deploy_source'], table['time_to_restore']) == (150, source, 'unmeasured')
+    assert len([args for args in fake.calls if f'/{source}?' in args[1]]) == 2  # the page that leaves the window is the last
+
+
+def deploy(fake, number, environment, at, *states):
+    fake.deployments.insert(0, {'id': number, 'environment': environment, 'created_at': at})  # newest first
+    fake.statuses[str(number)] = list(states)
+
+
+def test_a_failed_production_deploy_is_a_change_failure_restored_by_the_next_green_one(root, fake):
+    """ai-stacks on 2026-10-19: two failed deploys of a new certificate, a revert, green about 4 hours later (#1177)."""
+    day = (ws.now() - datetime.timedelta(days=2)).date().isoformat()
+    for number, title in enumerate(['feat: a', 'feat: b', 'feat: c', 'feat: d', 'revert(infra/TIN-817): drop the issuer'], 1):
+        merged(fake, number, title, f'{day}T07:00:00Z')
+    deploy(fake, 1, 'Tinuiti Production', f'{day}T06:00:00Z', 'inactive', 'success')
+    deploy(fake, 2, 'Tinuiti Production', f'{day}T08:00:00Z', 'failure', 'in_progress')
+    deploy(fake, 3, 'staging', f'{day}T08:30:00Z', 'error')  # not production: no change failure
+    deploy(fake, 4, 'Tinuiti Production', f'{day}T09:00:00Z', 'failure')  # the rerun: the same failure
+    deploy(fake, 5, 'Tinuiti Production', f'{day}T12:06:00Z', 'success')
+    deploy(fake, 6, 'Other Production', f'{day}T13:00:00Z', 'error')  # not yet restored: a failure without a restore time
+    table = report.dora(root, window=28, today=ws.today())['acme/app']
+    assert (table['change_failure_rate'], table['time_to_restore'], table['deploys']) == (0.6, 4.1, 6)
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.6, 'merged': 5, 'raised': True}
+
+
+def runs(fake, *rows):
+    """evidence.failures over deploys an hour apart, oldest first: (environment, statuses newest first)."""
+    for number, (environment, states) in enumerate(rows, 1):
+        deploy(fake, number, environment, (datetime.datetime(2026, 10, 10) + datetime.timedelta(hours=number)).isoformat() + 'Z', *states)
+    return evidence.failures('acme/app', [], fake.deployments)
+
+
+def test_a_green_deploy_a_later_one_superseded_still_ends_the_failed_run(fake):
+    found = runs(fake, ('Tinuiti Production', ['failure']), ('Tinuiti Production', ['inactive', 'success']),
+                 ('Tinuiti Production', ['success']))
+    assert found == (1, [('2026-10-10T01:00:00Z', '2026-10-10T02:00:00Z')])
+
+
+@pytest.mark.parametrize('state', ['in_progress', 'queued', 'pending'])
+def test_a_rerun_not_yet_finished_restores_nothing(fake, state):
+    assert runs(fake, ('production', ['failure']), ('production', [state])) == (1, [])
+
+
+def test_a_success_in_another_production_environment_leaves_the_run_open(fake):
+    assert runs(fake, ('eu Production', ['failure']), ('us Production', ['success'])) == (1, [])
+
+
+@pytest.mark.parametrize('environment', ['preprod', 'pre-prod', 'Pre-Production', 'pre_prod', 'nonprod', 'non-prod',
+                                         'non-production', 'productivity-sandbox', 'reproduce', 'staging', ''])
+def test_a_deploy_outside_production_is_no_change_failure_and_costs_no_status_read(fake, environment):
+    assert runs(fake, (environment, ['failure'])) == (0, [])
+    assert not [args for args in fake.calls if '/statuses' in args[1]]
+
+
+@pytest.mark.parametrize('environment', ['production', 'Tinuiti Production', 'PROD-eu', 'prod', 'prod_eu', 'eu-prod'])
+def test_a_failed_deploy_to_a_production_environment_is_a_change_failure(fake, environment):
+    assert runs(fake, (environment, ['failure'])) == (1, [])
+
+
+def test_github_s_production_flag_marks_production_whatever_the_name(fake):
+    deploy(fake, 1, 'live', '2026-10-10T01:00:00Z', 'failure')
+    fake.deployments[0]['production_environment'] = True
+    assert evidence.failures('acme/app', [], fake.deployments) == (1, [])
+
+
+@pytest.mark.parametrize('title', ['revertible: x', 'reverting x', 'fix: revert x'])
+def test_a_title_that_only_starts_with_the_letters_of_revert_is_no_revert(title):
+    assert evidence.failures('acme/app', [{'title': title}], []) == (0, [])
+
+
+@pytest.mark.parametrize('refused', ['deployments', 'a status'])
+def test_a_refused_deploy_read_still_counts_the_reverts_and_raises_the_tier(root, fake, refused):
+    """A token without Deployments read dropped the whole rate, so the tier was not raised for a day (CWE-636)."""
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    for number in range(1, 11):
+        merged(fake, number, 'Revert "x"' if number < 3 else f'feat: {number}', at)
+    deploy(fake, 1, 'production', at, 'failure')
+    if refused == 'deployments':
+        fake.deployments = None
+    else:
+        del fake.statuses['1']
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.2, 'merged': 10, 'raised': True}
+
+
+def test_the_rate_is_at_most_one_when_failed_runs_outnumber_merges(root, fake):
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    merged(fake, 1, 'feat: a', at)
+    for number in range(1, 4):
+        deploy(fake, number, f'production {number}', at, 'failure')
+    assert report.dora(root, window=28, today=ws.today())['acme/app']['change_failure_rate'] == 1.0
+    assert evidence.budget(root, 'acme/app')['cfr'] == 1.0
+
+
+def test_only_the_newest_hundred_production_deploys_cost_a_status_read(fake):
+    found = runs(fake, *[('production', ['failure'] if n == 1 else ['success']) for n in range(1, 151)])
+    assert found == (0, []) and len([args for args in fake.calls if '/statuses' in args[1]]) == 100
+
+
+def test_budget_and_dora_count_every_merge_in_the_window_and_stop_past_it(root, fake):
+    inside, before = ((ws.now() - datetime.timedelta(days=days)).isoformat(timespec='seconds') for days in (1, 60))
+    for number in range(1, 401):
+        merged(fake, number, 'Revert "x"' if number % 50 == 0 else f'feat: {number}', inside if number <= 250 else before)
+    reads = lambda: len([args for args in fake.calls if 'state=closed' in args[1]])  # noqa: E731
+    table = report.dora(root, window=28, today=ws.today())['acme/app']
+    assert (table['merged'], table['change_failure_rate'], reads()) == (250, 0.02, 3)
+    fake.calls.clear()
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.02, 'merged': 250, 'raised': False}
+    assert reads() == 3  # the third page holds the first PR updated before the window
 
 
 def test_the_report_learns_from_what_shipped(root, fake):

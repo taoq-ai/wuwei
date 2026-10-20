@@ -1,5 +1,6 @@
 """A cold status reads each repository's PR evidence in parallel and says what it is reading (#1121)."""
 
+import datetime
 import json
 import os
 import threading
@@ -38,7 +39,7 @@ def test_a_cold_board_reads_linked_prs_in_parallel_with_rows_in_plan_order(root,
     started = time.monotonic()
     rows = board.compute(root)
     elapsed = time.monotonic() - started
-    assert [(r['item'], r['pr']) for r in rows] == [(f'I-{n}', f'acme/app#{100 + n}') for n in range(1, 19)]
+    assert [(r['item'], r['pr']) for r in rows] == [('team', None)] + [(f'I-{n}', f'acme/app#{100 + n}') for n in range(1, 19)]
     serial = len(calls) * DELAY  # every gh call one after another, as at efcd9e7
     assert elapsed < serial / 3, (elapsed, serial, len(calls))
 
@@ -68,7 +69,9 @@ def test_a_cold_status_names_each_repository_on_stderr_and_keeps_stdout(root, fa
     assert cli.main(['status']) == 0
     cold = capsys.readouterr()
     assert cold.err.splitlines() == ['wuwei: reading acme/app: 18 open PRs']
-    assert cold.out.splitlines() == ['Board (what each open item still lacks):'] + [
+    assert cold.out.splitlines() == ['Board (what each open item still lacks):', (
+        '- team seats: orchestration: open PRs with no shepherd seat running; '
+        'orchestration: gates owed on green heads with no gate seat running')] + [
         f'- I-{n} item {n} (acme/app#{100 + n}): gates missing at head aaaaaaa: quality' for n in range(1, 19)]
 
 
@@ -107,6 +110,30 @@ def test_a_warm_board_reads_the_same_and_an_entry_expires_by_its_first_read(root
     os.utime(entry, (old - 60, old - 60))
     board.compute(root)
     assert _pr_reads(calls) == 1
+
+
+def test_a_board_reads_one_page_of_merged_prs_however_many_merged(root, fake):
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                       'status': 'open', 'added': '2026-01-01'}])
+    now = ws.now().isoformat(timespec='seconds')
+    for n in range(1, 251):
+        fake.prs[str(n)] = {**make_pr(n, state='MERGED', body=''), 'headRefName': f'other-{n}', 'mergedAt': now, 'updatedAt': now}
+    board.compute(root)
+    fake.calls.clear()
+    board.compute(root)
+    assert len([args for args in fake.calls if 'state=closed' in args[1]]) == 1
+
+
+def test_a_cold_board_reads_the_error_budget_once_and_at_most_a_hundred_deploy_statuses(root, fake, monkeypatch):
+    """Eight threads each read the budget, so 100 production deploys cost 800 status reads (#1177)."""
+    _eighteen(root, fake)
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    fake.deployments = [{'id': n, 'environment': 'production', 'created_at': at} for n in range(150)]
+    fake.statuses = {str(n): ['success'] for n in range(150)}
+    calls = _slow(fake, monkeypatch)
+    board.compute(root)
+    assert sum('/statuses' in args[1] for args in calls) == 100
+    assert sum('/deployments?' in args[1] for args in calls) == 2
 
 
 def _hosted(calls):

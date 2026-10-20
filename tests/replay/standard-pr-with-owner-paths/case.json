@@ -4,6 +4,12 @@
    "actionable": true,
    "kind": "process",
    "owner": false,
+   "text": "PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer"
+  },
+  {
+   "actionable": true,
+   "kind": "process",
+   "owner": false,
    "text": "780 changed lines: split it, or add a Size: <reason> line"
   },
   {
@@ -134,6 +140,9 @@
     }
    }
   },
+  "[\"api\", \"repos/acme/app/deployments?per_page=100&page=1\"]": {
+   "out": []
+  },
   "[\"api\", \"repos/acme/app/pulls/57/files?per_page=100&page=1\"]": {
    "out": [
     {
@@ -156,7 +165,7 @@
   "[\"api\", \"repos/acme/app/pulls/57/reviews?per_page=100\"]": {
    "out": []
   },
-  "[\"api\", \"repos/acme/app/pulls?state=closed&sort=updated&direction=desc&per_page=100\"]": {
+  "[\"api\", \"repos/acme/app/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1\"]": {
    "out": []
   },
   "[\"api\", \"repos/acme/app/rules/branches/main?per_page=100&page=1\"]": {
