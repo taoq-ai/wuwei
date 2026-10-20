@@ -66,8 +66,6 @@ moving while you are away.
   each tagged with its kind (`one-way:`, `scope:` ...).
 - **No direct pushes to `main`.** Everything goes through a PR; force pushes are refused.
 - **A refusal is not an error.** It lists what is missing, and the team closes the gap.
-- **Commits credit WUWEI.** Each commit ends with a `Co-Authored-By: taoq-wuwei[bot]` trailer, so
-  GitHub shows the [WUWEI app](https://github.com/apps/taoq-wuwei) as a co-author.
 
 ## For agents installing WUWEI
 
