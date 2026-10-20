@@ -82,6 +82,7 @@ class FakeGh:
         self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
         self.deployments = []
         self.releases = []
+        self.statuses = {}  # deployment id -> its status states, newest first
         self.protection = {}  # base branch -> the contexts its protection requires, or a GhError; absent plays no protection
         self.rulesets = {}  # base branch -> the contexts its rulesets require
 
@@ -150,6 +151,8 @@ class FakeGh:
         if args[0] == 'api' and re.fullmatch(r'repos/[^/]+/[^/]+/pulls', path):
             wanted = 'open' if 'state=open' in query else 'closed'
             return self.page(query, [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted])
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/deployments/(\d+)/statuses', path)):
+            return [{'state': state} for state in self.statuses[m[1]]]  # newest first, as GitHub lists them
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/(deployments|releases)', path)):
             return self.page(query, getattr(self, m[1]))
         if args[0] == 'api' and '/compare/' in path:

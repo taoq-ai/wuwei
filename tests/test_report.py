@@ -65,6 +65,27 @@ def test_dora_counts_every_deploy_in_the_window_past_the_first_page(root, fake, 
     assert len([args for args in fake.calls if f'/{source}?' in args[1]]) == 2  # the page that leaves the window is the last
 
 
+def deploy(fake, number, environment, at, *states):
+    fake.deployments.insert(0, {'id': number, 'environment': environment, 'created_at': at})  # newest first
+    fake.statuses[str(number)] = list(states)
+
+
+def test_a_failed_production_deploy_is_a_change_failure_restored_by_the_next_green_one(root, fake):
+    """ai-stacks on 2026-10-19: two failed deploys of a new certificate, a revert, green about 4 hours later (#1177)."""
+    day = (ws.now() - datetime.timedelta(days=2)).date().isoformat()
+    for number, title in enumerate(['feat: a', 'feat: b', 'feat: c', 'feat: d', 'revert(infra/TIN-817): drop the issuer'], 1):
+        merged(fake, number, title, f'{day}T07:00:00Z')
+    deploy(fake, 1, 'Tinuiti Production', f'{day}T06:00:00Z', 'inactive', 'success')
+    deploy(fake, 2, 'Tinuiti Production', f'{day}T08:00:00Z', 'failure', 'in_progress')
+    deploy(fake, 3, 'staging', f'{day}T08:30:00Z', 'error')  # not production: no change failure
+    deploy(fake, 4, 'Tinuiti Production', f'{day}T09:00:00Z', 'failure')  # the rerun: the same failure
+    deploy(fake, 5, 'Tinuiti Production', f'{day}T12:06:00Z', 'success')
+    deploy(fake, 6, 'Other Production', f'{day}T13:00:00Z', 'error')  # not yet restored: a failure without a restore time
+    table = report.dora(root, window=28, today=ws.today())['acme/app']
+    assert (table['change_failure_rate'], table['time_to_restore'], table['deploys']) == (0.6, 4.1, 6)
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.6, 'merged': 5, 'raised': True}
+
+
 def test_budget_and_dora_count_every_merge_in_the_window_and_stop_past_it(root, fake):
     inside, before = ((ws.now() - datetime.timedelta(days=days)).isoformat(timespec='seconds') for days in (1, 60))
     for number in range(1, 401):

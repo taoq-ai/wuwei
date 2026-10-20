@@ -138,9 +138,12 @@ confirmation at the head. Both are safety gaps. The line holds one http(s) URL a
 brackets, of a communication that already exists: a PR or issue comment, or a published release
 note or migration guide. A changelog entry written at release does not count.
 
-Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
-merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
-the diff. Verdicts count only when attested at
+Error budget: when a repository's 28-day change failure rate (change failures over merges, at least
+five merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
+the diff. A change failure is a merged PR whose title starts with the word revert (any case), or a
+run of failed production deployments (an environment marked production or named with "prod") up to
+the next successful deployment of the same environment. Time to restore runs from the first failed
+deployment of that run to the green one. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and

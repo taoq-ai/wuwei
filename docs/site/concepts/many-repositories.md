@@ -33,7 +33,7 @@ What adapts is read, not configured:
 | Default branch | the code host |
 | Protection and rulesets | the code host (and `wuwei doctor` shows the door strength) |
 | CI | the repository's own checks |
-| Change failure rate | its merges and reverts |
+| Change failure rate | its merges, reverts and production deployments |
 | Repository memory | its `CLAUDE.md` or `AGENTS.md` |
 
 **Why:** a process that ignores a repository's own conventions fights its maintainers. Reading

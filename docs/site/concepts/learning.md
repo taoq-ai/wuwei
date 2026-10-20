@@ -31,7 +31,7 @@ gets stricter standards; a gate that never finds anything is a cost to question.
 ## Error budget
 
 From site reliability engineering: when a repository's change failure rate over 28 days (reverts
-over merges, with at least five merges) goes over 15 percent, every tier in that repository rises
+and failed production deployments over merges, with at least five merges) goes over 15 percent, every tier in that repository rises
 one step until it recovers. Light changes get the full gate set; standard changes get the goal gate.
 
 **Why:** autonomy should be earned by results and lost by escapes, automatically, without anyone

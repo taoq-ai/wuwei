@@ -225,9 +225,16 @@ def spec_gaps(repo, engine, tier, files, head):
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 
-def reverts(prs):
-    """The PRs whose title starts with the word revert in any case: 'Revert "x"', 'revert: x', 'revert(scope): x'."""
-    return sum(1 for pr in prs if re.match(r'revert\b', pr.get('title') or '', re.I))
+def failures(repo, merged, deploys):
+    """Reverts (title starts with the word revert) plus failed production deploy runs, each ended by its environment's next success."""
+    failing, restored = {}, []
+    for d in sorted((d for d in deploys if d.get('production_environment') or 'prod' in (d.get('environment') or '').lower()), key=lambda d: d['created_at']):
+        state = next((s['state'] for s in gh.run(['api', f'repos/{repo}/deployments/{d["id"]}/statuses']) if s['state'] != 'inactive'), '')
+        if state in ('failure', 'error'):
+            failing.setdefault(d['environment'], d['created_at'])
+        elif state == 'success' and d['environment'] in failing:
+            restored.append((failing.pop(d['environment']), d['created_at']))
+    return sum(1 for pr in merged if re.match(r'revert\b', pr.get('title') or '', re.I)) + len(restored) + len(failing), restored
 
 
 def budget(root, repo):
@@ -236,9 +243,10 @@ def budget(root, repo):
         since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
         try:
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            failed = failures(repo, merged, gh.deployments(repo, since))[0]
         except gh.GhError:
             return {'cfr': None, 'merged': 0}
-        return {'cfr': round(reverts(merged) / len(merged), 2) if merged else None, 'merged': len(merged)}
+        return {'cfr': round(failed / len(merged), 2) if merged else None, 'merged': len(merged)}
     found = _cached(root, 'budget-' + repo.replace('/', '__'), read)
     return {**found, 'raised': found['cfr'] is not None and found['merged'] >= 5 and found['cfr'] > BUDGET}
 

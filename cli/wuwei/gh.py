@@ -139,7 +139,7 @@ def login():
 
 
 def deployments(repo, since):
-    return pages(f'repos/{repo}/deployments', stop=lambda d: (d.get('created_at') or '') < since)
+    return [d for d in pages(f'repos/{repo}/deployments', stop=lambda d: (d.get('created_at') or '') < since) if (d.get('created_at') or '') >= since]
 
 
 def releases(repo, since):
