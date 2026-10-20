@@ -76,8 +76,10 @@ def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or w
         fnmatchcase(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
-def harness(path, cap=512):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    return records(path, ('projects',), cap, '.claude')
+def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: str(Path.home()), path)  # keep: a file in <project>/memory, as a literal path
+    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'/[\w./@+-]*', full) and (  # resolves, links read
+        real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
 
 
 def deny(reason):
@@ -354,8 +356,8 @@ def bash(root, command, cwd, session):
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
-        if any(map(harness, targets)) or writer and any(map(harness, words)) or held and (writer or any(
-                not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets)):
+        if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
+                held and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):  # ln, mv, cp, find, python can stage a link
             return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
@@ -392,7 +394,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(map(harness, paths)) else None
+        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(harness(p, keep=True) for p in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(

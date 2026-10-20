@@ -263,6 +263,14 @@
     {"command": "cd ~/.claude/projects/-repo && printf x >> s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
     {"command": "env -C ~/.claude/projects/-repo tee -a s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
     {"command": "cat ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "pass"},
-    {"command": "grep -c tool_use ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "pass"}
+    {"command": "grep -c tool_use ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "pass"},
+    {"command": "echo x >> ~/.claude/projects/-repo/memory/note.md", "source": "memory-writable acceptance 2 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "pass"},
+    {"command": "tee -a ~/.claude/projects/-repo/memory/MEMORY.md", "source": "memory-writable acceptance 2 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "pass"},
+    {"command": "echo x >> ~/.claude/projects/-repo/tool-results/r.txt", "source": "memory-writable acceptance 3 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "tee -a ~/.claude/projects/-repo/s/subagents/agent-a.jsonl", "source": "memory-writable acceptance 3 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "echo x >> ~/.claude/projects/-repo/memory/../s.jsonl", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "echo x >> ~/.claude/projects/-repo/%6demory/n.md", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "ln -s ../s.jsonl ~/.claude/projects/-repo/memory/n.md", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"}
   ]
 }
