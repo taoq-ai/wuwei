@@ -587,6 +587,22 @@ def test_a_wellformed_verdict_nobody_attested_says_how_to_fix_it(root, fake):
     assert any('not counted: not attested' in t and 'sentinel-quality' in t for t in found)
 
 
+def test_the_not_counted_lines_name_only_the_gates_the_gap_names(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    attest(root, 'arch')
+    attest(root, 'security', name='security-aaaaaaa-2.md')
+    folder = root / ws.DIR / 'verdicts' / 'I-1'
+    (folder / 'security-aaaaaaa.md').write_text(verdict_text(gate='security').replace('Confidence: high', 'Confidence: sure'))
+    (folder / 'quality-aaaaaaa.md').write_text(verdict_text())
+    (folder / 'qa-aaaaaaa.md').write_text(verdict_text(gate='qa'))
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert found[0] == 'gates missing at head aaaaaaa: quality'
+    assert not [t for t in found if 'security-' in t]
+    assert any(t.startswith('verdict .wuwei/verdicts/I-1/quality-aaaaaaa.md not counted: not attested') for t in found)
+    assert any(t.startswith('verdict .wuwei/verdicts/I-1/qa-aaaaaaa.md not counted: Gate:') for t in found)  # an unreadable gate shows
+
+
 def test_one_exception_can_cover_several_prs_with_loose_gap_text(root, fake):
     light(root)
     fake.prs['42'] = make_pr(files=('src/app.py',))
@@ -782,6 +798,20 @@ def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(
     fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 4, 'deletions': 2}]
     forget(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
+
+
+def test_a_delta_review_gap_names_only_the_uncounted_verdicts_of_its_gate(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'quality', OLD)
+    fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 4, 'deletions': 2}]
+    folder = root / ws.DIR / 'verdicts' / 'I-1'
+    for gate in ('quality', 'security'):
+        (folder / f'{gate}-aaaaaaa.md').write_text(verdict_text(gate=gate).replace('Confidence: high', 'Confidence: sure'))
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'no gate passed at head aaaaaaa (a delta review by security)',
+        'verdict .wuwei/verdicts/I-1/security-aaaaaaa.md not counted: Confidence: must start with low, medium or high']
 
 
 def test_verdicts_count_by_their_pr_when_the_item_is_not_in_the_plan(root, fake):

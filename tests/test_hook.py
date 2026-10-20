@@ -433,6 +433,14 @@ def test_a_malformed_verdict_denies_the_handback_with_its_shape_errors(root):
     assert not ws.rows(root, 'attest')
 
 
+def test_a_sub_bullet_under_a_finding_denies_the_handback_naming_the_line(root):
+    findings = '- [high] cli/app.py:42 blocks: yes. Failure: a blank token passes\n  - seen again at line 50'
+    write_verdict(root, verdict_text(verdict='FIX', findings=findings))
+    out = handback(root, f'Reviewed.\nVerdict file: {VERDICT_1067}')['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and '- seen again at line 50' in out['permissionDecisionReason']
+    assert not ws.rows(root, 'attest')
+
+
 def test_a_well_formed_verdict_is_attested_once_at_the_handback(root, tmp_path):
     write_verdict(root, verdict_text())
     message = f'Reviewed.\nVerdict file: {VERDICT_1067}'
