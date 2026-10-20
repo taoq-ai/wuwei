@@ -202,3 +202,49 @@ def test_owed_gates_on_a_head_whose_ci_runs_or_fails_owe_no_gate_seat(root, fake
 def test_a_team_line_is_a_duty_that_never_holds_a_merge(root):
     found = [evidence.gap(SHEPHERD), evidence.gap(GATES)]
     assert {g['kind'] for g in found} == {'duty'} and evidence.blocking(found) == [] and evidence.visible(found) == found
+
+
+def _owe_pr(root, opened=None):
+    plan.owe(root, 'acme/app#7', 'review ping for #7', 'Ana')
+    if opened:
+        rows = plan.items(root)
+        rows[0]['opened'] = opened
+        plan.save(root, rows)
+
+
+def _listed(root):
+    return any(r['item'] == 'R-1' for r in board.compute(root)) or any(r['item'] == 'R-1' for r in board.replies(root))
+
+
+def test_an_owe_keyed_to_a_pr_closes_on_a_slack_send_that_names_the_pr(root, fake):
+    _owe_pr(root)
+    hook.handle(root, 'PostToolUse', {
+        'session_id': 's1', 'tool_name': 'mcp__slack__slack_send_message', 'cwd': str(root),
+        'tool_input': {'channel_id': 'C0AD2QW0C4U', 'text': 'Review please: https://github.com/acme/app/pull/7'},
+        'tool_response': {'ok': True}})
+    assert not _listed(root)
+    assert plan.find(root, 'R-1')['status'] == 'done'
+
+
+def test_an_owe_keyed_to_a_pr_closes_on_a_send_recorded_by_another_session_or_wuwei_sent(root, fake, monkeypatch):
+    from wuwei import __main__ as cli
+    _owe_pr(root)
+    monkeypatch.chdir(root)
+    assert cli.main(['sent', 'acme/app#7', 'https://acme.slack.com/archives/C1/p1792392138932809']) == 0
+    assert not _listed(root)
+    assert 'acme/app#7' in plan.find(root, 'R-1')['reason']
+
+
+def test_an_owe_keyed_to_a_pr_stays_open_on_an_earlier_send_or_another_pr(root, fake):
+    ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#7'], 'link': 'https://x/1'})
+    _owe_pr(root, opened=(ws.now() + datetime.timedelta(minutes=1)).isoformat(timespec='seconds'))
+    ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#8'], 'link': 'https://x/2'})
+    assert _listed(root)
+    assert plan.find(root, 'R-1')['status'] == 'open'
+
+
+def test_an_owe_keyed_to_a_pr_stays_open_on_a_later_send_naming_another_pr(root, fake):
+    _owe_pr(root, opened=(ws.now() - datetime.timedelta(minutes=5)).isoformat(timespec='seconds'))
+    ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#8'], 'link': 'https://x/2'})
+    assert _listed(root)
+    assert plan.find(root, 'R-1')['status'] == 'open'
