@@ -3,6 +3,7 @@
 import concurrent.futures
 import datetime
 import os
+import re
 import sys
 
 from wuwei import evidence, gh, plan, ws
@@ -93,10 +94,12 @@ def compute(root, everything=False):
             if not linked and done:
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
-            if not linked:
+            if not linked:  # an open PR the item names by owner/repo#n or a bare #n, unlinked: say so (#1202)
+                named = evidence.refs(re.sub(r'(?<![\w/.-])#(?=[0-9])', repo + '#', ' '.join(str(item.get(k) or '') for k in ('title', 'promise', 'reason'))))
+                taken = next((ref for pr in prs if (ref := f'{repo}#{pr["number"]}').lower() in named), None)
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
                          if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
-                         if item.get('kind') == 'run' else evidence.gap('no pull request yet') if item.get('approved', True)
+                         if item.get('kind') == 'run' else evidence.gap(f'PR {taken} not linked: add the WUWEI footer naming {item["id"]}' if taken else 'no pull request yet') if item.get('approved', True)
                          else evidence.gap('awaiting plan approval', actionable=False, owner=True))
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
             for pr in linked:
