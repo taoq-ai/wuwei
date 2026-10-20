@@ -19,6 +19,7 @@ head or did not.
 | A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
 | The gates the diff needs, passed before the PR turned ready | the diff, under the tier's ceiling | safety | independent review before anyone else reads the code, and only the reviews the change calls for |
 | CI green | every PR | safety | the repository's own checks |
+| Every check the base branch requires ran (see [required checks](#required-checks)) | a base branch with protection or rulesets that require checks | safety | a check that never ran is not a pass, and an admin can merge past GitHub's own hold |
 | A review status settled (see [review statuses](#review-statuses)) | a commit status from a workflow the repo runs on `pull_request_review` | safety | a gate waiting on a reviewer needs someone to act; it is not a build |
 | Every review thread answered | every PR | safety | people's questions are obligations |
 | A reviewer requested | every PR | process | a PR nobody is asked to read is not reviewed |
@@ -44,6 +45,44 @@ read, the status stays CI (`CI running` or `CI failing`), never a pass.
 
 **Why:** a review gate read as CI tells the team to wait for a build that already finished, or to
 fix a build that is not red.
+
+## Required checks
+
+WUWEI reads the checks the PR's base branch requires: from branch protection (through the branch
+read, which needs only read access) and from the rulesets that apply to the branch. It keeps the
+answer 15 minutes per repository and branch.
+
+| What WUWEI finds | Gap | Arming auto-merge |
+| --- | --- | --- |
+| CI settled, and a required check has no check run and no status of that name on the head | `required check not run at <sha7>: <names>` | held |
+| CI still running, and a required check has no run yet | `required check not run yet at <sha7>: <names>` (waiting) | passes |
+| the protection or rulesets read fails or is malformed | `required checks unreadable on <branch>: <error>` (waiting) | held |
+| GitHub reports the PR's `mergeable_state` blocked, and WUWEI has no other safety gap for it | `GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR` (waiting) | passes |
+
+Every one of these gaps holds a direct merge. GitHub creates a job's check run only once the job is
+queued, so while CI runs a missing check may simply not exist yet. GitHub's auto-merge waits on its
+own required checks and its own hold, so arming it then is safe. A required check that ran and
+failed or is still running reads as `CI failing` or `CI running`. A failed read is read again next
+time.
+
+**Release PRs.** release-please pushes with the workflow token, and a push with that token starts no
+workflow. Its PR then carries `required checks not run`, with a pointer to this remedy. The way
+through:
+
+1. Set a repository secret the release workflow passes to release-please as its token. In this
+   repository that is `RELEASE_PAT`, which `.github/workflows/release.yml` already reads before the
+   workflow token. Use a fine-grained token or a GitHub App token with contents and pull-requests
+   write. Its pushes start the Tests workflow on the release PR.
+2. Until then, close and reopen the release PR. A reopen by a person starts the `pull_request`
+   workflows at its head.
+3. Or record an owner `exception:` at that head.
+
+A release PR sometimes does get its checks (when a person's push or reopen started them), so one
+release PR with green checks does not show the secret is set.
+
+**Why:** release-please pushed with the workflow token, so release PRs #1156 and #1157 had none of
+main's required checks on their heads. GitHub reported them blocked, but an admin could merge past
+that, and WUWEI read only the checks that reported.
 
 ## The spec engine
 
