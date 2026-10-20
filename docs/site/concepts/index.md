@@ -18,7 +18,7 @@ says what each one is, why it is there, and where it lives.
 | [Reversibility and confidence](decisions.md) | Ask only when a mistake would be costly and you are unsure | `_common.md` |
 | [Owner question classes](decisions.md#asking-the-owner) | Your attention is the scarcest resource | the owner-question door |
 | [Exceptions that expire](decisions.md#exceptions) | Accepting a gap is a debt, not a pardon | rulings, follow-up items |
-| [ADRs from one-way answers](decisions.md#adrs) | Why a hard decision was taken outlives the session | `docs/adr/` in each repo |
+| [ADRs from one-way answers](decisions.md#adrs) | Why a hard decision was taken outlives the session | each repo's own ADR folder |
 | [Hooks as the sensei](hooks.md) | Guidance at the moment beats rules nobody reads | `hooks/hooks.json` |
 | [Harness permissions](permissions.md) | One place for who may call which tool | `.claude/settings.json` |
 | [Andon](doors.md#andon) | Stop one broken stream, not the whole team | `wuwei andon` |
