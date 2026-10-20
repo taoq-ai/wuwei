@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.1.0](https://github.com/taoq-ai/wuwei/compare/v5.0.0...v5.1.0) (2026-10-20)
+
+
+### Features
+
+* **board:** a registered Codex job shows running, completed, failed or asked a question ([#1204](https://github.com/taoq-ai/wuwei/issues/1204)) ([2a26f16](https://github.com/taoq-ai/wuwei/commit/2a26f16d1eb44204bc2330ca26b4c48c1ebf89cd))
+* **board:** name open PRs with no shepherd seat and owed gates with no gate seat ([#1189](https://github.com/taoq-ai/wuwei/issues/1189)) ([156ff56](https://github.com/taoq-ai/wuwei/commit/156ff56a77c1b19104e0e8955e593b6b778eb319))
+
+
+### Bug Fixes
+
+* **board:** a run item is not marked done when a PR naming it merges ([#1203](https://github.com/taoq-ai/wuwei/issues/1203)) ([d060785](https://github.com/taoq-ai/wuwei/commit/d06078551a651528305befd2c9e4f211bb6b03f4))
+* **board:** an item naming an open PR without its link says so, and plan add --pr links a taken-over PR ([#1205](https://github.com/taoq-ai/wuwei/issues/1205)) ([40b5fb5](https://github.com/taoq-ai/wuwei/commit/40b5fb5baf8dbfdecca7c0616b5984be6abd4151))
+* **evidence:** a review thread the owner answered last is not unanswered ([#1207](https://github.com/taoq-ai/wuwei/issues/1207)) ([00787b6](https://github.com/taoq-ai/wuwei/commit/00787b61b288ee7517803b709885277c48c26aed))
+* **evidence:** the gate charter shows each finding shape, and a gap names only its gates' uncounted verdicts ([#1187](https://github.com/taoq-ai/wuwei/issues/1187)) ([1f074e7](https://github.com/taoq-ai/wuwei/commit/1f074e799276d5f5138f6591cbada72c0ba1acaf)), closes [#1179](https://github.com/taoq-ai/wuwei/issues/1179)
+* **evidence:** the old WUWEI-Item line shows as process fit, and an unlinked draft shows on the board ([#1178](https://github.com/taoq-ai/wuwei/issues/1178)) ([#1188](https://github.com/taoq-ai/wuwei/issues/1188)) ([59f153f](https://github.com/taoq-ai/wuwei/commit/59f153f6b8a6f34c43a56e53316373455a2d05ff))
+* **guards:** the push door reads each refspec's destination the way git does ([#1155](https://github.com/taoq-ai/wuwei/issues/1155)) ([f1bf1a3](https://github.com/taoq-ai/wuwei/commit/f1bf1a39bc2b8f9eba6da437364d60cd88c6dc08))
+* **guards:** the ready door honours an owner exception the way wuwei evidence does ([#1190](https://github.com/taoq-ai/wuwei/issues/1190)) ([e5b9416](https://github.com/taoq-ai/wuwei/commit/e5b9416818d252f591ddac80ff7482b5e0afafc5))
+* **guards:** the transcript guard leaves Claude Code's memory folder under ~/.claude/projects writable ([#1197](https://github.com/taoq-ai/wuwei/issues/1197)) ([5b5084b](https://github.com/taoq-ai/wuwei/commit/5b5084b33decb4ba901040804d958f36aef7e965))
+* **hook:** a seat report the harness's task notification carried is not given again ([#1206](https://github.com/taoq-ai/wuwei/issues/1206)) ([47b86e5](https://github.com/taoq-ai/wuwei/commit/47b86e5586fb2677a496a6098385ac91d59818a1))
+* **report:** DORA and the error budget count conventional reverts and failed production deploys, and read past the first page ([#1185](https://github.com/taoq-ai/wuwei/issues/1185)) ([0ef4a87](https://github.com/taoq-ai/wuwei/commit/0ef4a87a6c5a36e2d5218af72b3a3b74996ebcb9))
+
 ## [5.0.0](https://github.com/taoq-ai/wuwei/compare/v4.2.2...v5.0.0) (2026-10-20)
 
 
