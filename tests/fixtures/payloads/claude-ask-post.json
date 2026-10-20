@@ -1,0 +1,50 @@
+{
+  "session_id": "a5b186cc-8b7e-5e87-a6c5-2dbe8d72968d",
+  "transcript_path": "~/.claude/projects/-repo/a5b186cc-8b7e-5e87-a6c5-2dbe8d72968d.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "owner review: acme/app#42 at aaaaaaa. Merge it?",
+        "header": "owner review",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Yes",
+            "description": "Merge it."
+          },
+          {
+            "label": "No",
+            "description": "Hold it."
+          }
+        ]
+      }
+    ]
+  },
+  "tool_response": {
+    "questions": [
+      {
+        "question": "owner review: acme/app#42 at aaaaaaa. Merge it?",
+        "header": "owner review",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Yes",
+            "description": "Merge it."
+          },
+          {
+            "label": "No",
+            "description": "Hold it."
+          }
+        ]
+      }
+    ],
+    "answers": {
+      "owner review: acme/app#42 at aaaaaaa. Merge it?": "Yes"
+    }
+  },
+  "tool_use_id": "toolu_014L8q1vMwPqZbJ5LPCy6ucB"
+}
