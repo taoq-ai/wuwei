@@ -163,3 +163,10 @@ def test_an_owe_keyed_to_a_pr_stays_open_on_an_earlier_send_or_another_pr(root, 
     ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#8'], 'link': 'https://x/2'})
     assert _listed(root)
     assert plan.find(root, 'R-1')['status'] == 'open'
+
+
+def test_an_owe_keyed_to_a_pr_stays_open_on_a_later_send_naming_another_pr(root, fake):
+    _owe_pr(root, opened=(ws.now() - datetime.timedelta(minutes=5)).isoformat(timespec='seconds'))
+    ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#8'], 'link': 'https://x/2'})
+    assert _listed(root)
+    assert plan.find(root, 'R-1')['status'] == 'open'
