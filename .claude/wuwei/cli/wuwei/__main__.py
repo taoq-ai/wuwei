@@ -30,7 +30,7 @@ def cmd_plan(args):
         scores = {k: int(v) if float(v).is_integer() and k not in ('impact', 'confidence') else float(v)
                   for k, v in scores.items() if v is not None}
         item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '',
-                        args.promise or '', args.accept or ())
+                        args.promise or '', args.accept or (), [f'{args.repo if r.lower() == str(args.repo).lower() else r}#{n}' for r, n in [_ref(args.pr)]] if args.pr else ())
         print(f'{item["id"]} added with score {item["score"]}')
     elif args.action in ('park', 'drop', 'done'):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
@@ -195,7 +195,7 @@ def main(argv=None):
     p.add_argument('action', nargs='?', default='show', choices=tuple(actions))
     for name in ('id', 'title'):
         p.add_argument(name, nargs='?')
-    for name in ('goal', 'repo', 'why', 'reason', 'promise'):
+    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'pr'):
         p.add_argument(f'--{name}')
     p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
     p.add_argument('--from', dest='source', help="with add: the lead's candidates file")
