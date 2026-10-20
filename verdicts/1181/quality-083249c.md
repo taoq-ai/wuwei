@@ -1,0 +1,27 @@
+Verdict: FIX
+Gate: quality
+Item: 1181
+PR: taoq-ai/wuwei#1186
+Head: 083249cb8ec8c69fa0598b75f016c062b8872436
+Confidence: medium
+
+## Findings
+- [medium] charters/planner.md:44 blocks: yes. Failure: acceptance 2 of `wuwei plan show 1181` is "no condition left under which a Codex seat may later count", and the promise says to drop "only once the workspace has recorded that such a seat is attested". The head keeps that clause (lines 44-46, "On Codex a gate runs only as a Codex-native seat ... and only once the workspace has recorded that such a seat is attested; until then gates run as Claude seats"), and also does not say that builders and fix rounds may go to Codex. A planner on a short Claude budget still reads a route on which a Codex gate may count later, which is the confusion #1181 exists to remove. The same open door sits in docs/site/concepts/codex.md "Gates on Codex" ("its stop counts only once WUWEI reads Codex's own transcript"), which the promise says must "say the same". Requirement violated; no test covers it (mutant: the stale clause is present at the head and every test passes).
+- [medium] cli/wuwei/evidence.py:351 (and .claude/wuwei/cli/wuwei/evidence.py:351) blocks: yes. Failure: acceptance 1 requires the not-attested reason to say "a Codex task job or Codex seat never attests" and to name launching sentinel-<gate> as a Claude Code seat. The head adds only "(a codex-companion task never counts: it is not a seat)". A Codex-native seat (`spawn_agent` sentinel-<gate>), whose stop is now recorded as seat.unconfirmed, is not named, so its verdict still shows the generic text with no hint it will never count; and "Claude Code seat" is absent. The PR body restates acceptance in weaker words than the plan. The test (tests/test_evidence.py:587) asserts only the codex-companion clause, so it cannot catch the gap.
+- [low] tests/test_evidence.py blocks: no. After the reason is reworded, widen the assertion to the Codex seat and Claude Code seat wording; add one assertion in tests/test_charters.py that the planner charter no longer contains "only once the workspace has recorded".
+- [low] blocks: no. An owner exception written against the old not-counted text stops matching at this head (see Probes, "stale": 22 routes move pass to merge-deny). It fails closed and only touches an in-flight PR at one head; the builder named this under Assumptions.
+- [low] tests/test_charters.py:442 blocks: no. The new charter test asserts on two charter sentences, so a harmless rewording breaks it; acceptable for a charter, which is the file being checked.
+
+## Probes
+- Route differential (AGENTS.md rule): `git archive` of main 1877565, origin/main 8a92be7 and head 083249c into the scratch folder; `tests/fixtures/routes.json` sha256 4f6e25d0864d7922f17515d94a99be77590c11816113c273f211626318be4d49 (identical at main and head), 263 routes, each read through `guards.bash` with the code host stubbed (o/r, PR 5, light tier, unattested well-formed quality verdict at the head, a tests file in the diff so only the gate gap and the not-counted gap remain). Four setups.
+  - no ruling: 0 verdicts move; 57 reasons move, each only by the added clause.
+  - approved exception on the gate gap: 0 verdicts move; 57 reasons move, clause only (the not-counted gap still holds the merge routes at main and head).
+  - approved exceptions on the gate gap and on the not-counted gap (text printed by each tree): 0 verdicts move; 35 reasons move, clause only. 22 merge routes pass in this setup at both main and head.
+  - stale: exception on the main text of the not-counted gap, read at head: 22 routes move from pass to merge-deny (gh pr merge 5 --squash, gh pr merge 5 --auto, gh api -X PUT repos/o/r/pulls/5/merge ..., gh api -XPUT repos/o/r/pulls/5/merge, gh api -X PUT repos/o/r/pulls/5/ccr/auto_merge and 17 more merge spellings). Identical result against origin/main 8a92be7 and 1877565. A refusal naming another PR or repository: none moved.
+- Mutants, each applied to both `cli/wuwei/` and `.claude/wuwei/cli/wuwei/` (or both charter copies), run one at a time with `uvx --python 3.13 --from pytest pytest -q tests/test_evidence.py tests/test_charters.py` (baseline 477 passed): remove the evidence clause, killed by test_a_wellformed_verdict_nobody_attested_says_how_to_fix_it; remove "whatever its job id", killed by the new charters test (line 446); change "tells it not to use MCP tools" to "tells it to use", killed by the new charters test (line 447). Surviving: re-adding or keeping the stale "only once ... attested" clause (the head state) passes every test, no test covers acceptance 2.
+- Vendored copies: charters/planner.md and cli/wuwei/evidence.py equal their .claude/wuwei copies at the head. Runtime: 3,317 lines of cli/wuwei/*.py (budget 3,400), one line changed in place.
+- CI at the head: Tests 3.11/3.12/3.13, CodeQL, ZIRAN green (gh pr view 1186). The four macOS bash 3.2 failures are not the diff and were not re-run.
+- Simplicity: nothing to delete; the diff is one reason clause, charter and docs prose and two assertions. The retained "only once ... attested" clause is what the promise says to delete.
+
+## Residual risk
+The two blocking findings are wording fixes against the plan, not logic defects; the route differential shows no verdict move for the clause itself. Medium confidence: the Codex-transcript text from #1172 in codex.md may be a deliberate future switch, and whether the owner wants it kept is the plan author's call, but the item's acceptance says to remove it.

@@ -1,0 +1,29 @@
+Verdict: FIX
+Gate: quality
+Item: 1201
+PR: taoq-ai/wuwei#1204
+Head: 7ba5f6787d8b442465920d735b7f2746c92b4e96
+Confidence: medium
+Breaking: no
+
+## Findings
+- [medium] cli/wuwei/board.py:118 blocks: yes. Failure: on Python 3.14 (this machine's python3, which bin/wuwei runs; requires-python is >=3.11 and CI stops at 3.13) a job file whose status or result.rawOutput holds nested arrays 70000 to 250000 deep (for example {"status": "[" x 100000 + "]" x 100000}, 200 KB) parses fine, then str(...) of rawOutput and the f-string of status in board.job raise RecursionError, so board.job and board.compute crash instead of reading "job state unreadable" (CWE-674, the promise "unreadable reads job state unreadable, never done"; reproduced with board.job on 3.14.5, both fields; the same files read "job state unreadable" on 3.13 because its parser refuses past ~10000 deep); the new nested-200KB case puts the nesting at the top level, which is a list and so never reaches the str/f-string, and CI (3.11 to 3.13) cannot see the crash; fix by taking status and rawOutput only when they are str (isinstance) before formatting, or catching RecursionError around the formatting in job(), and add a nested-in-status and nested-in-rawOutput case to test_an_unreadable_codex_job_file_never_reads_done (red on 3.14, harmless on 3.13).
+- [low] cli/wuwei/board.py:117 blocks: no. A huge job file is read whole and parsed with no size cap; a multi-GB planted file would exhaust memory, but the path is one the planner registered, so this is a note.
+- [low] cli/wuwei/board.py:118 blocks: no. The status string is echoed unbounded into the run row (a 100 KB status prints 100 KB); the file is the companion's own and the row is informational, so this is a note.
+- [low] blocks: no. Still untested and not blocking: a relative --job path joined to the workspace root (mutant ws.read_json(path) survives), stripping "[" "]" from a handoff word (mutant removing "[]" from the strip set survives), and storing reason None when only --job is given (mutant `args.reason or ""` -> `args.reason` survives; the board filters it).
+
+## Probes
+- closed: no test for the completed guard at 7ba5f67 (new cases failed and cancelled with a question-ending rawOutput; deleting `found.get('status') == 'completed'` now fails 2 tests, first test_a_registered_codex_job_shows_its_state_on_the_board[failed-turn failed: why did the build break?]).
+- partly closed: nested JSON crashing the board at 7ba5f67 (the file itself nested past the parser limit now reads "job state unreadable"; mutant dropping RecursionError from ws.read_json is killed by test_an_unreadable_codex_job_file_never_reads_done[nested-200KB] on 3.13); the residual on 3.14 is the open finding above.
+- Suite at 7ba5f67 in a git archive copy, PATH offline-gh, CLAUDE_CODE_SESSION_ID unset, Python 3.13.14, no -x: 3017 passed, 1 skipped, 4 failed; the 4 failures are the known bash 3.2 ones (test_the_hook_commands_run_under_either_harness_shell and three test_bash_runs_the_push_in_each_refused_shape cases), none in the diff's tests.
+- CI at this head, read once with gh pr checks after test (3.12) finished: test 3.11, 3.12, 3.13, ziran-audit, ZIRAN, CodeQL and both Analyze jobs all pass. The PR is still a draft. wuwei evidence names the quality gate as the only gap at this head.
+- Mutants, applied to both cli/wuwei/ and .claude/wuwei/cli/wuwei/, run one at a time on tests/test_plan.py and tests/test_upgrade.py, Python 3.13: 24 mutants, 21 killed by a behavioural test and 3 survive (relative path, bracket strip, reason None; the notes above). Killed: completed guard deleted (2 tests), RecursionError dropped from the except (nested-200KB), OSError dropped (the missing-file case), read_json always None (13 tests), upgrade state read replaced by None (test_init_upgrades_a_034_workspace_and_says_what_it_moved), upgrade lead read replaced by None (same test), endswith('?') -> '.', rstrip removed, [-1:] -> [:1], 'state unreadable' -> 'done', top-level dict guard removed, result dict guard removed, backtick strip removed, paren replace removed, endswith HANDOFF -> any word, job not joined into the row, "job " prefix removed, `--reason or --job` -> `--reason`, job not stored, status key renamed, rawOutput key renamed. Each survivor was run in a fresh restore of the file.
+- upgrade.py callers on ws.read_json: both callers (state.json at upgrade.py:83 and lead*.json at :92) pass Path objects; replacing either read with None fails the upgrade test, so the callers are covered. The behaviour change for them is that a RecursionError in a planted state or lead file now reads as no file instead of crashing; no test pins that, and it is the safe direction.
+- Python 3.14 probes under python -I: arrays and objects nested 100000 deep as the whole file read "job state unreadable"; the same nesting inside status or rawOutput raised RecursionError (depth sweep: 70000 parse ok and str RecursionError on 3.14; 10000 and up refuse to parse on 3.13).
+- Runtime budget: cli/wuwei/*.py is 3358 lines at the head (cap 3,400); the vendored copies match (the vendored-copy test passes in the suite).
+- Corpus/guard route differential: not applicable, no change to guards.py or hook.py.
+- Charter and docs: charters/planner.md changed and agents/ matches it (the drift test passes in the suite).
+- Simplicity: nothing to delete; ws.read_json replaced upgrade._json (one reader instead of two) and is the single place a nested-file crash is caught. ws.cache_get keeps its own read because it also checks the file age.
+
+## Residual risk
+One small fix remains and it is the same class as the earlier blocker, on the interpreter the planner really runs. The job shape rests on a fixture copied from one real file; a companion release that renames status or result.rawOutput reads as "job state unreadable", which fails safe.
