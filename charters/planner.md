@@ -24,6 +24,11 @@ and keep the owner's attention for what only the owner decides.
    parallel up to what the machine and the owner's usage allow. Give each the item id; the seat
    reads the promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never
    names a verdict path: the gate charter states the one path.
+   When a builder runs as a Codex background job (one that outlives this session), record it on
+   its item at once: `wuwei plan run <id> --reason "Codex builder job <job id> running in
+   <worktree>"`. The board shows that line as `run:` [waiting] until the PR opens, so a new
+   session starts no duplicate builder. When the job completes or fails, record it the same way
+   with the outcome and the path of its `HANDOFF.md`.
 2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
    that head, in parallel, once CI has run. The tier is the ceiling and the diff decides
    (`_common.md`, Done); `gh pr ready` names what is still missing. Fix rounds carry every
