@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from conftest import HEAD, make_pr, verdict_text, write_plan
+from conftest import HEAD, answered, make_pr, verdict_text, write_plan
 from wuwei import evidence, guards, hook, verdict, ws
 
 
@@ -82,7 +82,7 @@ def test_the_breaking_question_reaches_the_owner_and_is_recorded(root):
     payload = {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
                'tool_input': {'questions': [{'question': question}]}}
     assert guards.pre_tool(root, payload) is None
-    hook.handle(root, 'PostToolUse', {**payload, 'tool_response': {'answers': {question: 'Yes, proceed'}}})
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Yes, proceed'}))
     assert ws.rows(root, 'ruling')[-1]['data'] == {'kind': 'breaking', 'pr': 'acme/app#42', 'head': 'aaaaaaa',
                                                    'approved': True, 'question': question, 'answer': 'Yes, proceed'}
 
@@ -94,7 +94,7 @@ def test_a_proceed_answer_to_the_breaking_question_approves(root, answer, approv
     question = 'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed?'
     payload = {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
                'tool_input': {'questions': [{'question': question}]}}
-    hook.handle(root, 'PostToolUse', {**payload, 'tool_response': {'answers': {question: answer}}})
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: answer}))
     assert ws.rows(root, 'ruling')[-1]['data']['approved'] is approved
 
 def test_a_breaking_question_without_its_pr_is_refused(root):

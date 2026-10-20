@@ -23,7 +23,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
-READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
+READ = {'git', 'gh', 'wuwei', 'sed', 'find'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
@@ -59,19 +59,25 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
+HARNESS = ("the harness's session transcripts (.claude/projects) are written only by the harness: WUWEI confirms owner answers and "
+           'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
-def records(path, below=LEDGER, cap=512):  # .wuwei, or what lies below it (None: anything), as sh expands the path (cap: words left)
+def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
-        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2)) for a in alts)
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    return any(p[:1] == '.' and fnmatchcase('.wuwei', p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
-        fnmatchcase(name, parts[i + 1]) for name in below)) for i, p in enumerate(parts))
+    return any(p[:1] == '.' and fnmatchcase(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        fnmatchcase(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
+
+
+def harness(path, cap=512):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
+    return records(path, ('projects',), cap, '.claude')
 
 
 def deny(reason):
@@ -338,14 +344,19 @@ def bash(root, command, cwd, session):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
-    inside = records(cwd, None) or any(records(w, None, 64) for w in {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)})  # or env -C
+    wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
+    inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
         program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
+        if any(map(harness, targets)) or writer and any(map(harness, words)) or held and (writer or any(
+                not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets)):
+            return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
+        held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
         if program == 'wuwei' and argv[1:2] == ['hook']:
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
@@ -379,7 +390,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else None
+        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(map(harness, paths)) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
