@@ -243,6 +243,8 @@ def codex_job(folder, status, said=''):
     ('failed', 'turn failed', 'job failed'),
     ('cancelled', '', 'job cancelled'),
     ('completed', 'Should FR-026 hold the old rule or the new one?\n', 'job asked a question'),
+    ('failed', 'turn failed: why did the build break?', 'job failed'),
+    ('cancelled', 'Should I keep going?', 'job cancelled'),
 ])
 def test_a_registered_codex_job_shows_its_state_on_the_board(root, fake, monkeypatch, tmp_path, status, said, shown):
     from wuwei import __main__ as cli, board
@@ -253,7 +255,8 @@ def test_a_registered_codex_job_shows_its_state_on_the_board(root, fake, monkeyp
     assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == [f'run: {shown}']
 
 
-@pytest.mark.parametrize('content', [None, 'not json', '[1]', '{}', '{"status": null}', '{"status": "running", "result": "x"}'])
+@pytest.mark.parametrize('content', [None, 'not json', '[1]', '{}', '{"status": null}', '{"status": "running", "result": "x"}',
+                                     pytest.param('[' * 100000 + ']' * 100000, id='nested-200KB')])
 def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, tmp_path, content):
     from wuwei import __main__ as cli, board
     monkeypatch.chdir(root)

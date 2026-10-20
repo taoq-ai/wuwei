@@ -5,7 +5,7 @@ import datetime
 import os
 import sys
 
-from wuwei import evidence, gh, plan, upgrade, ws
+from wuwei import evidence, gh, plan, ws
 
 TTL = 60
 
@@ -113,7 +113,7 @@ def compute(root, everything=False):
 
 
 def job(root, path):  # only the Codex companion job file the planner registered with plan run --job; no plugin folder is scanned (#1201)
-    said = str(r.get('rawOutput') or '').rstrip() if isinstance(r := (found := d if isinstance(d := upgrade._json(os.path.join(root, path)), dict) else {}).get('result'), dict) else ''
+    said = str(r.get('rawOutput') or '').rstrip() if isinstance(r := (found := d if isinstance(d := ws.read_json(os.path.join(root, path)), dict) else {}).get('result'), dict) else ''
     status = 'asked a question' if found.get('status') == 'completed' and said.endswith('?') else found.get('status') or 'state unreadable'
     return f'job {status}' + ''.join(f', handoff {w}' for w in [w for w in (w.strip('`\'"<>[]*,.:;') for w in said.replace('(', ' ').replace(')', ' ').split()) if w.endswith('HANDOFF.md')][-1:])
 

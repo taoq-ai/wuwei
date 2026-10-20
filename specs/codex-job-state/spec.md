@@ -58,6 +58,8 @@ question 5, and 44 with a HANDOFF path.
   pid is out of the 6-line budget.
 - Once the item's PR opens, the PR row replaces the run row, as before; the job is then not shown.
 - A later `plan run --reason` keeps the registered job; the row shows the reason and the job state.
+- A job file the parser cannot read (missing, not JSON, nested past the parser's depth) reads
+  `job state unreadable`.
 
 ## Out of scope
 

@@ -16,3 +16,8 @@
 ## Phase 3: Docs
 
 - [x] T008 charters/planner.md (and its vendored copy), docs/design.md, docs/site/reference.md; `bin/wuwei agents build`
+
+## Fix round 1 (quality FIX at e84f228)
+
+- [x] T009 A 200 KB nested-array job file reads `job state unreadable` (red: RecursionError); a failed or cancelled job ending in `?` keeps its status (red against the mutant that drops the completed check) (tests/test_plan.py)
+- [x] T010 Move the reader to `ws.read_json`, catching RecursionError; the board no longer imports upgrade (cli/wuwei/ws.py, board.py, upgrade.py and copies); runtime at 3,356 (+5)
