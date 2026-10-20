@@ -3,7 +3,7 @@
 import datetime
 
 from conftest import make_pr, write_plan
-from wuwei import board, evidence, hook, plan, report, ws
+from wuwei import board, evidence, gh, hook, plan, report, ws
 
 THREAD = 'https://acme.slack.com/archives/C0123ABC/p1760510000000200'
 
@@ -256,3 +256,23 @@ def test_an_owe_keyed_to_a_pr_stays_open_on_a_later_send_naming_another_pr(root,
     ws.record(root, 'sent', {'tool': 'outside the session', 'refs': ['acme/app#8'], 'link': 'https://x/2'})
     assert _listed(root)
     assert plan.find(root, 'R-1')['status'] == 'open'
+
+
+def test_an_owe_keyed_to_a_pr_closes_when_every_unresolved_thread_ends_with_the_owners_reply(root, fake):
+    _owe_pr(root)
+    node = lambda *logins: {'isResolved': False, 'comments': {'nodes': [{'author': {'login': login}} for login in logins]}}
+    fake.threads['7'] = [node('alice', 'owner'), node('alice', 'owner', 'alice')]
+    assert _listed(root)
+    fake.threads['7'][1] = node('alice', 'owner', 'alice', 'owner')
+    assert not _listed(root)
+    assert 'owner' in plan.find(root, 'R-1')['reason']
+
+
+def test_an_owe_keyed_to_a_pr_stays_open_when_its_threads_are_unreadable(root, fake, monkeypatch):
+    _owe_pr(root)
+    fake.threads['7'] = [{'isResolved': False, 'comments': {'nodes': [{'author': {'login': 'owner'}}]}}]
+
+    def down(args, timeout=30):
+        raise gh.GhError('HTTP 502: Bad Gateway')
+    monkeypatch.setattr(gh, 'run', down)
+    assert [r['item'] for r in board.replies(root)] == ['R-1']

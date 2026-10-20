@@ -471,7 +471,7 @@ def gaps(root, repo, number, listed=None):
         except (gh.GhError, KeyError, TypeError, AttributeError) as exc:
             found.append(gap(f'required checks unreadable on {pr["baseRefName"]}: {exc}', actionable=False))
         author = (pr.get('author') or {}).get('login', '')
-        threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, author)
+        threads = hit['threads'] if 'threads' in hit else gh.unanswered_threads(repo, number, (author, owner_login(root)))
         if sig and not hit and rollup and settled:  # written on a miss only, so its age is the read's; CI settled
             ws.cache_put(root, name, {'sig': sig, 'pr': pr, 'threads': threads})
         if threads:
