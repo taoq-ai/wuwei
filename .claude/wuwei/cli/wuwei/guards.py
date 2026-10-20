@@ -49,6 +49,8 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
+PUSH_VALUED = {'o', *(n[:i] for n in ('push-option', 'repo', 'receive-pack', 'exec', 'recurse-submodules') for i in range(1, len(n) + 1))}
+REF_RULES = ('{}', 'refs/{}', 'refs/tags/{}', 'refs/heads/{}', 'refs/remotes/{}', 'refs/remotes/{}/HEAD')  # refs.c ref_rev_parse_rules
 TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -87,11 +89,11 @@ def deny(reason):
     return {'decision': 'deny', 'reason': reason}
 
 
-def _git(cwd, *args):
+def _git(cwd, *args, failed=''):  # failed: what a git that cannot run or finish in 5 s gives
     try:
         return subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
-        return ''
+        return failed
 
 
 def origin(cwd):  # owner/repo of the origin remote at cwd, or ''
@@ -152,22 +154,38 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def git_push(root, args, cwd):
-    if any(a.startswith('--force') or a == '--mirror' or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args):
+def _sources(cwd, words):  # each symbolic ref's final target, and the ref git resolves each word to; None if git did not finish
+    listed = _git(cwd, 'for-each-ref', '--format=%(refname) %(symref)', failed=None)
+    found = _git(cwd, '-c', 'core.warnAmbiguousRefs=false', 'rev-parse', '--symbolic-full-name', '--revs-only', '--end-of-options', *words, failed=None)
+    return None if None in (listed, found) else (dict(re.findall(r'(?m)^([^ \n]+) ([^ \n]+)$', listed)), found.split())
+
+
+def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
+    flags = _flags(args, PUSH_VALUED, ('--', '--end-of-options'))  # -o x, -vo x, --rep x: x is a value; after the first end, a refspec
+    operands, named = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes a unique prefix: --mirr is --mirror
+    if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in named):
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
-    positional = [a for a in args if not a.startswith('-')]
-    deleting = any(a in ('--delete', '-d') for a in args)
-    if any(ref.startswith('+') for ref in positional[1:]):
+    if any(ref.startswith('+') for ref in operands[1:]):
         return deny('force push refused (a + refspec): push a new commit instead.')
-    targets = []
-    for ref in positional[1:] or ['HEAD']:
-        destination = ref.split(':', 1)[1] if ':' in ref else ref
+    deleting = any('delete'.startswith(n) for n in named)  # -d, -vd, --del
+    tags = [n for n in named if n[1:] and ('tags'.startswith(n) or 'no-tags'.startswith(n))]  # the last wins; -n is --dry-run
+    refspecs = operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD'])  # --tags alone sends tags alone
+    # rev-parse reads no word after one it cannot resolve, where git push fails too; tag, ^x and globs are not sources. A ref named --
+    words = [r for r in refspecs if not re.search('^\\^|[:*]', r) and r != 'tag']  # is read per worktree and only plumbing writes one: refused
+    if (read := _sources(cwd, words)) is None:
+        return deny('push refused: git could not read the refs in 5 s, so the door cannot tell whether it reaches the default branch. Push fewer refspecs.')
+    (refs, targets), head = read, current_branch(cwd)  # one read per push, whatever the number of refspecs
+    targets += ['refs/heads/*'] if '--' in refspecs or any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches, --
+    for ref in refspecs:
+        source, colon, destination = ref.rpartition(':')
+        deleting = deleting or bool(colon and not source and destination)
+        if not colon:  # a source alone goes to the ref its name finds by git's rules: any candidate counts, as git may take any one
+            targets += [refs[n] for rule in REF_RULES if (n := rule.format('HEAD' if ref == '@' else ref)) in refs]
         if destination in ('', 'HEAD'):
-            destination = current_branch(cwd)
-        targets.append(destination.removeprefix('refs/heads/'))
-        deleting = deleting or ref.startswith(':')
+            destination = '*' if ref == ':' else head  # : pushes each branch both sides hold
+        targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole
     protected = _default(root, origin(cwd))
-    if hit := [t for t in targets if t in protected]:
+    if hit := [b for b in protected for t in targets if t == 'refs/heads/' + b or '*' in t and fnmatchcase('refs/heads/' + b, t)]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
@@ -188,11 +206,11 @@ def scratch(cwd, opts, args, command):  # one plain git call pushing to git dire
         and not any((p / ws.DIR).exists() for p in (c, *c.parents)) for h in homes)
 
 
-def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
+def _flags(args, valued, ends=('--',)):  # (name, value) per flag as pflag reads it (a value takes =x, the cluster's rest or the next word)
     out, words = [], iter(args)
     for word in words:
-        if word == '--' or word[:1] != '-' or word == '-':
-            out += [('', w) for w in (words if word == '--' else [word])]
+        if word in ends or word[:1] != '-' or word == '-':
+            out += [('', w) for w in (words if word in ends else [word])]
         elif long := re.fullmatch(r'--([^=]+)(?:=(.*))?', word, re.S):
             out.append((long[1], long[2] if long[2] is not None or long[1] not in valued else next(words, None)))
         elif rest := word[1:]:

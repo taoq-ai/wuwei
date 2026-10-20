@@ -189,8 +189,13 @@ collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges
 `contents/` on any branch; `gh repo delete` and a REST DELETE on the repository; a `gh api graphql`
 mutation that merges, arms auto-merge, opens a PR, marks one ready, requests reviewers, moves a ref, commits to a branch or changes
 branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
-every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
-`create_or_update_file` and `delete_file` tools on the default branch or with no branch (a force
+every form; pushes to or deletion of the default branch (a destination as git 2.43 reads it: `main`,
+`heads/main` or `refs/heads/main` after the last colon, or the ref git itself resolves a source alone
+to; the matching refspec `:`, `--all`, `--branches` and a glob whose destination can match it; a word
+an option takes is no refspec, and every word after the first `--` or `--end-of-options` is one; a
+push of a ref named `--`, which git reads per worktree, and a push whose refs git cannot read in 5 s
+too),
+including the GitHub MCP `push_files`, `create_or_update_file` and `delete_file` tools on the default branch or with no branch (a force
 push, push or delete to a git directory in a scratch folder passes in one plain git call, as
 SECURITY.md reads it); a git
 command naming `push` after an option before the subcommand that git 2.43 does not take, or after a

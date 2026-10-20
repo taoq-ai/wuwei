@@ -103,6 +103,10 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A scratch push that git sends elsewhere through state the guard does not read: a `.git` entry
   another process plants inside the remote between the guard's read and the push (git enters
   `<path>/.git` first), or an exec path or receive hook that runs another push.
+- A push whose ref the same command changes first. The push door reads HEAD, and the ref a source
+  alone resolves to, when the guard runs: `git checkout main && git push origin HEAD`, or a local
+  symbolic ref written and pushed with no colon in one command
+  (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`).
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 
