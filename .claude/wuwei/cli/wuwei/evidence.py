@@ -333,7 +333,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
             last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
     if missing := [gate for gate in gates if gate not in passed]:
-        return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
+        return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id, missing)
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
     delta = compare(root, repo, last, head)['files']
@@ -341,11 +341,12 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
     gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
     if not gate or lines(delta) <= TRIVIAL and gate == 'quality' or gate in passed and head.startswith(passed[gate]['head']):
         return []
-    return [gap(f'no gate passed at head {head[:7]} (a delta review by {gate})')] + uncounted(root, item_id)
+    return [gap(f'no gate passed at head {head[:7]} (a delta review by {gate})')] + uncounted(root, item_id, [gate])
 
 
-def uncounted(root, item_id):
-    """Verdict files for the item that do not count, each with the reason: never a silent missing gate."""
+def uncounted(root, item_id, gates=REQUIRED['full']):
+    """Verdict files for the item that do not count, each with the reason: never a silent missing gate. Only the
+    gates named: a refused file beside a pass that replaced it is no gap (a file whose Gate: is unreadable shows)."""
     base = Path(root) / ws.DIR / 'verdicts'
     if not item_id or not base.is_dir():
         return []
@@ -358,6 +359,8 @@ def uncounted(root, item_id):
         if hashlib.sha256(body).hexdigest() in attested:
             continue
         parsed = parse(body.decode('utf-8', 'replace'))
+        if parsed['gate'] in REQUIRED['full'] and parsed['gate'] not in gates:
+            continue
         why = parsed['errors'][0] if parsed['errors'] else (
             f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
             f'report with "Verdict file: {path.relative_to(root)}" (a Codex task job or Codex seat never attests)')

@@ -449,6 +449,19 @@ def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
     assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
 
 
+def test_the_gate_charter_shows_finding_lines_the_parser_accepts_and_the_shapes_it_refuses():
+    from wuwei import verdict
+    text = (PLUGIN / 'charters' / '_gate.md').read_text(encoding='utf-8')
+    examples = re.findall(r'`(- \[(?:critical|high|medium|low)\] [^`]*)`', text)
+    head = 'Verdict: FIX\nGate: quality\nItem: 1\nPR: acme/app#1\nHead: ' + 'a' * 40 + '\nConfidence: high\n\n## Findings\n'
+    assert len(examples) >= 3 and any('PR-body:0' in e for e in examples), examples
+    for line in examples:
+        assert verdict.parse(head + line + '\n')['errors'] == [], line
+    for bad in ('- [high] cli/app.py:42 blocks: yes. Failure: a blank token passes\n  - seen at line 50',
+                '- [low] PR body, "Size:" line. blocks: no.', '- [medium] specs/x/plan.md:29 blocks: yes. Failure (contract, R-1)'):
+        assert verdict.parse(head + bad + '\n')['errors'], bad
+
+
 def test_the_planner_keeps_gates_off_codex_with_no_condition_and_a_codex_brief_bars_mcp():
     text = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
     assert 'Gates never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts' in text
