@@ -1,5 +1,6 @@
 import pytest
 import hashlib
+import shutil
 import time
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
@@ -13,6 +14,11 @@ def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breakin
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
+
+
+def forget(root):
+    """A test that changes what the host holds at one sha drops what the cache kept for it, as GitHub never does."""
+    shutil.rmtree(root / ws.DIR / 'cache', ignore_errors=True)
 
 
 def standard(root):
@@ -448,6 +454,46 @@ def test_a_clean_full_tier_speckit_feature_passes(root, fake):
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
+def test_a_retarget_at_the_same_head_reads_the_spec_of_the_new_file_list(root, fake):
+    """A stacked PR moved onto main keeps its head, but its diff now carries its parent's feature (#1161)."""
+    from wuwei import guards
+    light(root, 'full')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
+    fake.prs['42']['files'] += [{'path': 'specs/8-stacked/spec.md', 'additions': 5, 'deletions': 0}]
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
+
+
+def test_a_path_holding_a_newline_does_not_share_a_spec_key_with_two_paths(root, fake):
+    """A git path may hold a newline, so the file-list digest must not join paths on one."""
+    from wuwei import guards
+    light(root, 'full')
+    files = speckit(fake)
+    fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md\nsrc/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md', 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
+
+
+def test_a_wuwei_upgrade_reads_the_spec_again(root, fake, monkeypatch):
+    """A new version may add or tighten a spec rule, so a result an older version cached is not reused."""
+    from wuwei import guards
+    light(root, 'full')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    fake.files['specs/7-rate-limits/tasks.md'] = '- [ ] T1\n'
+    monkeypatch.setattr(ws, 'version', lambda: '999.0.0')
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and 'tasks.md has 1 unchecked item' in found['reason'], found
+
+
 def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
     standard(root)
     fake.paths.add('openspec')
@@ -459,7 +505,7 @@ def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
         attest(root, gate)
     assert evidence.gaps(root, 'acme/app', 42) == []
     del fake.files[f'{change}/proposal.md']
-    ws.cache_put(root, 'spec-acme__app', None)
+    forget(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{change}/proposal.md missing: run the spec engine step that writes it']
 
 
@@ -655,6 +701,7 @@ def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
     analysis_pr(fake, '| F6 | HIGH | Resolved: tests/test_app.py::test_grant |')
     assert not any('analysis.md' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
     analysis_pr(fake, '| F6 | HIGH | open |')
+    forget(root)
     assert any('open CRITICAL or HIGH finding' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
 
 
@@ -717,9 +764,11 @@ def test_a_long_docs_delta_carries_the_passes_and_a_long_spec_delta_is_read_by_a
     fake.deltas[(OLD, HEAD)] = [{'path': 'README.md', 'additions': 300, 'deletions': 0}]
     assert evidence.gaps(root, 'acme/app', 42) == []
     fake.deltas[(OLD, HEAD)] = [{'path': 'specs/004-voice/spec.md', 'additions': 200, 'deletions': 0}]
+    forget(root)
     assert evidence.gaps(root, 'acme/app', 42) == []
     for path, n in (('specs/004-voice/spec.md', 201), ('specs/004-voice/contracts/api.yaml', 2)):
         fake.deltas[(OLD, HEAD)] = [{'path': path, 'additions': n, 'deletions': 0}]
+        forget(root)
         assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by arch)']
 
 
@@ -731,6 +780,7 @@ def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(
     fake.deltas[(OLD, HEAD)] = [{'path': 'src/app.py', 'additions': 4, 'deletions': 2}]
     assert evidence.gaps(root, 'acme/app', 42) == []
     fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 4, 'deletions': 2}]
+    forget(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
 
 
@@ -1265,3 +1315,209 @@ def test_a_later_fix_at_its_head_does_not_replace_a_held_escalate(root, fake):
     attest(root, 'quality', HEAD, 'FIX', name='quality-fix.md')
     attest(root, 'quality', HEAD, 'PASS', name='quality-pass.md', extra='Supersedes: I-1/quality-fix.md\n')
     assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith(('gates missing', 'no gate'))] == OWED
+
+
+# The checks the base branch requires (required-checks): #1156 and #1157 merged with none of them run on their heads.
+REQUIRED_1157 = ['test (3.11)', 'test (3.12)', 'ziran-audit']
+BRANCH = 'repos/acme/app/branches/'  # the branch read, never the rules read under rules/branches/
+BLOCKED = 'GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR'
+
+
+def complete(root, fake, checks=('CodeQL',)):
+    """acme/app#42 with every gate passed at its head and each named check run green: no gap on main."""
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.prs['42']['statusCheckRollup'] = [{'name': name, 'conclusion': 'SUCCESS', 'status': 'COMPLETED'} for name in checks]
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+
+
+def denied(root, auto=False):
+    from wuwei import guards
+    return (guards.merge_door(root, 'acme/app', 42, auto=auto) or {}).get('reason', '')
+
+
+def test_a_required_check_with_no_run_on_the_head_holds_the_merge(root, fake):
+    complete(root, fake)
+    fake.protection['main'] = ['test (3.11)']
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert [(g['text'], g['kind'], g['actionable']) for g in found] == [
+        ('required check not run at aaaaaaa: test (3.11)', 'safety', True)]
+    assert '- required check not run at aaaaaaa: test (3.11)' in denied(root)
+    assert '- required check not run at aaaaaaa: test (3.11)' in denied(root, auto=True)  # it never starts by waiting
+
+
+def test_the_merged_release_pr_shows_its_required_checks_post_merge(root, fake):
+    complete(root, fake)
+    fake.protection['main'] = REQUIRED_1157
+    fake.prs['42'].update(state='MERGED', mergedAt='2026-10-19T08:00:00Z')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'post-merge: required checks not run at aaaaaaa: test (3.11), test (3.12), ziran-audit']
+
+
+@pytest.mark.parametrize('protection, rulesets, shown', [
+    (REQUIRED_1157, [], 'required checks not run at aaaaaaa: test (3.11), test (3.12), ziran-audit'),
+    ([], ['ziran-audit'], 'required check not run at aaaaaaa: ziran-audit'),
+    (None, ['ziran-audit'], 'required check not run at aaaaaaa: ziran-audit'),
+    (['test (3.11)'], ['test (3.11)', 'ziran-audit'], 'required checks not run at aaaaaaa: test (3.11), ziran-audit')])
+def test_protection_and_rulesets_each_require_checks_and_each_is_named_once(root, fake, protection, rulesets, shown):
+    complete(root, fake)
+    fake.protection['main'], fake.rulesets['main'] = protection, rulesets
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [shown]
+    assert ['api', 'repos/acme/app/branches/main'] in fake.calls
+    assert ['api', 'repos/acme/app/rules/branches/main?per_page=100&page=1'] in fake.calls
+
+
+def test_every_required_check_green_reads_as_on_main(root, fake):
+    complete(root, fake, checks=('CodeQL', 'test (3.11)', 'test (3.12)'))
+    fake.prs['42']['statusCheckRollup'].append({'context': 'ziran-audit', 'state': 'SUCCESS', 'url': None})
+    fake.prs['42']['mergeableState'] = 'clean'
+    main = evidence.gaps(root, 'acme/app', 42)
+    forget(root)
+    fake.protection['main'], fake.rulesets['main'] = ['test (3.11)', 'test (3.12)'], ['ziran-audit']
+    assert evidence.gaps(root, 'acme/app', 42) == main == []
+    assert denied(root) == ''
+
+
+@pytest.mark.parametrize('run, shown', [
+    ({'conclusion': 'FAILURE', 'status': 'COMPLETED'}, 'CI failing: test (3.11)'),
+    ({'conclusion': '', 'status': 'IN_PROGRESS'}, 'CI running')])
+def test_a_required_check_that_ran_reads_as_ci(root, fake, run, shown):
+    complete(root, fake)
+    fake.prs['42']['statusCheckRollup'].append({'name': 'test (3.11)', **run})
+    fake.protection['main'] = ['test (3.11)']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [shown]
+
+
+@pytest.mark.parametrize('reply', [None, []])
+def test_a_branch_that_requires_no_check_is_not_a_gap(root, fake, reply):
+    complete(root, fake)
+    fake.protection['main'] = reply  # unprotected, or protected with no required check
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def answering(monkeypatch, fake, route, reply):
+    def answer(args, timeout=30):
+        if route not in args[1]:
+            return fake(args, timeout)
+        fake.calls.append(args)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(gh, 'run', answer)
+
+
+@pytest.mark.parametrize('route, reply, error', [
+    (BRANCH, gh.GhError('gh: Not Found (HTTP 404)'), 'gh: Not Found (HTTP 404)'),
+    (BRANCH, gh.GhError('gh: Branch not found (HTTP 404)'), 'gh: Branch not found (HTTP 404)'),
+    (BRANCH, gh.GhError('gh: Resource not accessible by integration (HTTP 403)'), 'gh: Resource not accessible by integration (HTTP 403)'),
+    (BRANCH, {'name': 'main', 'protected': True}, "'protection'"),
+    (BRANCH, {'protection': {'enabled': True}}, "'required_status_checks'"),
+    (BRANCH, {'protection': {'required_status_checks': {'checks': [{'context': 'test (3.11)'}]}}}, "'contexts'"),
+    (BRANCH, {'protection': {'required_status_checks': {'contexts': None}}}, "unsupported operand type(s) for +: 'NoneType' and 'list'"),
+    (BRANCH, 'not json', 'string indices must be integers, not \'str\''),
+    ('/rules/branches/', gh.GhError('gh: HTTP 502: Bad Gateway (HTTP 502)'), 'gh: HTTP 502: Bad Gateway (HTTP 502)'),
+    ('/rules/branches/', [{'type': 'required_status_checks'}], "'parameters'")])
+def test_an_unreadable_required_read_fails_closed(root, fake, monkeypatch, route, reply, error):
+    complete(root, fake)
+    answering(monkeypatch, fake, route, reply)
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert [(g['text'], g['kind'], g['actionable']) for g in found] == [
+        (f'required checks unreadable on main: {error}', 'safety', False)]
+    assert f'- required checks unreadable on main: {error}' in denied(root)
+
+
+def test_a_failed_required_read_is_read_again(root, fake):
+    complete(root, fake)
+    fake.protection['main'] = gh.GhError('gh: HTTP 502: Bad Gateway (HTTP 502)')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required checks unreadable on main: gh: HTTP 502: Bad Gateway (HTTP 502)']
+    fake.protection['main'] = ['test (3.11)']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required check not run at aaaaaaa: test (3.11)']
+
+
+def test_the_required_read_is_kept_per_repository_and_base_branch(root, fake):
+    import os
+    complete(root, fake)
+    fake.protection.update({'main': ['test (3.11)'], 'a__b': ['ziran-audit']})
+    reads = lambda: sum(args[1].startswith(('repos/acme/app/branches/', 'repos/acme/other/branches/')) for args in fake.calls)  # noqa: E731
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'required check not run at aaaaaaa: test (3.11)']
+    assert reads() == 1 and sum('/rules/branches/' in args[1] for args in fake.calls) == 1
+    fake.protection['main'] = []  # kept for its window: the next read still names it
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required check not run at aaaaaaa: test (3.11)'] and reads() == 1
+    fake.prs['42']['baseRefName'] = 'a/b'
+    assert evidence.gaps(root, 'acme/app', 42) == [] and reads() == 2
+    fake.prs['42']['baseRefName'] = 'a__b'  # never the entry of a/b
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required check not run at aaaaaaa: ziran-audit'] and reads() == 3
+    evidence.gaps(root, 'acme/other', 42)
+    assert reads() == 4
+    fake.prs['42']['baseRefName'] = 'main'
+    for entry in (root / ws.DIR / 'cache').glob('required-acme__app-*.json'):
+        old = entry.stat().st_mtime - evidence.PR_TTL - 1
+        os.utime(entry, (old, old))
+    assert evidence.gaps(root, 'acme/app', 42) == [] and reads() == 5
+
+
+@pytest.mark.parametrize('state, other, shown', [
+    ('blocked', None, True), ('blocked', 'process', True), ('blocked', 'safety', False), ('clean', None, False),
+    ('unknown', None, False), ('unstable', None, False), ('behind', None, False), ('has_hooks', None, False), (None, None, False)])
+def test_github_blocked_with_no_gap_wuwei_can_name_is_a_gap(root, fake, state, other, shown):
+    complete(root, fake)
+    fake.prs['42']['mergeableState'] = state
+    if other == 'process':
+        fake.prs['42']['reviewRequests'] = []
+    if other == 'safety':
+        fake.prs['42']['statusCheckRollup'][0]['conclusion'] = 'FAILURE'
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert (evidence.gap(BLOCKED, actionable=False) in found) == shown  # a review hold is not the team's to act on
+    assert (f'- {BLOCKED}' in denied(root)) == shown
+    assert len(evidence.blocking(found)) == (1 if shown or other == 'safety' else 0)
+    assert (denied(root, auto=True) == '') == (other != 'safety')  # GitHub's auto-merge waits on its own hold
+
+
+def test_the_pr_read_carries_github_mergeable_state(root, fake):
+    fake.prs['42'] = {**make_pr(), 'mergeableState': 'blocked'}
+    assert gh.pr('acme/app', 42)['mergeableState'] == 'blocked'
+
+
+@pytest.mark.parametrize('running', [{'name': 'build', 'conclusion': '', 'status': 'IN_PROGRESS'},
+                                     {'context': 'ci/external', 'state': 'PENDING', 'url': None}])
+def test_a_required_check_not_yet_created_while_ci_runs_waits_and_lets_auto_merge_arm(root, fake, running):
+    complete(root, fake)  # a needs: job: GitHub creates its check run only once the job is queued
+    fake.prs['42']['statusCheckRollup'].append(running)
+    fake.protection['main'] = ['test (3.11)']
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert [(g['text'], g['kind'], g['actionable']) for g in found] == [
+        ('CI running', 'safety', False), ('required check not run yet at aaaaaaa: test (3.11)', 'safety', False)]
+    assert denied(root, auto=True) == ''
+    assert denied(root).endswith('- CI running\n- required check not run yet at aaaaaaa: test (3.11)')
+
+
+def test_a_required_check_on_the_second_page_of_rules_is_read(root, fake, monkeypatch):
+    complete(root, fake)
+    rule = {'type': 'required_status_checks', 'parameters': {'required_status_checks': [{'context': 'ziran-audit'}]}}
+    monkeypatch.setattr(gh, 'run', lambda args, timeout=30, run=gh.run: (
+        [{'type': 'deletion'}] * 100 if args[1].endswith('page=1') else [rule]) if '/rules/branches/' in args[1] else run(args, timeout))
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['required check not run at aaaaaaa: ziran-audit']
+
+
+@pytest.mark.parametrize('status, shown', [
+    ('COMPLETED', 'required check not run at aaaaaaa: ziran-audit (release-please pushed with the workflow token, which starts no '
+                  'workflow: close and reopen the PR, or give release-please a token)'),
+    ('IN_PROGRESS', 'required check not run yet at aaaaaaa: ziran-audit')])  # while CI runs the check may still come
+def test_a_release_pr_with_no_required_run_names_the_way_through(root, fake, status, shown):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    fake.protection['main'] = ['ziran-audit']
+    release_gaps(root, fake)
+    fake.prs['42']['statusCheckRollup'][0]['status'] = status
+    forget(root)
+    assert [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t.startswith('required')] == [shown]
+
+
+@pytest.mark.parametrize('base, path', [('a#b', 'a%23b'), ('a/b', 'a/b'), ('a%b', 'a%25b')])
+def test_the_base_branch_name_is_encoded_in_the_required_reads(root, fake, base, path):
+    complete(root, fake)
+    fake.prs['42']['baseRefName'] = base
+    evidence.gaps(root, 'acme/app', 42)
+    assert ['api', f'repos/acme/app/branches/{path}'] in fake.calls
+    assert ['api', f'repos/acme/app/rules/branches/{path}?per_page=100&page=1'] in fake.calls

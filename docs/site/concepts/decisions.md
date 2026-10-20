@@ -64,8 +64,10 @@ a printed `[waiting]` do not matter. For a gate gap, the gates it names also wor
 ## ADRs
 
 When you answer a `one-way:` question, the planner records the decision as a short Architecture
-Decision Record (context, decision, consequences) in the repository's `docs/adr/`, through the
-item's PR.
+Decision Record (context, decision, consequences) through the item's PR. It goes where the
+repository keeps its ADRs: an existing `docs/adr/` or `docs/decisions/`, else the item's spec
+folder. When your answer re-confirms an existing ADR, the planner amends that ADR instead of adding
+a file.
 
 **Why:** the reason for a hard decision outlives the session that took it, and the next person
 (or agent) who wants to reverse it should find it.

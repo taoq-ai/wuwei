@@ -114,6 +114,28 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 
+An owner answer (a ruling, a plan approval, an exception) and a seat stop (with its attestation)
+are recorded only when the harness's session transcript shows them: the AskUserQuestion tool_use
+and its answer row, or the seat's meta file and its Agent tool_use. The transcript must resolve to a
+regular file under `.claude/projects` in the account's home, read from the password database, so a
+hand-made hook call that sets `HOME` or `CLAUDE_CONFIG_DIR` moves nothing. Anything else is recorded
+as `answer.unconfirmed` or `seat.unconfirmed` with the reason. The guards refuse writes under
+`.claude/projects` (and to `.claude` itself) in the spellings the records rule reads, and after `cd`,
+`pushd`, `-C`, `--chdir` or `-D` into it; reads pass, except a `python` command that names a
+transcript path, which the guards cannot tell from a write (read it with `python3 - < <path>`). What
+stays open: a process that writes the transcript itself, through a script file, a writer the guards
+do not list (`install`, `perl`, `rsync`), a path built at run time, or a symlink made outside the
+guards' sight. Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
+(`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
+transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
+since each answer id is recorded once. Attestation still reads payload text on two paths: a
+sentinel's SubagentHandback at PreToolUse attests from its payload with no transcript check, and a
+SubagentStop that replays a real launch (its agent id, meta file and session transcript) attests and
+keeps the report text the payload carries, not the seat's own transcript. A harness that keeps
+transcripts elsewhere (`CLAUDE_CONFIG_DIR`, Codex), or an account with no password-database entry,
+gets every answer and stop recorded as unconfirmed while the guards keep running. An answer the
+planner session never confirms (it ends before another hook call) leaves its `answer.pending` row.
+
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
 that door-word rule; the leak scan does not read it. A shell (`sh`, `bash`, `zsh`, `dash`) with no
