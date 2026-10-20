@@ -439,3 +439,9 @@ def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
     text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text()
     assert ".claude/wuwei/cli/wuwei/" in text
     assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
+
+
+def test_the_planner_says_a_codex_companion_gate_never_counts_and_a_codex_brief_bars_mcp():
+    text = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
+    assert 'A gate run as a `codex-companion` task never counts, whatever its job id' in text
+    assert 'A brief for a seat on Codex tells it not to use MCP tools' in text

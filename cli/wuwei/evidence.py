@@ -348,7 +348,7 @@ def uncounted(root, item_id):
         parsed = parse(body.decode('utf-8', 'replace'))
         why = parsed['errors'][0] if parsed['errors'] else (
             f'not attested: launch the gate as agent type sentinel-{parsed["gate"]} and end its report with '
-            f'"Verdict file: {path.relative_to(root)}"')
+            f'"Verdict file: {path.relative_to(root)}" (a codex-companion task never counts: it is not a seat)')
         found.append(gap(f'verdict {path.relative_to(root)} not counted: {why}'))
     return found
 

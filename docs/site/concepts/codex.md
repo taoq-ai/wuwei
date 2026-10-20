@@ -50,10 +50,14 @@ files is later work.
 
 A gate counts only when WUWEI attests its verdict from the seat's own hand-back or SubagentStop. A
 `codex-companion` task job started from a Claude session is not a seat: it has no SubagentStop, so
-its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078). A Codex-native
+its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078, #1181). Its job
+id does not change that: a job id is not a hand-back the harness recorded. A Codex-native
 seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks; whether it is
 attested is what the codex-attest-probe item checks. Until that probe records an attested seat, run
 gates as Claude seats.
+
+A brief for a seat on Codex tells it not to use MCP tools. Codex can deny an MCP call without
+asking, and a seat treats any denied call as a blocker, so one denial can stop a sound review.
 
 **Why:** the process is the product, not the harness. The same evidence, doors and questions hold
 whichever agent does the work, and a team can run both without two rule books.
