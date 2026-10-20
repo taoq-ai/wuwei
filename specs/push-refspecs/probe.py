@@ -266,17 +266,17 @@ STOP = ['--', '--end-of-options', '-', '-x', '--git-dir', '--all', '-n', 'tag', 
 for word, planted in product(STOP, (False, True)):
     plant = f' && (git update-ref refs/heads/{shlex.quote(word)} refs/heads/feature || true)' if planted and word else ''
     add('stopper', f'git push origin -- {"tag t1" if word == "tag" else shlex.quote(word)} ZZ', ZZ + plant)
-ROOT = "printf 'ref: refs/heads/main\\n' > .git/"
-for setup, command in [(ROOT + '--', 'git push origin -- --'), (ROOT + '-- && git update-ref refs/heads/x refs/heads/feature', 'git push origin -- x --'),
-                       (ROOT + '--', 'git push origin -- feature --'), (ROOT + '-x', 'git push origin -- -x'),
+TOMAIN = "printf 'ref: refs/heads/main\\n' > .git/"
+for setup, command in [(TOMAIN + '--', 'git push origin -- --'), (TOMAIN + '-- && git update-ref refs/heads/x refs/heads/feature', 'git push origin -- x --'),
+                       (TOMAIN + '--', 'git push origin -- feature --'), (TOMAIN + '-x', 'git push origin -- -x'),
                        (ZZ + ' && git update-ref refs/heads/-- refs/heads/feature', 'git push origin -- -- ZZ'),
                        (ZZ, "git push origin '^refs/heads/nope' ZZ"), (ZZ, "git push origin '^refs/heads/f/*' ZZ"),
                        (ZZ, 'git push origin ^feature ZZ'), (ZZ, 'git push origin tag v1 ZZ'), (ZZ, "git push origin 'refs/heads/f/*' ZZ"),
-                       (ROOT + 'foo && git update-ref refs/foo refs/heads/main', 'git push origin foo'),
-                       (ROOT + 'FOO_HEAD && git update-ref refs/heads/FOO_HEAD refs/heads/feature', 'git push origin FOO_HEAD'),
+                       (TOMAIN + 'foo && git update-ref refs/foo refs/heads/main', 'git push origin foo'),
+                       (TOMAIN + 'FOO_HEAD && git update-ref refs/heads/FOO_HEAD refs/heads/feature', 'git push origin FOO_HEAD'),
                        ("printf 'ref: refs/heads/feature\\n' > .git/ZZ && git symbolic-ref refs/heads/ZZ refs/heads/main", 'git push origin ZZ'),
-                       (ROOT + 'ZZ && git update-ref refs/heads/ZZ refs/heads/feature', 'git push origin ZZ'),
-                       (ZZ, 'git push origin zz'), (ROOT + "zz && printf 'ref: refs/heads/feature\\n' > .git/worktrees/w/zz", 'git push origin zz')]:
+                       (TOMAIN + 'ZZ && git update-ref refs/heads/ZZ refs/heads/feature', 'git push origin ZZ'),
+                       (ZZ, 'git push origin zz'), (TOMAIN + "zz && printf 'ref: refs/heads/feature\\n' > .git/worktrees/w/zz", 'git push origin zz')]:
     add('stopper', command, setup)
 FORCE = ['-f', '-4f', '-f4', '-6f', '-vf', '-uf', '-qf6', '-4vf', '-nf', '--force', '--forc', '--force-w', '--force-with-lease',
          '--force-i', '--fo', '--f', '-o f', '--no-force', '--mirror', '--mirr', '-df', '--force-with-lease=div',
