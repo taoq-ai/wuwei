@@ -90,9 +90,11 @@ def compute(root, everything=False):
             read = dict(zip(want := {pr['number']: pr for linked in links for pr in linked}, pool.map(lambda pr: keep(evidence.gaps(root, repo, pr['number'], pr)), want.values())))
         for item, linked in zip(mine, links):
             done = [pr for pr in merged if names(root, pr, repo, item['id'])]
-            if not linked and done:
+            if not linked and done and item.get('kind') != 'run':
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
+            if not linked and done and 'run owed' not in item.get('reason', ''):  # merged code is not the run; plan done closes it (#1200)
+                item['reason'] = plan.mark(root, item['id'], 'open', '; '.join(filter(None, [item.get('reason'), f'code merged as {repo}#{done[0]["number"]}, run owed'])))['reason']
             if not linked:
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
                          if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
