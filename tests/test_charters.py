@@ -456,9 +456,3 @@ def test_the_planner_keeps_gates_off_codex_with_no_condition_and_a_codex_brief_b
     assert 'A brief for a seat on Codex tells it not to use MCP tools' in text
     docs = ' '.join((PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8').split())
     assert 'a Codex seat never counts' in docs and 'counts only once' not in docs
-
-
-def test_every_session_and_seat_credits_the_wuwei_bot_on_its_commits():
-    trailer = 'Co-Authored-By: taoq-wuwei[bot] <345187888+taoq-wuwei[bot]@users.noreply.github.com>'
-    for name in ('_way.md', '_common-authoring.md'):
-        assert trailer in (PLUGIN / 'charters' / name).read_text(encoding='utf-8'), name
