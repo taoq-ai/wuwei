@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from conftest import answered
@@ -222,3 +224,57 @@ def test_a_goal_the_owner_rewrites_in_place_is_a_new_goal(root, monkeypatch, cap
     goals.write_text(f'# Goals\n\n## G-1\nOutcome: halve review latency\nDate: {day(-1)}\n')
     assert f"goal G-1 dated {day(-1)}: ask the owner 'goal: G-1 met? <evidence>'" in plan_pass(capsys)
     assert 'Met goals: none.' in report.day(root)
+
+
+def codex_job(folder, status, said=''):
+    """A fixture copy of the Codex companion's job file shape (state/<workspace>/jobs/<id>.json), read 2026-10-20."""
+    import json
+    path = folder / 'task-mukx4f0u-z6hz7v.json'
+    path.write_text(json.dumps({'id': 'task-mukx4f0u-z6hz7v', 'kind': 'task', 'status': status, 'phase': 'done',
+                                'pid': None, 'logFile': str(folder / 'task-mukx4f0u-z6hz7v.log'),
+                                'result': {'status': 0, 'threadId': 't', 'rawOutput': said, 'touchedFiles': []}}))
+    return path
+
+
+@pytest.mark.parametrize('status, said, shown', [
+    ('running', '', 'job running'),
+    ('queued', '', 'job queued'),
+    ('completed', 'Done. Handoff in [HANDOFF.md](/wt/i-1/HANDOFF.md).', 'job completed, handoff /wt/i-1/HANDOFF.md'),
+    ('completed', 'Pushed; see `/wt/i-1/HANDOFF.md`', 'job completed, handoff /wt/i-1/HANDOFF.md'),
+    ('completed', 'Pushed and opened the draft.', 'job completed'),
+    ('failed', 'turn failed', 'job failed'),
+    ('cancelled', '', 'job cancelled'),
+    ('completed', 'Should FR-026 hold the old rule or the new one?\n', 'job asked a question'),
+    ('failed', 'turn failed: why did the build break?', 'job failed'),
+    ('cancelled', 'Should I keep going?', 'job cancelled'),
+])
+def test_a_registered_codex_job_shows_its_state_on_the_board(root, fake, monkeypatch, tmp_path, status, said, shown):
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores())
+    plan.approve(root, 'Approve')
+    assert cli.main(['plan', 'run', 'A', '--job', str(codex_job(tmp_path, status, said))]) == 0
+    assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == [f'run: {shown}']
+
+
+@pytest.mark.parametrize('content', [None, 'not json', '[1]', '{}', '{"status": null}', '{"status": "running", "result": "x"}',
+                                     pytest.param('[' * 100000 + ']' * 100000, id='nested-200KB'), '{"status": ["running"]}',
+                                     pytest.param('{"status": ' + '[' * 100000 + ']' * 100000 + '}', id='nested-status'),
+                                     pytest.param('{"status": "running", "result": {"rawOutput": ' + '[' * 100000 + ']' * 100000 + '}}',
+                                                  id='nested-rawOutput')])
+def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, tmp_path, content):
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores())
+    plan.approve(root, 'Approve')
+    job = tmp_path / 'job.json'
+    content is None or job.write_text(content)
+    assert cli.main(['plan', 'run', 'A', '--reason', 'Codex builder in /wt/a', '--job', str(job)]) == 0
+    try:  # Python 3.14 parses arrays nested 100,000 deep; 3.13 does not
+        parsed = json.loads(content or '')
+    except (ValueError, RecursionError):
+        parsed = None
+    shown = 'job running' if isinstance(parsed, dict) and parsed.get('status') == 'running' else 'job state unreadable'
+    assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == [f'run: Codex builder in /wt/a; {shown}']
+    assert cli.main(['plan', 'run', 'A', '--reason', 'job done, HANDOFF read']) == 0
+    assert plan.find(root, 'A')['job'] == str(job)

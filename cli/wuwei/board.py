@@ -100,7 +100,7 @@ def compute(root, everything=False):
                 named = evidence.refs(re.sub(r'(?<![\w/.-])#', repo + '#', f'{item["title"]} {item.get("promise") or ""}'))
                 taken = next((ref for pr in prs if (ref := f'{repo}#{pr["number"]}').lower() in named and evidence.item_for(root, pr, repo) is None), None)
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
-                         if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
+                         if repo in held else evidence.gap(f'run: {"; ".join(filter(None, [item.get("reason"), item.get("job") and job(root, item["job"])])) or "no run evidence yet"}', actionable=False)
                          if item.get('kind') == 'run' else evidence.gap(f'PR {taken} not linked: add the WUWEI footer naming {item["id"]}' if taken else 'no pull request yet') if item.get('approved', True)
                          else evidence.gap('awaiting plan approval', actionable=False, owner=True))
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
@@ -115,6 +115,12 @@ def compute(root, everything=False):
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
         evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
     return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
+
+
+def job(root, path):  # only the Codex companion job file the planner registered with plan run --job; no plugin folder is scanned (#1201)
+    said = (o.rstrip() if isinstance(o := r.get('rawOutput'), str) else '') if isinstance(r := (found := d if isinstance(d := ws.read_json(os.path.join(root, path)), dict) else {}).get('result'), dict) else ''
+    status = 'asked a question' if (s := found.get('status')) == 'completed' and said.endswith('?') else s if isinstance(s, str) and s else 'state unreadable'
+    return f'job {status}' + ''.join(f', handoff {w}' for w in [w for w in (w.strip('`\'"<>[]*,.:;') for w in said.replace('(', ' ').replace(')', ' ').split()) if w.endswith('HANDOFF.md')][-1:])
 
 
 def rows(root):

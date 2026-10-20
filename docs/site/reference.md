@@ -13,7 +13,8 @@
 | `wuwei plan add --from <file>` | Add the lead's candidates (`.wuwei/candidates.json`): a list, or `{"candidates": [...]}`, each with an `id` and a `title`; any other shape is refused and nothing is added |
 | `wuwei plan restore <id>` | Reopen a parked or dropped item |
 | `wuwei plan park\|drop\|done <id> --reason "..."` | Change an item's status |
-| `wuwei plan run <id> --reason "<what ran, what it showed>"` | Record run evidence for an operations item; refused without `--reason` |
+| `wuwei plan run <id> --reason "<what ran, what it showed>"` | Record run evidence for an operations item; refused without `--reason` or `--job` |
+| `wuwei plan run <id> --job <job file>` | Register a Codex companion job file; the board shows its state (running, completed with the HANDOFF path, failed, asked a question, or `job state unreadable`) |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
 | `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
 | `wuwei status [--json]` | The board: what each open item lacks |

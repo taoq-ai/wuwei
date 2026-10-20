@@ -226,6 +226,13 @@ def cache_get(root, name, max_age):
     return None
 
 
+def read_json(path):  # None for a file that is missing or not JSON, including one nested past the parser's depth
+    try:
+        return json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError, RecursionError):
+        return None
+
+
 def cache_prune(root, max_age, *patterns):
     for path in (p for pattern in patterns for p in (Path(root) / DIR / 'cache').glob(f'{pattern}.json')):
         try:
