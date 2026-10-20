@@ -373,6 +373,15 @@ def test_a_delta_review_exception_names_its_gate(root, fake):
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
+def test_the_error_budget_counts_a_revert_by_its_first_word_in_any_case(root, fake):
+    titles = ['revert(infra/TIN-817): drop the issuer', 'revert: x', 'Revert "y"', 'fix: a revert-proof parser']
+    for n, title in enumerate(titles, 1):
+        merged = make_pr(number=n, state='MERGED')
+        merged.update(title=title, mergedAt=ws.now().isoformat(timespec='seconds'))
+        fake.prs[str(n)] = merged
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.75, 'merged': 4, 'raised': False}
+
+
 def test_an_error_budget_overrun_raises_the_tier(root, fake):
     light(root)
     fake.prs['42'] = make_pr()

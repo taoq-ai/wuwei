@@ -225,16 +225,28 @@ def spec_gaps(repo, engine, tier, files, head):
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 
+def failures(repo, merged, deploys):
+    failing, restored = {}, []
+    prod = [d for d in deploys if d.get('production_environment') or re.search(r'(?<![a-z])(?<!pre[-_ ])(?<!non[-_ ])prod(uction)?(?![a-z])', d.get('environment') or '', re.I)]
+    for d in sorted(prod, key=lambda d: d['created_at'])[-100:]:  # ponytail: the newest 100 bound the status reads; page them if a repo deploys more
+        if (state := next((s['state'] for s in gh.run(['api', f'repos/{repo}/deployments/{d["id"]}/statuses']) if s['state'] != 'inactive'), '')) in ('failure', 'error'):
+            failing.setdefault(d['environment'], d['created_at'])
+        restored += [(failing.pop(d['environment']), d['created_at'])] if state == 'success' and d['environment'] in failing else []
+    return sum(1 for pr in merged if re.match(r'revert\b', pr.get('title') or '', re.I)) + len(restored) + len(failing), restored
+
+
 def budget(root, repo):
-    """The 28-day change failure rate; over BUDGET with five or more merges raises every tier one step."""
+    """The 28-day change failure rate, at most 1: reverts and runs of failed production deploys, each ended by its
+    environment's next success (failures), over merges. Over BUDGET with five or more merges every tier rises a step."""
     def read():
-        since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
-        try:
+        since, merged, failed = (ws.now() - datetime.timedelta(days=28)).date().isoformat(), [], 0
+        try:  # a refused merged read leaves no rate; a refused deploy or status read leaves the reverts (CWE-636)
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            failed = failures(repo, merged, [])[0]
+            failed = failures(repo, merged, gh.deployments(repo, since))[0]
         except gh.GhError:
-            return {'cfr': None, 'merged': 0}
-        reverts = sum(1 for pr in merged if pr.get('title', '').startswith('Revert'))
-        return {'cfr': round(reverts / len(merged), 2) if merged else None, 'merged': len(merged)}
+            pass
+        return {'cfr': round(min(failed / len(merged), 1), 2) if merged else None, 'merged': len(merged)}
     found = _cached(root, 'budget-' + repo.replace('/', '__'), read)
     return {**found, 'raised': found['cfr'] is not None and found['merged'] >= 5 and found['cfr'] > BUDGET}
 

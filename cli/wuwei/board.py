@@ -77,7 +77,7 @@ def compute(root, everything=False):
             slug = repo.replace('/', '__')  # a list read also drops PR and compare entries a day old (#1161)
             prs = evidence._cached(root, 'prs-' + slug, lambda: ws.cache_prune(root, 86400, f'pr-{slug}-*', f'cmp-{slug}-*')
                                    or gh.open_prs(repo), TTL)
-            merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
+            merged = gh.merged_prs(repo, since, limit=1) if mine else []  # read fresh, one page: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]} for i in mine]
@@ -85,6 +85,7 @@ def compute(root, everything=False):
         out += adopted(root, repo, prs, keep)
         print(f'wuwei: reading {repo}: {len(prs)} open PRs', file=sys.stderr)
         links = [[pr for pr in prs if names(root, pr, repo, item['id'])] for item in mine]
+        any(links) and evidence.budget(root, repo)  # read once here: each pool thread would read it again (#1177)
         with concurrent.futures.ThreadPoolExecutor(8) as pool:  # the host calls dominate a cold board (#1121)
             read = dict(zip(want := {pr['number']: pr for linked in links for pr in linked}, pool.map(lambda pr: keep(evidence.gaps(root, repo, pr['number'], pr)), want.values())))
         for item, linked in zip(mine, links):
