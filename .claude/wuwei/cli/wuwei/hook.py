@@ -474,13 +474,14 @@ def deliver(root, event, payload, out, said):
         except OSError:
             continue
         (_, agent, role, _), text = kept.stem.split('--', 3), kept.read_text(encoding='utf-8')
-        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # the harness's notifications
-        if not any(isinstance(r, dict) and text.strip() in html.unescape(str(r.get('content'))) for r in rows):  # gave none (#1198)
-            found.append((agent, f'## {role} {agent} (kept at {kept})\n{text}'))
-    if not said and not found:
+        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # a queued notification
+        told = any(html.unescape(body) == text for r in rows if isinstance(r, dict)  # may be dropped, so
+                   for body in re.findall(r'<result>(.*?)</result>', str(r.get('content')), re.S))
+        found.append((agent, f'## {role} {agent}: report already notified; kept at {kept}' if told else f'## {role} {agent} (kept at {kept})\n{text}'))
+    if not said and not found:  # a notified report is a pointer, never lost (#1198)
         return out
-    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their "
-                             'last messages:\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
+    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so the hook kept these seats' last messages (a "
+                             'report a task notification carried, by its path):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
     if event == 'Stop':
         return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
     if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):
