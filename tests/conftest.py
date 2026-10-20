@@ -39,6 +39,8 @@ class FakeGh:
         self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
         self.deployments = []
         self.releases = []
+        self.protection = {}  # base branch -> the contexts its protection requires, or a GhError; absent plays no protection
+        self.rulesets = {}  # base branch -> the contexts its rulesets require
 
     @staticmethod
     def rest(pr):
@@ -46,7 +48,8 @@ class FakeGh:
                 'state': 'open' if pr['state'] == 'OPEN' else 'closed', 'draft': pr['isDraft'],
                 'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName']},
                 'user': {'login': pr['author']['login']}, 'html_url': pr['url'], 'merged_at': pr['mergedAt'],
-                'created_at': pr['createdAt'], 'updated_at': pr.get('updatedAt'), 'requested_reviewers': pr['reviewRequests'], 'requested_teams': []}
+                'created_at': pr['createdAt'], 'updated_at': pr.get('updatedAt'), 'requested_reviewers': pr['reviewRequests'], 'requested_teams': [],
+                'mergeable_state': pr.get('mergeableState', 'unknown')}
 
     @staticmethod
     def page(query, items):
@@ -127,8 +130,17 @@ class FakeGh:
             raise gh.GhError('Not Found')
         if args[:2] == ['auth', 'status']:
             return 'Logged in'
-        if args[0] == 'api' and '/rules/branches/' in path:
-            return []
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/branches/(.+)', path)):
+            found = self.protection.get(m[1])
+            if isinstance(found, Exception):
+                raise found
+            return {'name': m[1], 'protected': found is not None, 'protection': {'enabled': found is not None, 'required_status_checks': {
+                'enforcement_level': 'non_admins' if found else 'off', 'contexts': found or [],
+                'checks': [{'context': c, 'app_id': 15368} for c in found or ()]}}}
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/rules/branches/(.+)', path)):
+            found = self.rulesets.get(m[1], [])
+            return [{'type': 'deletion'}] * bool(found) + [{'type': 'required_status_checks', 'parameters': {
+                'required_status_checks': [{'context': c, 'integration_id': 15368} for c in found]}}] * bool(found)
         if args[:2] == ['api', 'user']:
             return 'owner'
         if args[0] == 'api' and '--jq' in args and args[args.index('--jq') + 1] == '.default_branch':

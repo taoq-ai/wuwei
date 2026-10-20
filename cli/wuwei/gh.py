@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from urllib.parse import quote
 
 
 class GhError(Exception):
@@ -54,7 +55,7 @@ def pr(repo, number):
     head = data['head']['sha']
     checks = run(['api', f'repos/{repo}/commits/{head}/check-runs?per_page=100']).get('check_runs', [])
     statuses = run(['api', f'repos/{repo}/commits/{head}/status']).get('statuses', [])
-    return {**_summary(data),
+    return {**_summary(data), 'mergeableState': data.get('mergeable_state'),
             'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0),
                        'patch': f.get('patch'), 'renamed': f.get('previous_filename') or ''} for f in pages(f'{base}/files')],
             'statusCheckRollup': [{'name': c['name'], 'status': (c.get('status') or '').upper(),
@@ -146,7 +147,13 @@ def releases(repo, since):
 
 
 def rules(repo, branch):
-    return run(['api', f'repos/{repo}/rules/branches/{branch}'])
+    return pages(f'repos/{repo}/rules/branches/{quote(branch, safe="/")}')  # a branch a#b is never read as a
+
+
+def required_checks(repo, branch):  # protection then rulesets, each once; the branch read needs read access only, no 404 when unprotected
+    found = run(['api', f'repos/{repo}/branches/{quote(branch, safe="/")}'])['protection']['required_status_checks']['contexts']
+    return list(dict.fromkeys(found + [
+        c['context'] for r in rules(repo, branch) if r['type'] == 'required_status_checks' for c in r['parameters']['required_status_checks']]))
 
 
 def file(repo, path, ref=None):
