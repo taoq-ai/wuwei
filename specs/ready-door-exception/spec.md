@@ -97,7 +97,8 @@ Acceptance 6, by `specs/ready-door-exception/route_probe.py` at main and at the 
   the head its gaps name.
 - FR-002: `guards.create_door` without a reference is unchanged.
 - FR-003: `evidence.excepted` drops the `verdict ... not counted` lines when it drops a gate gap.
-- FR-004: runtime grows by at most 5 lines; `.claude/wuwei/` matches `cli/wuwei/`.
+- FR-004: runtime grows by at most 5 lines (3,321 to 3,325 at 8a92be7); `.claude/wuwei/` matches
+  `cli/wuwei/`.
 
 ## Assumptions
 
@@ -105,6 +106,11 @@ Acceptance 6, by `specs/ready-door-exception/route_probe.py` at main and at the 
   case-insensitive match in both readers.
 - The excepted-exact probe's oracle is extended, not left as is, since the item asks the not-counted
   lines to go. Overturned if a gate reads that probe's oracle as frozen.
+- Acceptance 6 says only ready-door routes with an exception move. The promise also asks the
+  not-counted lines to leave `evidence.gaps`, which the merge door reads, so 22 merge routes on
+  `o/r#5` move too, and only in the probe form with an approved exception for `o/r#5` at its head plus
+  an unattested verdict file: there main refused on the stray line after the owner accepted the gate
+  gap. Overturned if the owner wants the merge door to keep holding on that line.
 
 ## Rollback
 
