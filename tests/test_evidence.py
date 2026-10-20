@@ -361,6 +361,20 @@ def test_no_generated_accepted_gap_waives_a_gap_it_does_not_name(monkeypatch):
     assert len(accepted) > 9000 and wrong == []
 
 
+def test_the_not_counted_lines_go_with_the_accepted_gate_gap(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    stray = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    stray.parent.mkdir(parents=True)
+    stray.write_text(verdict_text(gate='quality', head=HEAD))  # never attested
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert found[0] == 'gates missing at head aaaaaaa: quality' and 'not counted: not attested' in found[1] and len(found) == 2
+    except_gap(root, 'no test in the diff')  # a gap that is not the gate gap keeps its explanation
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found
+    except_gap(root, 'quality')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
 def test_a_delta_review_exception_names_its_gate(root, fake):
     standard(root)
     fake.prs['42'] = make_pr()
