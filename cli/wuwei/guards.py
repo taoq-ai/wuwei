@@ -281,7 +281,7 @@ def gh_command(root, args, cwd, session, command=''):
     return None
 
 
-def create_door(root, repo, branch, base, text, act=OPEN):
+def create_door(root, repo, branch, base, text, act=OPEN, ref=''):
     """Gates run on the pushed head before review (#1050): a PR opens ready, or a draft leaves draft, at a gated head."""
     try:
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
@@ -289,7 +289,9 @@ def create_door(root, repo, branch, base, text, act=OPEN):
         return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; it {act}.')
     pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
-    found = evidence.gate_gaps(root, repo, item_id, gates, (diff.get('commits') or [{}])[-1].get('sha', ''), why, '', tier)
+    head = (diff.get('commits') or [{}])[-1].get('sha', '')
+    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier)
+    found = evidence.excepted(root, ref, head, found) if ref else found  # the owner's exception for this PR at this head (#1168)
     found += [{'text': 'no plan item is named, so no gate verdict can count: end the PR body with the WUWEI footer or a '
                'WUWEI-Item line, passed by --body or a --body-file path WUWEI can read (a literal path, not $VAR)'}] if found and not item_id else []
     return deny(f'{repo} {branch} {act}:\n' + '\n'.join('- ' + g['text'] for g in found)) if found else None
@@ -303,7 +305,7 @@ def ready_door(root, repo, number):
         pr = gh.pr(repo, number)
     except gh.GhError as exc:
         return deny(f'cannot read {repo}#{number} ({exc}): a draft {READY}.')
-    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY) if pr['isDraft'] else None
+    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}') if pr['isDraft'] else None
 
 
 def merge_door(root, repo, number, auto=False):

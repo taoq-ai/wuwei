@@ -49,7 +49,7 @@ FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILU
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
 VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
-DUTY = re.compile(r'^(review not requested|the approval from)')
+DUTY = re.compile(r'^(review not requested|the approval from|orchestration:)')
 AUTO = re.compile(r'^(CI running$|required checks? not run yet at |GitHub reports the merge blocked)')  # GitHub's auto-merge waits on these
 GATES = re.compile(r'(?:gates missing at head \w+: |no gate passed at head \w+ \(a delta review by )([\w, ]+)')  # a gate gap's gates
 DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
@@ -225,16 +225,28 @@ def spec_gaps(repo, engine, tier, files, head):
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 
+def failures(repo, merged, deploys):
+    failing, restored = {}, []
+    prod = [d for d in deploys if d.get('production_environment') or re.search(r'(?<![a-z])(?<!pre[-_ ])(?<!non[-_ ])prod(uction)?(?![a-z])', d.get('environment') or '', re.I)]
+    for d in sorted(prod, key=lambda d: d['created_at'])[-100:]:  # ponytail: the newest 100 bound the status reads; page them if a repo deploys more
+        if (state := next((s['state'] for s in gh.run(['api', f'repos/{repo}/deployments/{d["id"]}/statuses']) if s['state'] != 'inactive'), '')) in ('failure', 'error'):
+            failing.setdefault(d['environment'], d['created_at'])
+        restored += [(failing.pop(d['environment']), d['created_at'])] if state == 'success' and d['environment'] in failing else []
+    return sum(1 for pr in merged if re.match(r'revert\b', pr.get('title') or '', re.I)) + len(restored) + len(failing), restored
+
+
 def budget(root, repo):
-    """The 28-day change failure rate; over BUDGET with five or more merges raises every tier one step."""
+    """The 28-day change failure rate, at most 1: reverts and runs of failed production deploys, each ended by its
+    environment's next success (failures), over merges. Over BUDGET with five or more merges every tier rises a step."""
     def read():
-        since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
-        try:
+        since, merged, failed = (ws.now() - datetime.timedelta(days=28)).date().isoformat(), [], 0
+        try:  # a refused merged read leaves no rate; a refused deploy or status read leaves the reverts (CWE-636)
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            failed = failures(repo, merged, [])[0]
+            failed = failures(repo, merged, gh.deployments(repo, since))[0]
         except gh.GhError:
-            return {'cfr': None, 'merged': 0}
-        reverts = sum(1 for pr in merged if pr.get('title', '').startswith('Revert'))
-        return {'cfr': round(reverts / len(merged), 2) if merged else None, 'merged': len(merged)}
+            pass
+        return {'cfr': round(min(failed / len(merged), 1), 2) if merged else None, 'merged': len(merged)}
     found = _cached(root, 'budget-' + repo.replace('/', '__'), read)
     return {**found, 'raised': found['cfr'] is not None and found['merged'] >= 5 and found['cfr'] > BUDGET}
 
@@ -347,8 +359,8 @@ def uncounted(root, item_id):
             continue
         parsed = parse(body.decode('utf-8', 'replace'))
         why = parsed['errors'][0] if parsed['errors'] else (
-            f'not attested: launch the gate as agent type sentinel-{parsed["gate"]} and end its report with '
-            f'"Verdict file: {path.relative_to(root)}"')
+            f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
+            f'report with "Verdict file: {path.relative_to(root)}" (a Codex task job or Codex seat never attests)')
         found.append(gap(f'verdict {path.relative_to(root)} not counted: {why}'))
     return found
 
@@ -492,7 +504,9 @@ def excepted(root, ref, head, found):
     accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
                 and row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}
-    return [g for g in found if not {norm(g['text']), norm((GATES.match(g['text']) or ('', ''))[1])} & accepted]
+    kept = [g for g in found if not {norm(g['text']), norm((GATES.match(g['text']) or ('', ''))[1])} & accepted]
+    gone = any(GATES.match(g['text']) for g in found if g not in kept)  # its "verdict ... not counted" lines go with it (#1168)
+    return [g for g in kept if not (gone and g['text'].startswith('verdict ') and ' not counted: ' in g['text'])]
 
 
 def owner_approved(root, repo, pr):

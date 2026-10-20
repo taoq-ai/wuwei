@@ -1217,6 +1217,52 @@ def test_a_draft_leaves_draft_or_asks_reviewers_only_once_its_gates_pass(root, d
     assert guards.bash(root, command, str(root), 's1') is None, command
 
 
+def except_gap(root, gap, pr='o/r#7', head='aaaaaaa', approved=True):
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': pr, 'head': head, 'gap': gap, 'approved': approved})
+
+
+@pytest.mark.parametrize('command', READY)
+def test_an_owner_exception_for_the_gate_gap_opens_the_ready_door_at_its_head_only(root, drafts, command):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    except_gap(root, 'gates missing at head aaaaaaa: quality', pr='o/r#8')  # another PR's ruling
+    except_gap(root, 'gates missing at head aaaaaaa: quality', approved=False)
+    except_gap(root, 'quality', head='bbbbbbb')  # another head
+    assert door_reached(guards.bash(root, command, str(root), 's1')) == 'ready', command
+    except_gap(root, 'Gates missing at head aaaaaaa: quality.')
+    except_gap(root, 'quality')
+    assert guards.bash(root, command, str(root), 's1') is None, command
+    drafts.prs['7']['headRefOid'] = 'd' * 40  # the head moved: the exception at aaaaaaa no longer holds
+    decision = guards.bash(root, command, str(root), 's1')
+    assert door_reached(decision) == 'ready' and 'gates missing at head ddddddd: quality' in decision['reason'], command
+
+
+def test_an_exception_naming_part_of_the_gate_list_keeps_the_ready_door_shut_and_the_mcp_routes_honour_one(root, drafts):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'full'}])
+    attest(root, 'quality', pr='o/r#7')
+    attest(root, 'arch', pr='o/r#7')
+    except_gap(root, 'security')
+    except_gap(root, 'goal')
+    for call in ({'draft': False}, {'reviewers': ['bob']}):
+        decision = guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **call))
+        assert 'gates missing at head aaaaaaa: security, goal' in decision['reason'], call
+    except_gap(root, 'gates missing at head aaaaaaa: security, goal')
+    for call in ({'draft': False}, {'reviewers': ['bob']}):
+        assert guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **call)) is None, call
+    assert guards.pre_tool(root, mcp('request_copilot_review', pullNumber=7)) is None
+
+
+def test_the_not_counted_lines_go_with_the_accepted_gate_gap_at_the_ready_door(root, drafts):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    stray = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    stray.parent.mkdir(parents=True)
+    stray.write_text(verdict_text(gate='quality', head='a' * 40, pr='o/r#7'))  # never attested
+    decision = guards.bash(root, 'gh pr ready 7', str(root), 's1')
+    assert 'quality-aaaaaaa.md not counted: not attested' in decision['reason']
+    except_gap(root, 'quality')
+    assert guards.bash(root, 'gh pr ready 7', str(root), 's1') is None
+
+
 @pytest.mark.parametrize('command', ['gh pr ready 7 --undo', 'gh pr ready 7 --undo=true', 'gh pr ready 5',
                                      'gh pr edit 5 --add-reviewer bob', 'gh pr edit 7 --title x', 'gh pr edit 7 --remove-reviewer bob',
                                      'gh api -X POST repos/o/r/pulls/5/requested_reviewers -f reviewers[]=bob',
