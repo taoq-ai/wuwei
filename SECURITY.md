@@ -107,10 +107,6 @@ Known shapes they do not read on one line, reported and not yet fixed:
   alone resolves to, when the guard runs: `git checkout main && git push origin HEAD`, or a local
   symbolic ref written and pushed with no colon in one command
   (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`).
-- A source alone in a repository whose refs are not files (the reftable store). The push door reads
-  the symbolic refs `git for-each-ref` lists, and HEAD and the other root refs (`ORIG_HEAD`,
-  `main-worktree/HEAD`, `worktrees/<id>/HEAD`) as files in the git directory; under reftable only
-  the first and the text reading hold.
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 

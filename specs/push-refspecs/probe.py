@@ -26,6 +26,12 @@ Classes (each from c and from w):
   refs/remotes/origin/HEAD), refs/heads/HEAD, a name with @, a worktree whose id is not its folder's name; controls to feature.
 - end-marker (round 2): two end markers in each order (only the first ends the options; a later one is a refspec, here a
   symbolic ref to main) x operands x positions, with -o and --repo taking the first marker.
+- rootfile (round 3, the security gate's classes at aa63d3b): a root ref to main written as a file in each spelling git reads
+  (ref: and a space, no space, a tab, 300 spaces, a symlink) x eight places (ZZ, zz, a/zz, x/y/ZZ, refs/bisect/x in the common
+  folder; ZZ, refs/bisect/x and refs/worktree/x in w's folder) x three names (the name, main-worktree/, worktrees/w/).
+- stopper (round 3): words git push may take that rev-parse cannot resolve, before a root ref to main (git push origin -- <word>
+  ZZ), each with and without a branch of its name; a root ref named -- or -x; negative refspecs; a root ref beside a ref of its
+  name; a lowercase name over a root ref.
 - force: force spellings on the diverged branch (digit clusters are a known gap outside the item).
 A hole: the guard passes and the remote's main moved, appeared or vanished (force class: div moved). Each command is read by
 the guard of both trees, with guards.TEMP moved off the probe folder (gh.git is not a scratch remote) and the origin read as
@@ -36,6 +42,7 @@ Prints per class: generated, ran (the stub logged a git push), holes at head and
 import importlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -96,9 +103,17 @@ START = {GH: snap(GH), C: snap(C)}
 X0 = dict(line.split() for line in START[GH])
 
 
+PLANTED = ('ORIG_HEAD', 'FOO_HEAD', 'zz', 'ZZ', '--', '-x', 'foo', 'a', 'x', 'refs/bisect', 'refs/worktree', 'worktrees/w/ZZ',
+           'worktrees/w/zz', 'worktrees/w/refs/bisect', 'worktrees/w/refs/worktree')
+
+
 def restore():
-    for name in ('ORIG_HEAD', 'FOO_HEAD', 'zz'):  # root refs a rootref setup wrote
-        (C / '.git' / name).unlink(missing_ok=True)
+    for name in PLANTED:  # root refs and folders a rootref, rootfile or stopper setup wrote
+        p = C / '.git' / name
+        if p.is_dir() and not p.is_symlink():
+            shutil.rmtree(p)
+        else:
+            p.unlink(missing_ok=True)
     if (BASE / 'w3').exists():
         git('worktree', 'remove', '-f', '-f', str(BASE / 'w3'), at=C)
     for at, start in START.items():
@@ -235,6 +250,34 @@ for a, b, w in product(['--', '--end-of-options'], ['--', '--end-of-options'], [
     for form in ('git push origin {a} {b} {w}', 'git push {a} origin {b} {w}', 'git push origin feature {a} {b} {w}', 'git push -o {a} {b} origin {w}',
                  'git push --repo {a} {b} origin {w}', 'git push origin {a} {w} {b}'):
         add('end-marker', form.format(a=a, b=b, w=w), ENDS)
+SPELLINGS = ["printf 'ref: refs/heads/main\\n' > {f}", "printf 'ref:refs/heads/main' > {f}", "printf 'ref:\\trefs/heads/main\\n' > {f}",
+             "printf 'ref:%300srefs/heads/main\\n' > {f}", 'ln -s refs/heads/main {f}']
+PLACES = ['ZZ', 'zz', 'a/zz', 'x/y/ZZ', 'refs/bisect/x', 'worktrees/w/ZZ', 'worktrees/w/refs/bisect/x', 'worktrees/w/refs/worktree/x']
+for spelling, place in product(SPELLINGS, PLACES):
+    name = place.removeprefix('worktrees/w/')
+    setup = f'mkdir -p {os.path.dirname(".git/" + place)} && ' + spelling.format(f='.git/' + place)
+    for form in ('{}', 'main-worktree/{}', 'worktrees/w/{}'):
+        add('rootfile', f'git push origin {form.format(name)}', setup)
+ZZ = "printf 'ref:refs/heads/main' > .git/ZZ && git tag t1"
+STOP = ['--', '--end-of-options', '-', '-x', '--git-dir', '--all', '-n', 'tag', '@', 'HEAD', 'ORIG_HEAD', 'FETCH_HEAD', '@{-1}', '@{0}',
+        '.', '..', 'refs/heads/f/*', '*', 'main~0', 'main^0', 'feature@{0}', 't1', 'nope', git('rev-parse', 'feature', at=C), 'a..b',
+        'x/', '/x', 'a b', '', 'refs/heads/feature', 'heads/feature', 'feature', '^feature', '^nope', 'feature^!', 'HEAD:', ':/a',
+        '@@', 'x.lock', 'main-worktree/HEAD', 'FOO_HEAD']
+for word, planted in product(STOP, (False, True)):
+    plant = f' && (git update-ref refs/heads/{shlex.quote(word)} refs/heads/feature || true)' if planted and word else ''
+    add('stopper', f'git push origin -- {"tag t1" if word == "tag" else shlex.quote(word)} ZZ', ZZ + plant)
+ROOT = "printf 'ref: refs/heads/main\\n' > .git/"
+for setup, command in [(ROOT + '--', 'git push origin -- --'), (ROOT + '-- && git update-ref refs/heads/x refs/heads/feature', 'git push origin -- x --'),
+                       (ROOT + '--', 'git push origin -- feature --'), (ROOT + '-x', 'git push origin -- -x'),
+                       (ZZ + ' && git update-ref refs/heads/-- refs/heads/feature', 'git push origin -- -- ZZ'),
+                       (ZZ, "git push origin '^refs/heads/nope' ZZ"), (ZZ, "git push origin '^refs/heads/f/*' ZZ"),
+                       (ZZ, 'git push origin ^feature ZZ'), (ZZ, 'git push origin tag v1 ZZ'), (ZZ, "git push origin 'refs/heads/f/*' ZZ"),
+                       (ROOT + 'foo && git update-ref refs/foo refs/heads/main', 'git push origin foo'),
+                       (ROOT + 'FOO_HEAD && git update-ref refs/heads/FOO_HEAD refs/heads/feature', 'git push origin FOO_HEAD'),
+                       ("printf 'ref: refs/heads/feature\\n' > .git/ZZ && git symbolic-ref refs/heads/ZZ refs/heads/main", 'git push origin ZZ'),
+                       (ROOT + 'ZZ && git update-ref refs/heads/ZZ refs/heads/feature', 'git push origin ZZ'),
+                       (ZZ, 'git push origin zz'), (ROOT + "zz && printf 'ref: refs/heads/feature\\n' > .git/worktrees/w/zz", 'git push origin zz')]:
+    add('stopper', command, setup)
 FORCE = ['-f', '-4f', '-f4', '-6f', '-vf', '-uf', '-qf6', '-4vf', '-nf', '--force', '--forc', '--force-w', '--force-with-lease',
          '--force-i', '--fo', '--f', '-o f', '--no-force', '--mirror', '--mirr', '-df', '--force-with-lease=div',
          '--force-with-lease=div:', '--force-if-includes']

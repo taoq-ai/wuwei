@@ -25,7 +25,11 @@ and acceptance and the constitution.
 | G8 | Coverage | LOW | gates at 9cb834a, security | `git push origin origin` moved main through `refs/heads/origin` (a symbolic ref to main) while rev-parse called it ambiguous | Resolved: every candidate of git's ref rules counts; a real-git test, a mutant per rule |
 | G9 | Coverage | LOW | gates at 9cb834a, security | A later `--end-of-options` read as an end marker, where git reads a refspec | Resolved: `_flags` ends at the first marker only; 2 real-git tests, 2 mutants |
 | G10 | Coverage | LOW | round 2 design | Root refs (`ORIG_HEAD`, a one-level file) and a worktree whose id is not its folder's name | Resolved: the root files of each git directory are read; 5 real-git tests and a FIFO test |
-| B1 | Budget | LOW | spec Assumptions | Runtime +21 against a budget of +4, ceiling 6 | Round 2's design reads the refs once per push (+16); under the 3,400 cap; the count and reason are in spec Assumptions |
+| G11 | Coverage | MEDIUM | gates at aa63d3b, security | The root ref file reader missed root refs git resolves to main: `ref:` with no space, a tab or 300 spaces, a symlink, a nested name, another worktree's per-worktree refs, and a lowercase name read from w's folder over the common one (136 holes in 200 generated commands) | Resolved: git resolves each colon-less word in one batched rev-parse and the reader is removed; 18 real-git rows, the probe's rootfile and stopper classes, mutants of each batch rule |
+| G12 | Coverage | MEDIUM | gates at aa63d3b, quality | The 1 s wall-clock bound failed on a correct guard under load (5 of 36 runs) | Resolved: a call-count test (one word and 15,000 make the same git calls), with no clock |
+| G13 | Coverage | LOW | gates at aa63d3b, security | Guard time grew with the files in the git directory (100,000 root files: 7.3 s); a FIFO swapped over a root file between `is_file` and `open` hung the guard; `_git` turned a timeout into `''` | Resolved by construction: the guard opens no file in the git directory, and both ref reads refuse on a timeout or a failed exec (2 tests) |
+| G14 | Coverage | LOW | gates at aa63d3b, quality | Mutant M6 (dropping the `ref: ` check) survived | Resolved by construction: the check is deleted with the reader |
+| B1 | Budget | LOW | spec Assumptions | Runtime +21 against a budget of +4, ceiling 6 (round 2) | Round 3: +18 against main 17ff289 (3,340 against 3,322), under the PR's earlier +21 and the 3,400 cap |
 
 No open finding at CRITICAL or HIGH.
 
@@ -40,5 +44,5 @@ No open finding at CRITICAL or HIGH.
 | FR-005 | T007, T010, T017 | probe at the head: 21,282 generated, 21,254 ran git push, 80 holes, all in the force class and the same at main (digit clusters, a separate item); 1,064 at main |
 | FR-006 | T005, T015 | design.md, doors.md, SECURITY.md; test_the_vendored_plugin_matches_the_tree_it_was_copied_from |
 | FR-007 | T014 | test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push, test_a_refspec_git_resolves_to_main_meets_the_push_door |
-| FR-008 | T014, T020 | test_a_refspec_git_resolves_to_main_meets_the_push_door, test_a_source_alone_git_sends_elsewhere_passes_the_push_door |
-| FR-009 | T019, T020 | test_a_push_of_15000_refspecs_reads_in_under_a_second, test_a_fifo_in_the_git_directory_does_not_hold_the_push_door |
+| FR-008 | T014, T020, T022 | test_a_refspec_git_resolves_to_main_meets_the_push_door, test_a_source_alone_git_sends_elsewhere_passes_the_push_door; probe rootfile and stopper classes |
+| FR-009 | T019, T022 | test_a_push_of_15000_refspecs_makes_the_git_calls_a_push_of_one_makes, test_a_push_whose_refs_git_cannot_read_in_time_is_refused, test_a_fifo_in_the_git_directory_does_not_hold_the_push_door |

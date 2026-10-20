@@ -6,8 +6,8 @@
 ## Technical context
 
 - Stdlib-only Python 3.11+, runtime under `cli/wuwei/`, cap 3,400 lines. Main dc39cae held 3,011; main 6682925 held 3,026;
-  main 7fd8f4b held 3,093; main 5a33509 held 3,178; main dc9aad9 holds 3,183. The item's budget is +4,
-  ceiling 6; free-lines-5 is no longer a prerequisite.
+  main 7fd8f4b held 3,093; main 5a33509 held 3,178; main dc9aad9 held 3,183; main 17ff289 holds 3,322.
+  Round 3's budget is the PR's earlier +21; free-lines-5 is no longer a prerequisite.
 - `guards.bash` reads git's options before the subcommand (git-globals) and calls
   `git_push(root, rest[i + 1:], here)`; a refusal passes only when `scratch()` reads the remote as
   a git directory in a scratch folder (scratch-remotes).
@@ -48,6 +48,13 @@
    once per push. `_flags` takes its end markers as an argument, so only the first `--` or
    `--end-of-options` ends the push's options. A one-letter name is no `--tags` prefix, and any
    name `delete` starts with says "deleting". A target with no `*` is compared as a string.
+8. Round 3 (gates at aa63d3b; the lead's design): `_sources(cwd, words)` keeps the one
+   `for-each-ref` and replaces the root file reader with one
+   `git -c core.warnAmbiguousRefs=false rev-parse --symbolic-full-name --revs-only --end-of-options`
+   over the colon-less words. `words` leaves out `tag`, words starting with `^`, globs and `--`,
+   and adds `main-worktree/--` last when `--` is a refspec. `_git` takes `failed`, the value it
+   gives when git cannot run or finish in 5 s; both reads ask for `None`, and `git_push` refuses
+   when either is `None`, with a text that names the default branch. The `suppress` import goes.
 
 ## Evidence
 
@@ -64,6 +71,10 @@
 - Generated probe `specs/push-refspecs/probe.py` under real bash, a stub git on PATH that logs and
   then execs git 2.43, at main and at the head.
 - Mutants: each rule changed in its own copy (both guards.py copies); the guard tests fail on each.
+- Round 3: 18 real-git rows in `test_a_refspec_git_resolves_to_main_meets_the_push_door` (the
+  security gate's root ref forms, the words that stop rev-parse, a root ref beside a branch of its
+  name), `tag v1` as a pass row, a call-count test in place of the 1 s bound, a fail-shut test per
+  ref read, and a `--del` text row. The probe adds the rootfile class (240) and the stopper class.
 
 ## Constitution check
 
@@ -72,5 +83,6 @@
   probe ran red before their fix. All 36 run 26 red on main 6682925's guard and green at the head.
 - Simplest: `git_push` changed and one helper added in round 2, `_sources`, the ref read once per
   push; git's rules written as one normalisation, one table of ref rules and one pattern match.
-- Runtime: 3,204 against main dc9aad9's 3,183 (+21), over the budget of +4 and the ceiling of 6,
-  under the cap of 3,400; round 2's 16 lines are the ref read (spec Assumptions).
+  Round 3 makes `_sources` two git calls and no file reads.
+- Runtime: 3,340 against main 17ff289's 3,322 (+18), under the PR's earlier +21 and the cap of
+  3,400 (spec Assumptions).

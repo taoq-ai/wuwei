@@ -14,6 +14,9 @@
 - [x] Each rule is held by a test (a mutant without it fails)
 - [x] Vendored copy matches; drift test passes
 - [x] Every valued option is probed with a value git accepts (round 2), and each name set member is held by a real-git test
-- [x] The guard reads 15,000 refspecs in under 1 s, in a timed test, with the refs read once per push (round 2)
+- [x] 15,000 refspecs make the git calls one refspec makes, in a call-count test with no clock, the refs read once per push (round 3)
+- [x] git resolves each colon-less word in one batched rev-parse; the guard opens no file in the git directory (round 3)
+- [x] A for-each-ref or rev-parse that cannot run or finish in 5 s refuses the push (round 3)
+- [x] The probe's rootfile class (5 spellings x 8 places x 3 names x 2 clones) and stopper class report generated, ran and holes (round 3)
 - [x] Runtime lines stated against the item's budget
 - [x] No emojis, no em dashes
