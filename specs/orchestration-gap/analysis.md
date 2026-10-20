@@ -23,7 +23,7 @@ No open finding above LOW. A1 was MEDIUM and is closed.
 | FR-002 board.running | yes | T003, T009 | |
 | FR-003 Stop guard | yes | T007, T011 | |
 | FR-004 duty | yes | T006, T010 | |
-| FR-005 runtime budget | yes | T016 | 12 of 12 |
+| FR-005 runtime budget | yes | T016, T020 | +12, then -7 for hook.running |
 | FR-006 charter and skill | yes | T013 | |
 
 ## Constitution alignment

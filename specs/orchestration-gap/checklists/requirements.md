@@ -6,7 +6,7 @@
 - [x] The lines are duties and hold no merge
 - [x] The Stop guard reads the same liveness rule
 - [x] No config key, ledger kind, door or file format added
-- [x] Runtime at 3,400 lines or fewer, at most 12 added by this item (12)
+- [x] Runtime at 3,400 lines or fewer, at most 12 added by this item (+5 net)
 - [x] .claude/ re-vendored; agents match the charters
 - [x] Route differential and mutants recorded
 - [x] Rollback line in the spec

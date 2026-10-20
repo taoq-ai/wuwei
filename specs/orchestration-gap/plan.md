@@ -9,8 +9,8 @@ The charter and the skill get a sentence each. No new ledger kind, config key, d
 
 ## Technical context
 
-Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,208 at main 0f6572e6,
-3,220 at the head). Tests in `tests/test_watch.py` (board) and `tests/test_hook.py` (Stop), with
+Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,321 at main 8a92be70,
+3,326 at the head: +12 for the team row and the guard, -7 for `hook.running`). Tests in `tests/test_watch.py` (board) and `tests/test_hook.py` (Stop), with
 `tests/test_status_perf.py` updated for the new row.
 
 ## Design
@@ -29,7 +29,7 @@ Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,208 at ma
 ## Constitution check
 
 Stdlib only, test first, shortest diff, no speculative abstraction (one helper with two callers),
-runtime budget held (12 of 12).
+runtime budget held (+5 net at main 8a92be70; +12 before the removal).
 
 ## Measurements
 
@@ -43,3 +43,11 @@ runtime budget held (12 of 12).
   running in this session: silent at both.
 - Mutants (specs/orchestration-gap/mutants.py) at 3fada9ac, applied to both copies, run one at a
   time: 15 of 15 killed.
+- After the merge of main (1877565, then 8a92be70) and the removal of `hook.running`, at head
+  90dcfb89: route differential against 1877565 and against 8a92be70, each with corpus sha256
+  4f6e25d0864d7922f17515d94a99be77590c11816113c273f211626318be4d49, 263 routes, 544 cases, 5
+  moved. guards.bash 263, PreToolUse Bash 263 and fixture payloads 10: 0 moved. SessionStart 40
+  items: moved (the team row). Stop: a seat a dead session left running moves from silent to a
+  reminder; no seat, a builder stopped and a seat left unconfirmed remind at both and gain the
+  team lines (#1172 already counts an unconfirmed seat as stopped). A seat running in this
+  session: silent at both.

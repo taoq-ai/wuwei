@@ -99,7 +99,7 @@ function after `adopted` and lines at the end of `compute`. This PR rebases afte
   with no stop or unconfirmed row under the same agent id; no session gives the empty set.
 - FR-003: `hook.stop` returns early only when `board.running` names a seat of the payload's session.
 - FR-004: `evidence.DUTY` matches `orchestration:`, so the lines are duties: visible, never blocking.
-- FR-005: runtime lines grow by at most 12 (the item's budget).
+- FR-005: runtime lines grow by at most 12 (the item's budget); +5 net after `hook.running` goes.
 - FR-006: the planner charter and `/wuwei-run` say what the promise says.
 
 ## Assumptions
