@@ -16,7 +16,8 @@ The board gets one more row, `team`, after every item row. It holds up to two du
   distinct open PRs and no shepherd seat runs;
 - `orchestration: gates owed on green heads with no gate seat running`, when some PR row carries a
   gate gap (`gates missing at head ...` or a delta review owed) and no CI gap (`CI running`,
-  `CI failing`, `CI not started`), and no `sentinel-*` seat runs.
+  `CI failing`, `CI not started`, a required check not run),
+  and no `sentinel-*` seat runs.
 
 A seat runs when the current session started it today (its `seat.started` row carries the
 session id) and no `seat.stopped` or `seat.unconfirmed` row names the same agent id. The status
@@ -74,20 +75,21 @@ The acceptance scenarios, restated:
   board lists.
 - Q: Why change `hook.py` when the item put it out of scope? A: The probe found `hook.stop`
   returns early while any seat started today has no stop, so on a resumed day the new line would
-  never reach a Stop. The brief puts the guard in scope; `hook.running` itself stays unchanged for
-  PR #1172, which edits it, and now has no runtime caller (see Assumptions).
+  never reach a Stop. The brief puts the guard in scope. Once #1172 merged, `hook.running` had no
+  runtime caller left, so the merge round removed it and pointed its tests at `board.running`.
 - Q: What counts as an open PR? A: The distinct PRs the board lists (linked to an open item, or
   adopted as unplanned), drafts included. A PR the board does not list is not WUWEI's to shepherd.
 - Q: What is a green head? A: A PR row with no gap starting `CI ` (running, failing, not
-  started). A head with no CI at all in a repository that runs none reads as green, as the merge
+  started) or `required check` (a check the base requires with no run at the head, from #1176). A head with no CI at all in a repository that runs none reads as green, as the merge
   door reads it.
 
 ## Composition with open work
 
-PR #1172 changes `hook.running` to subtract `seat.unconfirmed` and adds a test of it; this item
-leaves that function as it is, so #1172's hunk applies unchanged, and `board.running` already
-subtracts `seat.unconfirmed`. PR #1176 and items 1168, 1178, 1179, 1181 edit `evidence.py`; this
-item changes only the `DUTY` line. Items 1169, 1177, 1178 edit `board.py`; this item adds a
+PR #1172 (merged) made `hook.running` subtract `seat.unconfirmed`; `board.running` already did,
+and the merge of main at 1877565 removed `hook.running` with its last caller gone. Its tests now
+read `board.running` with a session. PR #1176 (merged) added `AUTO` beside `DUTY` in `evidence.py`;
+the merge keeps both lines. Items 1168, 1178, 1179, 1181 edit `evidence.py`; this item changes only
+the `DUTY` line. Items 1169, 1177, 1178 edit `board.py`; this item adds a
 function after `adopted` and lines at the end of `compute`. This PR rebases after those ahead of it.
 
 ## Requirements
@@ -105,11 +107,8 @@ function after `adopted` and lines at the end of `compute`. This PR rebases afte
 - `CLAUDE_CODE_SESSION_ID` holds the planner's session id in a Bash call, also inside a subagent
   (measured in this builder seat: it equals the session in the scratchpad path). Overturned if a
   Claude Code version stops setting it; then the lines show while seats run, a duty only.
-- `hook.running` stays, with tests only, because the item said it stays and PR #1172 edits it. A
-  follow-up removes it or points it at `board.running` once #1172 merges. Overturned if a gate
-  rules the unused function dead code to drop now.
 - An item row named `team` cannot be confused with a plan item: plan ids in this workspace are
   numbers or `I-n`. Overturned if a plan adds an item with the id `team`.
 
-Rollback: revert the commit; the board loses the team row and the Stop guard counts every seat
-started today again.
+Rollback: revert the merge commit of this PR; the board loses the team row and `hook.running` comes
+back as the Stop guard, counting every seat started today again.

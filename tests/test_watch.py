@@ -194,6 +194,9 @@ def test_owed_gates_on_a_head_whose_ci_runs_or_fails_owe_no_gate_seat(root, fake
     assert team(root) == []
     open_prs(root, fake, rollup=[{'name': 'test', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}])
     assert team(root) == []
+    open_prs(root, fake)
+    fake.protection['main'] = ['build']  # a required check that never ran at the green heads
+    assert team(root) == []
 
 
 def test_a_team_line_is_a_duty_that_never_holds_a_merge(root):

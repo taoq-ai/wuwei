@@ -221,7 +221,7 @@ when a check is red, re-requesting an approval given at an older commit (the app
 its commit, so nobody re-runs a review gate that wants an approval at the head).
 One `team` row names the seats nobody runs: `orchestration: open PRs with no shepherd seat running`
 when more than two PRs are open, and `orchestration: gates owed on green heads with no gate seat
-running` when a gate is missing at a head whose CI settled green. A seat runs when this session
+running` when a gate is missing at a head whose CI settled green with every required check run. A seat runs when this session
 started it today and no stop or unconfirmed row followed; a Codex job writes no seat row and never
 counts. The lines carry no count, so a Stop reminds once while the state holds.
 Duties show on the board and in the Stop reminder, like safety gaps.

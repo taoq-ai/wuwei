@@ -21,9 +21,9 @@ Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,208 at ma
   `board`, not the reverse.
 - `board.compute` ends with the team row. The open PR count is the distinct `pr` values of the
   rows built so far; a gate gap is a match of `evidence.GATES`, the pattern the board already uses
-  for gate gaps; a head is green when its row has no gap starting `CI `.
+  for gate gaps; a head is green when its row has no gap starting `CI ` or `required check`.
 - `hook.stop` calls `board.running(root, payload.get('session_id'))` in place of
-  `running(root) > 0`.
+  `running(root) > 0`, and `hook.running` is removed (no caller left after #1172 merged).
 - `evidence.DUTY` gains `orchestration:`.
 
 ## Constitution check
