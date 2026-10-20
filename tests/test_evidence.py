@@ -374,6 +374,8 @@ def test_the_not_counted_lines_go_with_the_accepted_gate_gap(root, fake):
     assert texts(evidence.gaps(root, 'acme/app', 42)) == found[1:]
     except_gap(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.prs['42']['statusCheckRollup'] = [{'name': 'x not counted: y', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['CI failing: x not counted: y']  # a check name is the author's
 
 
 def test_a_delta_review_exception_names_its_gate(root, fake):

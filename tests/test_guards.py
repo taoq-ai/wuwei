@@ -1228,6 +1228,7 @@ def test_an_owner_exception_for_the_gate_gap_opens_the_ready_door_at_its_head_on
     except_gap(root, 'quality', head='bbbbbbb')  # another head
     assert door_reached(guards.bash(root, command, str(root), 's1')) == 'ready', command
     except_gap(root, 'Gates missing at head aaaaaaa: quality.')
+    except_gap(root, 'quality')
     assert guards.bash(root, command, str(root), 's1') is None, command
     drafts.prs['7']['headRefOid'] = 'd' * 40  # the head moved: the exception at aaaaaaa no longer holds
     decision = guards.bash(root, command, str(root), 's1')
