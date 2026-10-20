@@ -44,10 +44,13 @@ runtime budget held (+5 net at main 8a92be70; +12 before the removal).
 - Mutants (specs/orchestration-gap/mutants.py) at 3fada9ac, applied to both copies, run one at a
   time: 15 of 15 killed.
 - After the merge of main (1877565, then 8a92be70) and the removal of `hook.running`, at head
-  90dcfb89: route differential against 1877565 and against 8a92be70, each with corpus sha256
+  28c67389: route differential against 1877565 and against 8a92be70, each with corpus sha256
   4f6e25d0864d7922f17515d94a99be77590c11816113c273f211626318be4d49, 263 routes, 544 cases, 5
   moved. guards.bash 263, PreToolUse Bash 263 and fixture payloads 10: 0 moved. SessionStart 40
   items: moved (the team row). Stop: a seat a dead session left running moves from silent to a
   reminder; no seat, a builder stopped and a seat left unconfirmed remind at both and gain the
   team lines (#1172 already counts an unconfirmed seat as stopped). A seat running in this
   session: silent at both.
+- Mutants at 28c67389, with a `gh` stub that exits 1 first on PATH: 16 of 16 killed. The added
+  mutant (a required check not run still owes a gate seat) survived the first run at 90dcfb89,
+  where the case shared a test with a cached empty required-check read; it has its own test now.
