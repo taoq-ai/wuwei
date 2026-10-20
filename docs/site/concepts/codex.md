@@ -48,13 +48,14 @@ files is later work.
 
 ## Gates on Codex
 
-A gate counts only when WUWEI attests its verdict from the seat's own hand-back or SubagentStop. A
+A gate counts only when WUWEI attests its verdict from the seat's own hand-back or SubagentStop.
+Gates never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts. A
 `codex-companion` task job started from a Claude session is not a seat: it has no SubagentStop, so
 its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078, #1181). Its job
-id does not change that: a job id is not a hand-back the harness recorded. A Codex-native
-seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks, but its stop counts only
-once WUWEI reads Codex's own transcript (hook-transcript records it as `seat.unconfirmed` until then). Run
-gates as Claude seats.
+id does not change that: a job id is not a hand-back the harness recorded. A Codex-native seat
+(`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks, but its stop is
+recorded as `seat.unconfirmed` (#1172), so a Codex seat never counts either. Run gates as Claude
+seats; builders and fix rounds may run on Codex.
 
 A brief for a seat on Codex tells it not to use MCP tools. Codex can deny an MCP call without
 asking, and a seat treats any denied call as a blocker, so one denial can stop a sound review.

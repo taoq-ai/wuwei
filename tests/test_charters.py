@@ -441,7 +441,10 @@ def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
     assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
 
 
-def test_the_planner_says_a_codex_companion_gate_never_counts_and_a_codex_brief_bars_mcp():
+def test_the_planner_keeps_gates_off_codex_with_no_condition_and_a_codex_brief_bars_mcp():
     text = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
-    assert 'A gate run as a `codex-companion` task never counts, whatever its job id' in text
+    assert 'Gates never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts' in text
+    assert 'builders and fix rounds may go to Codex' in text and 'only once the workspace has recorded' not in text
     assert 'A brief for a seat on Codex tells it not to use MCP tools' in text
+    docs = ' '.join((PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8').split())
+    assert 'a Codex seat never counts' in docs and 'counts only once' not in docs
