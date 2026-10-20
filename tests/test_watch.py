@@ -171,7 +171,12 @@ def test_a_dead_stopped_or_unconfirmed_seat_never_counts_as_running(root, fake, 
     seat(root, 'shepherd', session='s2', agent='a2', kind='seat.stopped')
     seat(root, 'sentinel-quality', session='s2', agent='a3')
     seat(root, 'sentinel-quality', session='s2', agent='a3', kind='seat.unconfirmed')
+    now = ws.now()
+    monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(days=1))
+    seat(root, 'shepherd', session='s2', agent='a4')  # this session's seat from yesterday
+    monkeypatch.setattr(ws, 'now', lambda: now)
     assert team(root) == [SHEPHERD, GATES]
+    ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'a5'})  # a launch whose payload named no session
     monkeypatch.delenv('CLAUDE_CODE_SESSION_ID')
     assert team(root) == [SHEPHERD, GATES]  # no session known: no seat of any session counts
 
