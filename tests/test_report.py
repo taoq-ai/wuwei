@@ -2,7 +2,7 @@ import datetime
 
 import pytest
 
-from conftest import make_pr, write_plan
+from conftest import answered, make_pr, write_plan
 from wuwei import evidence, report, ws
 
 
@@ -133,8 +133,6 @@ def test_the_report_lists_the_goals_the_owner_ruled_met(root, fake):
     assert 'Met goals: none.' in report.day(root)
     for question, reply in (('owner review: acme/app#42 at aaaaaaa. Merge it?', 'Yes'), ('goal: G-2 met? 100 percent.', 'Yes'), ('goal: G-1 met? 40 percent.', 'No'),
                             ('goal: G-4 met? done.', 'Yes'), ('goal: G-4 met? reopened.', 'No'), ('goal: G-5 met? done.', 'Yes')):
-        hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
-                                          'tool_input': {'questions': [{'question': question}]},
-                                          'tool_response': {'answers': {question: reply}}})
+        hook.handle(root, 'PostToolUse', answered(root, [question], {question: reply}))
     ws.record(root, 'ruling', {'kind': 'goal.other', 'goal': 'G-1', 'outcome': 'o', 'approved': True})  # another kind never counts
     assert 'Met goals: G-2, G-5.' in report.day(root)

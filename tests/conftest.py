@@ -12,6 +12,49 @@ HEAD = 'a' * 40
 OLD = 'b' * 40
 
 
+@pytest.fixture(autouse=True)
+def projects(monkeypatch, tmp_path_factory):
+    """The harness's projects folder for every test, never the real ~/.claude/projects."""
+    path = tmp_path_factory.mktemp('claude') / 'projects'
+    monkeypatch.setattr(ws, 'PROJECTS', path)
+    return path
+
+
+ASKED = iter(range(1, 10 ** 6))  # one tool_use id per answer
+
+
+def answered(root, questions, answers, session='s1', data=None):
+    """A PostToolUse payload for an owner answer whose session transcript under ws.PROJECTS shows the question and the
+    answer in the rows Claude Code writes (tests/fixtures/transcripts/ask-flow.jsonl holds a real pair)."""
+    tid, path = f'toolu_{next(ASKED)}', ws.PROJECTS / '-repo' / f'{session}-answer.jsonl'  # rewritten per answer: no probe reads a growing file
+    data = data or {'questions': [{'question': q} for q in questions]}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': tid, 'name': 'AskUserQuestion',
+                                                                             'input': data}]}}) + '\n' + json.dumps({
+        'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': tid, 'content': 'ok'}]},
+        'toolUseResult': {**data, 'answers': answers}}) + '\n', encoding='utf-8')
+    return {'session_id': session, 'tool_name': 'AskUserQuestion', 'cwd': str(root), 'transcript_path': str(path),
+            'tool_use_id': tid, 'tool_input': data, 'tool_response': {**data, 'answers': answers}}
+
+
+def launched(payload):
+    """A SubagentStop payload for a seat the harness launched: its meta file and the Agent tool_use in the session
+    transcript under ws.PROJECTS, laid out as tests/fixtures/transcripts holds a real launch. A seat transcript the
+    payload names is linked beside the meta file."""
+    session, agent = payload.get('session_id') or 's1', payload['agent_id']
+    seats, use = ws.PROJECTS / '-repo' / session / 'subagents', f'toolu_launch_{agent}'
+    seats.mkdir(parents=True, exist_ok=True)
+    (seats / f'agent-{agent}.meta.json').write_text(json.dumps({'agentType': payload.get('agent_type'), 'toolUseId': use}))
+    with (seats.parent.parent / f'{session}.jsonl').open('a', encoding='utf-8') as out:
+        out.write(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': use, 'name': 'Agent',
+                                                                           'input': {'subagent_type': payload.get('agent_type')}}]}}) + '\n')
+    if (given := payload.get('agent_transcript_path')) and Path(given).is_file():
+        (seats / f'agent-{agent}.jsonl').unlink(missing_ok=True)
+        (seats / f'agent-{agent}.jsonl').symlink_to(Path(given).resolve())  # the seat may still be writing it
+    return {**payload, 'transcript_path': str(seats.parent.parent / f'{session}.jsonl'),
+            'agent_transcript_path': str(seats / f'agent-{agent}.jsonl')}
+
+
 @pytest.fixture
 def root(tmp_path):
     (tmp_path / ws.DIR).mkdir()

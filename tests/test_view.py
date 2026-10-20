@@ -1,5 +1,6 @@
 """The plan as a view to approve (#990): one picture, one short question."""
 
+from conftest import answered
 from wuwei import board, hook, plan, view, ws
 
 
@@ -30,9 +31,7 @@ def test_new_items_wait_for_the_owner_to_approve_the_plan(root, fake):
     gaps = {row['item']: row['gaps'] for row in board.compute(root)}
     assert gaps['I-1'][0]['text'] == 'awaiting plan approval' and gaps['I-1'][0]['owner']
     question = 'plan: approve this plan? 3 items on 2 goals and 1 unplanned, about 6 build hours.'
-    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
-                                      'tool_input': {'questions': [{'question': question}]},
-                                      'tool_response': {'answers': {question: 'Approve'}}})
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Approve'}))
     assert all(item['approved'] for item in plan.items(root))
     assert sorted(ws.rows(root, 'plan.approved')[0]['data']['items']) == ['I-1', 'I-2', 'I-3']
     ws.cache_put(root, 'board', None)
@@ -42,8 +41,6 @@ def test_new_items_wait_for_the_owner_to_approve_the_plan(root, fake):
 def test_a_change_answer_is_recorded_and_approves_nothing(root):
     setup_plan(root)
     question = 'plan: approve this plan?'
-    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
-                                      'tool_input': {'questions': [{'question': question}]},
-                                      'tool_response': {'answers': {question: 'Change: drop I-3'}}})
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Change: drop I-3'}))
     assert not any(item['approved'] for item in plan.items(root))
     assert ws.rows(root, 'plan.change')[0]['data']['answer'] == 'Change: drop I-3'
