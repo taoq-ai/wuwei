@@ -6,7 +6,7 @@
 ## Technical context
 
 - Stdlib-only Python 3.11+, runtime under `cli/wuwei/`, cap 3,400 lines. Main dc39cae held 3,011; main 6682925 held 3,026;
-  main 7fd8f4b held 3,093; main 5a33509 held 3,178; main dc9aad9 held 3,183; main 17ff289 holds 3,322.
+  main 7fd8f4b held 3,093; main 5a33509 held 3,178; main dc9aad9 held 3,183; main 17ff289 held 3,322; main 5b5084b holds 3,351.
   Round 3's budget is the PR's earlier +21; free-lines-5 is no longer a prerequisite.
 - `guards.bash` reads git's options before the subcommand (git-globals) and calls
   `git_push(root, rest[i + 1:], here)`; a refusal passes only when `scratch()` reads the remote as
@@ -55,6 +55,9 @@
    and adds `main-worktree/--` last when `--` is a refspec. `_git` takes `failed`, the value it
    gives when git cannot run or finish in 5 s; both reads ask for `None`, and `git_push` refuses
    when either is `None`, with a text that names the default branch. The `suppress` import goes.
+9. Round 4 (gates at 457f6a8): a `--` refspec adds the pattern `refs/heads/*` to the targets, so
+   the push meets the door as `--all` does. The `main-worktree/--` lookup and the `--` exclusion
+   from the batch go, since a push holding `--` is refused whatever the batch prints.
 
 ## Evidence
 
@@ -84,5 +87,5 @@
 - Simplest: `git_push` changed and one helper added in round 2, `_sources`, the ref read once per
   push; git's rules written as one normalisation, one table of ref rules and one pattern match.
   Round 3 makes `_sources` two git calls and no file reads.
-- Runtime: 3,340 against main 17ff289's 3,322 (+18), under the PR's earlier +21 and the cap of
-  3,400 (spec Assumptions).
+- Runtime: 3,369 against main 5b5084b's 3,351 (+18), under main + 21 and the cap of 3,400 (spec
+  Assumptions).

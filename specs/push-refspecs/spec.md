@@ -23,8 +23,9 @@ Round 3 (the promise the owner approved on 2026-10-20, after the gates at aa63d3
    batched `git -c core.warnAmbiguousRefs=false rev-parse --symbolic-full-name --revs-only
    --end-of-options <words>` resolves each such word to: root refs in any spelling, symlinks,
    nested names, another worktree's refs, any ref store. The `tag` keyword, negative refspecs
-   (`^x`), globs and `--` stay out of the batch, and `--` is asked last as `main-worktree/--`.
-   Round 2's own reader of root ref files is removed.
+   (`^x`) and globs stay out of the batch. Round 2's own reader of root ref files is removed.
+   Round 4 (gates at 457f6a8, as the coordinator directed): a push of a ref named `--` is refused,
+   in place of asking `main-worktree/--`, because git reads that root ref per worktree.
 4. When git cannot run either read, or does not finish it in 5 s, the door stays shut.
 5. The existing refusals keep their text: `--mirror` (in any prefix git reads, such as `--mirr`) is
    a force push; an explicit default branch is "pushing to" or "deleting" it.
@@ -148,11 +149,15 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - Q: Which words stay out of rev-parse's batch? A: rev-parse with `--revs-only` prints nothing for
   any word after the first one it cannot resolve. git push sends nothing when one of its sources
   does not resolve (git 2.54: `git push origin nope main` exits 1 and leaves main), so such a word
-  cannot be pushed either. Four kinds of word git push takes that rev-parse cannot resolve stay
-  out: the `tag` keyword (the tag name after it goes in), a negative refspec `^x`, a glob, and `--`,
-  which ends rev-parse's revisions even after `--end-of-options`. A root ref named `--` is asked as
-  `main-worktree/--`, last. The lead's sketches that kept one of the four in the batch each left a
-  hole on it.
+  cannot be pushed either. Three kinds of word git push takes that rev-parse cannot resolve stay
+  out: the `tag` keyword (the tag name after it goes in), a negative refspec `^x` and a glob; a
+  refspec with a colon names its destination and stays out too. The lead's sketches that kept one
+  of them in the batch each left a hole on it. The fourth is `--`, which ends rev-parse's revisions
+  even after `--end-of-options`. Round 3 asked a root ref named `--` as `main-worktree/--`, but git
+  reads that name per worktree (refs.c pseudoref syntax takes `-`), so from a linked worktree git
+  read `.git/worktrees/<id>/--` and the guard the common one (gates at 457f6a8). git branch,
+  switch and tag refuse the name, so only plumbing writes it: round 4 refuses every push with a
+  `--` refspec.
 - Q: What does the door do when git cannot read the refs? A: it refuses the push. `_git` takes the
   value a git that cannot run or finish in 5 s gives; the two ref reads ask for `None`, and
   `git_push` refuses ("git could not read the refs in 5 s, so the door cannot tell whether it
@@ -176,9 +181,10 @@ recursion, `core.hooksPath`) are item push-git-runs.
    git resolves it to `refs/heads/main` as its destination. Round 2 read the root ref files itself
    and missed forms git reads (gates at aa63d3b). Round 3 asks git: rev-parse resolves each word
    through git's own ref code on any ref store, and for-each-ref's candidates cover the match git
-   push takes over rev-parse's. What stays open: a word git push accepts that stops rev-parse,
-   beyond the four kept out of the batch (the stopper class tries 41 words, and git 2.43 is
-   unmeasured here); a ref the same command writes first
+   push takes over rev-parse's. Round 3's own lookup of a root `--` read the wrong worktree (gates
+   at 457f6a8); round 4 refuses a push of `--` instead. What stays open: a word git push accepts
+   that stops rev-parse, beyond the three kept out of the batch and `--` (the stopper class tries 41
+   words, and git 2.43 is unmeasured here); a ref the same command writes first
    (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`), or a HEAD it moves
    (`git checkout main && git push origin HEAD`), listed in SECURITY.md.
 3. An option that takes the next word hides a word from the guard. The first head claimed a
@@ -206,9 +212,9 @@ recursion, `core.hooksPath`) are item push-git-runs.
 - FR-008: git resolves each source alone. A refspec with no colon names the target of each
   candidate of git's ref rules among the symbolic refs one `for-each-ref` lists, and the full name
   one batched `rev-parse --symbolic-full-name --revs-only` (with `core.warnAmbiguousRefs=false`,
-  after `--end-of-options`) prints for it. The `tag` keyword, negative refspecs, globs and `--`
-  stay out of the batch; `--` is asked last as `main-worktree/--`. The guard opens no file in the
-  git directory.
+  after `--end-of-options`) prints for it. The `tag` keyword, negative refspecs and globs stay out
+  of the batch; a push with a `--` refspec is refused as a push to the default branch (round 4).
+  The guard opens no file in the git directory.
 - FR-009: the git calls per push do not grow with the refspecs (one word and 15,000 make the same
   calls); a `for-each-ref` or `rev-parse` that cannot run or finish in 5 s refuses the push.
 
@@ -228,9 +234,15 @@ which git does not read as an option (`git push --repo --mirror origin feature` 
 - A destination `HEAD` (or empty) keeps main's reading: the current branch. Under real
   git 2.43, `feature:HEAD` from a clone on main left main alone, so the guard over-refuses it there;
   the rule is main's and the item does not ask to change it.
-- Runtime lines: 3,340 at the head against 3,322 at main 17ff289 (+18), under the PR's earlier +21
-  and the 3,400 cap. Round 3 drops the root file reader (6 lines) and the `suppress` import, and
-  adds the batch: the words line and its comment, and the refusal (2 lines) in `git_push`.
+- Runtime lines: 3,369 at the head against 3,351 at main 5b5084b (+18), under main + 21 and the
+  3,400 cap. Round 3 drops the root file reader (6 lines) and the `suppress` import, and adds the
+  batch: the words line and its comment, and the refusal (2 lines) in `git_push`. Round 4 adds no
+  line: the `--` check joins the `--all` line, and the `main-worktree/--` lookup goes.
+- A push with a `--` refspec is refused, whatever `--` names (round 4, the security gate's first
+  fix, chosen by the coordinator over asking `worktrees/<id>/--`). git branch, switch and tag
+  refuse the name, so only plumbing writes a branch or root ref `--`. Over-refusal only: a push of
+  such a branch that git sends elsewhere is refused too. This replaces the approved promise's
+  "`--` is asked last as `main-worktree/--`".
 - git push sends nothing when one of its sources does not resolve, so the words rev-parse skips
   after one it cannot resolve cannot be pushed. Measured on git 2.54 (`git push origin nope main`
   and `nope ZZ` exit 1, main unmoved). Overturned if a probe under git 2.43 finds a word git push

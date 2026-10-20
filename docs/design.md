@@ -189,7 +189,8 @@ every form; pushes to or deletion of the default branch (a destination as git 2.
 `heads/main` or `refs/heads/main` after the last colon, or the ref git itself resolves a source alone
 to; the matching refspec `:`, `--all`, `--branches` and a glob whose destination can match it; a word
 an option takes is no refspec, and every word after the first `--` or `--end-of-options` is one; a
-push whose refs git cannot read in 5 s too),
+push of a ref named `--`, which git reads per worktree, and a push whose refs git cannot read in 5 s
+too),
 including the GitHub MCP `push_files`, `create_or_update_file` and `delete_file` tools on the default branch or with no branch (a force
 push, push or delete to a git directory in a scratch folder passes in one plain git call, as
 SECURITY.md reads it); a git

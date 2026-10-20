@@ -29,7 +29,9 @@ and acceptance and the constitution.
 | G12 | Coverage | MEDIUM | gates at aa63d3b, quality | The 1 s wall-clock bound failed on a correct guard under load (5 of 36 runs) | Resolved: a call-count test (one word and 15,000 make the same git calls), with no clock |
 | G13 | Coverage | LOW | gates at aa63d3b, security | Guard time grew with the files in the git directory (100,000 root files: 7.3 s); a FIFO swapped over a root file between `is_file` and `open` hung the guard; `_git` turned a timeout into `''` | Resolved by construction: the guard opens no file in the git directory, and both ref reads refuse on a timeout or a failed exec (2 tests) |
 | G14 | Coverage | LOW | gates at aa63d3b, quality | Mutant M6 (dropping the `ref: ` check) survived | Resolved by construction: the check is deleted with the reader |
-| B1 | Budget | LOW | spec Assumptions | Runtime +21 against a budget of +4, ceiling 6 (round 2) | Round 3: +18 against main 17ff289 (3,340 against 3,322), under the PR's earlier +21 and the 3,400 cap |
+| G15 | Coverage | MEDIUM | gates at 457f6a8, security | git reads a root ref named `--` per worktree, so from a linked worktree (or after cd, env -C, pushd or a subshell into it) `git push origin -- --` moved main while the guard asked `main-worktree/--` | Resolved: a push with a `--` refspec is refused; 8 real-git rows red at 457f6a8, the probe's rootfile class adds the `--` places |
+| G16 | Coverage | LOW | gates at 457f6a8, security | No test kept colon refspecs out of the batch (the colon-in-batch mutant survived) | Resolved: `feature:feature ZZ` row; the mutant is killed |
+| B1 | Budget | LOW | spec Assumptions | Runtime +21 against a budget of +4, ceiling 6 (round 2) | Round 4: +18 against main 5b5084b (3,369 against 3,351), under main + 21 and the 3,400 cap |
 
 No open finding at CRITICAL or HIGH.
 
