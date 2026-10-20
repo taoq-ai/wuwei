@@ -163,7 +163,11 @@ after the merge as an escape.
 
 Operations items: an item done by a run, not a change (a backfill, a re-drive, an operator step),
 records its run evidence (`wuwei plan run <id> --reason`); the board shows that evidence, not a
-missing PR, and `wuwei plan done` closes it with the final evidence.
+missing PR, and `wuwei plan done` closes it with the final evidence. A Codex background job is
+registered with `wuwei plan run <id> --job <job file>`: the board reads that one file, never another
+plugin's folders, and shows the job running, queued, completed (with the `HANDOFF.md` path it
+names), failed, cancelled or asked a question (its last answer ends in a question). A file it
+cannot read shows `job state unreadable`, never done.
 
 ## 7. The doors
 

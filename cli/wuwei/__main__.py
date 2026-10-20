@@ -43,9 +43,9 @@ def cmd_plan(args):
             return 0
         print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
     elif args.action == 'run':  # an operations item: done by its run evidence, not a pull request (#1049)
-        if not args.reason:
-            raise ValueError('plan run needs --reason "<what ran and what it showed>"; nothing recorded')
-        print(f'{plan.mark(root, args.id, "open", args.reason, kind="run")["id"]} run evidence recorded')
+        if not (args.reason or args.job):  # --job: the Codex companion's job file, the one file the board reads for it (#1201)
+            raise ValueError('plan run needs --reason "<what ran and what it showed>" or --job <job file>; nothing recorded')
+        print(f'{plan.mark(root, args.id, "open", args.reason or "", kind="run", **{"job": args.job} if args.job else {})["id"]} run evidence recorded')
     elif args.action == 'restore':
         print(f'{plan.restore(root, args.id)["id"]} open again')
     elif args.action == 'show' and args.id:
@@ -189,13 +189,13 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     actions = {'show': '[id]: the ranked plan, or one item as JSON', 'add': '<id> "<title>" | --from <file>',
                'park': '<id> --reason', 'drop': '<id> --reason', 'done': '<id> --reason', 'restore': '<id>: reopen',
-               'run': '<id> --reason "<what ran, what it showed>"', 'pass': '--reason', 'view': '[--html]'}
+               'run': '<id> --reason "<what ran, what it showed>" | --job <Codex job json>', 'pass': '--reason', 'view': '[--html]'}
     p = sub.add_parser('plan', help=', '.join(actions), formatter_class=argparse.RawDescriptionHelpFormatter,
                        description='actions:\n' + '\n'.join(f'  {k:<8} {v}' for k, v in actions.items()))
     p.add_argument('action', nargs='?', default='show', choices=tuple(actions))
     for name in ('id', 'title'):
         p.add_argument(name, nargs='?')
-    for name in ('goal', 'repo', 'why', 'reason', 'promise'):
+    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'job'):
         p.add_argument(f'--{name}')
     p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
     p.add_argument('--from', dest='source', help="with add: the lead's candidates file")

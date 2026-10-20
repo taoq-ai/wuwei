@@ -5,7 +5,7 @@ import datetime
 import os
 import sys
 
-from wuwei import evidence, gh, plan, ws
+from wuwei import evidence, gh, plan, upgrade, ws
 
 TTL = 60
 
@@ -95,7 +95,7 @@ def compute(root, everything=False):
                 continue
             if not linked:
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
-                         if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
+                         if repo in held else evidence.gap(f'run: {"; ".join(filter(None, [item.get("reason"), item.get("job") and job(root, item["job"])])) or "no run evidence yet"}', actionable=False)
                          if item.get('kind') == 'run' else evidence.gap('no pull request yet') if item.get('approved', True)
                          else evidence.gap('awaiting plan approval', actionable=False, owner=True))
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
@@ -110,6 +110,12 @@ def compute(root, everything=False):
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
         evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
     return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
+
+
+def job(root, path):  # only the Codex companion job file the planner registered with plan run --job; no plugin folder is scanned (#1201)
+    said = str(r.get('rawOutput') or '').rstrip() if isinstance(r := (found := d if isinstance(d := upgrade._json(os.path.join(root, path)), dict) else {}).get('result'), dict) else ''
+    status = 'asked a question' if found.get('status') == 'completed' and said.endswith('?') else found.get('status') or 'state unreadable'
+    return f'job {status}' + ''.join(f', handoff {w}' for w in [w for w in (w.strip('`\'"<>[]*,.:;') for w in said.replace('(', ' ').replace(')', ' ').split()) if w.endswith('HANDOFF.md')][-1:])
 
 
 def rows(root):

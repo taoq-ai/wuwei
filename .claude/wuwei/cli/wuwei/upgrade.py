@@ -19,7 +19,7 @@ def _days(root):
 
 def _json(path):
     try:
-        return json.loads(path.read_text(encoding='utf-8'))
+        return json.loads(Path(path).read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
 
