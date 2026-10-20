@@ -10,14 +10,14 @@ ADR goes where the repository keeps its ADRs, and a re-confirmed ADR is amended.
 ## Technical Context
 
 Python 3.11 stdlib. Tests in tests/test_hook.py and tests/test_charters.py. Runtime budget 3,400
-lines; main is at 3,208 and the item allows one line.
+lines; main is at 3,317 (after #1172) and the item allows one line.
 
 ## Constitution Check
 
 - I. Stdlib only: yes, text only.
 - III. An auditor: no door changes; the note is advice in PostToolUse context.
 - V. Test first: both new tests ran red (2 failed) before the change.
-- VI. Budgets: no config key; runtime 3,208 to 3,209; arch agent 2,250 to 2,249 words.
+- VI. Budgets: no config key; runtime 3,317 to 3,318; arch agent 2,250 to 2,249 words.
 
 ## Design
 
@@ -30,4 +30,4 @@ lines; main is at 3,208 and the item allows one line.
 
 ## Lines
 
-hook.py 488 to 489: runtime 3,208 to 3,209.
+hook.py 565 to 566: runtime 3,317 to 3,318.
