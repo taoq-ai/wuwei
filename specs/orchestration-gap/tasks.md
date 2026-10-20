@@ -33,3 +33,10 @@
 - [x] T020 Remove `hook.running` from both copies; its tests in tests/test_hook.py and tests/test_codex.py read `board.running(root, 's1')`
 - [x] T021 A required check not run at a green head owes no gate seat (cli/wuwei/board.py, tests/test_watch.py)
 - [x] T022 Touched test files, the route differential at main 1877565 and the head, and the board and Stop mutants
+
+## Phase 5: Fix round 1 (arch at 9bb6c7d)
+
+- [x] T023 The Stop and the session start keep the team row at 10, 29, 40 and 60 open PRs, and the left-out count counts items only (tests/test_hook.py)
+- [x] T024 Run it red at 9bb6c7d's order: 4 failed at the Stop; with the Stop half removed, 2 failed at the session start (40 and 60)
+- [x] T025 The team row comes first in `board.compute` (cli/wuwei/board.py); tests that read the first row or the row order follow it
+- [x] T026 Merge origin/main at 2226d90; touched tests, mutants and the route differential at the new main

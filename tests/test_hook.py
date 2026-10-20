@@ -357,6 +357,21 @@ def test_the_same_orchestration_state_reminds_once_while_the_pr_count_moves(root
     assert len([r for r in board.compute(root) if r['pr']]) == 3 and stop(root) is None
 
 
+@pytest.mark.parametrize('count', [10, 29, 40, 60])
+def test_the_team_row_survives_the_stop_and_session_start_cuts(root, fake, monkeypatch, count):
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID', raising=False)
+    write_plan(root, [{'id': f'I-{n}', 'title': f'change {n} with a title as long as a real plan item carries it, promise and all',
+                       'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'} for n in range(1, count + 1)])
+    for n in range(1, count + 1):
+        fake.prs[str(100 + n)] = make_pr(number=100 + n, head=f'{n:040d}', body=f'WUWEI-Item: I-{n}')
+    assert '- team: orchestration: open PRs with no shepherd seat running' in stop(root)['reason']
+    assert stop(root) is None
+    start = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+    assert '- team seats: orchestration: open PRs with no shepherd seat running' in start
+    left = re.search(r'([0-9]+) more items? left out', start)
+    assert (int(left[1]) if left else 0) == count - start.count('\n- I-')
+
+
 def test_a_rejected_agent_launch_records_no_seat(root):
     assert pre(root, 'Agent', {'subagent_type': 'wuwei:nobody', 'prompt': 'Build I-1'}) is None
     assert ws.rows(root, 'seat.started') == []

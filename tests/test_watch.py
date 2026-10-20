@@ -48,8 +48,8 @@ def test_an_owed_reply_keeps_the_turn_going(root, fake):
 def test_status_all_shows_process_gaps_for_the_watch(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}])
     fake.prs['42'] = make_pr(lines=300)
-    quiet = board.compute(root)[0]['gaps']
-    every = board.compute(root, everything=True)[0]['gaps']
+    quiet = next(r for r in board.compute(root) if r['item'] == 'I-1')['gaps']
+    every = next(r for r in board.compute(root, everything=True) if r['item'] == 'I-1')['gaps']
     assert not any('changed lines' in g['text'] for g in quiet)
     assert any('changed lines' in g['text'] for g in every)
 

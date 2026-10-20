@@ -108,7 +108,7 @@ def compute(root, everything=False):
     owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
         evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
-    return out + [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties)
+    return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
 
 
 def rows(root):

@@ -12,8 +12,9 @@ and acceptance, the probe's recorded result and the constitution.
 | A3 | Inconsistency | LOW (closed) | spec.md Composition | hook.running lost its runtime caller | Resolved in the merge round: removed from both copies, its tests read board.running |
 | A4 | Ambiguity | LOW (closed) | spec.md Clarifications | "Open PRs" and "green head" were not defined by the item | Resolved: the distinct PRs the board lists; a head whose row has no CI gap and no required check missing |
 | A5 | Coverage | LOW | tasks.md T016 | Four tests fail locally at main and the head (bash 3.2) | Not this change; CI runs them |
+| A6 | Coverage | MEDIUM (closed) | board.py compute | The team row came last and the Stop and session start cut it first (arch at 9bb6c7d) | Resolved in fix round 1: the row comes first, with a test at 10, 29, 40 and 60 PRs |
 
-No open finding above LOW. A1 was MEDIUM and is closed.
+No open finding above LOW. A1 and A6 were MEDIUM and are closed.
 
 ## Coverage
 

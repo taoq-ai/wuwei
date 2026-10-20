@@ -38,7 +38,7 @@ def test_a_cold_board_reads_linked_prs_in_parallel_with_rows_in_plan_order(root,
     started = time.monotonic()
     rows = board.compute(root)
     elapsed = time.monotonic() - started
-    assert [(r['item'], r['pr']) for r in rows] == [(f'I-{n}', f'acme/app#{100 + n}') for n in range(1, 19)] + [('team', None)]
+    assert [(r['item'], r['pr']) for r in rows] == [('team', None)] + [(f'I-{n}', f'acme/app#{100 + n}') for n in range(1, 19)]
     serial = len(calls) * DELAY  # every gh call one after another, as at efcd9e7
     assert elapsed < serial / 3, (elapsed, serial, len(calls))
 
@@ -68,10 +68,10 @@ def test_a_cold_status_names_each_repository_on_stderr_and_keeps_stdout(root, fa
     assert cli.main(['status']) == 0
     cold = capsys.readouterr()
     assert cold.err.splitlines() == ['wuwei: reading acme/app: 18 open PRs']
-    assert cold.out.splitlines() == ['Board (what each open item still lacks):'] + [
-        f'- I-{n} item {n} (acme/app#{100 + n}): gates missing at head aaaaaaa: quality' for n in range(1, 19)] + [
+    assert cold.out.splitlines() == ['Board (what each open item still lacks):', (
         '- team seats: orchestration: open PRs with no shepherd seat running; '
-        'orchestration: gates owed on green heads with no gate seat running']
+        'orchestration: gates owed on green heads with no gate seat running')] + [
+        f'- I-{n} item {n} (acme/app#{100 + n}): gates missing at head aaaaaaa: quality' for n in range(1, 19)]
 
 
 def _pr_reads(calls):

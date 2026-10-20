@@ -10,7 +10,7 @@ the rule to build at 646e4625.
 
 ## The promise in my words
 
-The board gets one more row, `team`, after every item row. It holds up to two duty lines:
+The board gets one more row, `team`, before every item row. It holds up to two duty lines:
 
 - `orchestration: open PRs with no shepherd seat running`, when the board shows more than two
   distinct open PRs and no shepherd seat runs;
@@ -56,11 +56,17 @@ The acceptance scenarios, restated:
    payload's session and stays silent while a seat of its session runs.
 2. The shared board cache (60 seconds) carries a team row computed in one session into another
    session's Stop or status. A Stop never shows it while its own seat runs (the guard runs before
-   the board read); `wuwei status` computes fresh. The session start reads the cache, and a new
-   session has no running seat, so the row it shows is true for it.
+   the board read); `wuwei status` computes fresh. A Stop or session start can still read a row
+   another session computed: with a shepherd running in session A, session B with no seat reads
+   only the gate line for up to 60 seconds (arch at 9bb6c7d). The cost is a late nudge, and A's
+   live shepherd does cover the PRs.
 3. Codex work runs as a background job with no seat row, so a day run only on Codex jobs always
    shows both lines. That is the intended reading (the issue's case: the planner did the
    shepherd's work by hand), and the charter now tells the planner to launch the shepherd.
+4. The Stop reminder shows its first ten new lines and the session start drops items from the
+   end, and both mark what they cut as seen or left out. A team row placed last was cut first on a
+   day with many open PRs, the issue's own case (arch at 9bb6c7d). The row now comes first, and a
+   test holds both lines at 10, 29, 40 and 60 open PRs; the left-out count then counts items only.
 
 ## Clarifications
 
