@@ -1800,14 +1800,16 @@ def test_a_memory_folder_that_is_a_link_is_refused(root, repo, memory):
     'mv /tmp/l ~/.claude/projects/-repo/memory/n.md', 'cp -P /tmp/l ~/.claude/projects/-repo/memory/n.md',
     'python3 -c "open(\'~/.claude/projects/-repo/memory/n.md\', \'a\').write(1)"', 'find ~/.claude/projects/-repo/memory/n.md -delete',
     'cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl', 'env -C ~/.claude/projects/-repo/memory tee -a ../s.jsonl',
-    'sudo -D ~/.claude/projects/-repo/memory tee ../s.jsonl', 'cd ~/.claude/projects/-repo/memory/sub && echo x >> ../../s.jsonl'])
+    'sudo -D ~/.claude/projects/-repo/memory tee ../s.jsonl', 'cd ~/.claude/projects/-repo/memory/sub && echo x >> ../../s.jsonl',
+    'env -C ~/.claude/projects/-repo/memory/sub tee -a ../../s.jsonl'])
 def test_a_link_maker_or_a_working_directory_in_memory_is_refused(root, repo, memory, command):
     """ln, mv, cp, python and find can stage a link in memory that a later write follows, and a working directory there climbs out."""
     assert 'transcripts' in guards.pre_tool(root, bash(command))['reason'], command
 
 
-def test_a_session_inside_the_memory_folder_is_refused(root, repo, memory):
-    found = guards.pre_tool(root, {**bash('echo x >> ../s.jsonl'), 'cwd': str(memory / 'memory')})
+@pytest.mark.parametrize('folder, up', [('memory', '..'), ('memory/sub', '../..')])
+def test_a_session_inside_the_memory_folder_is_refused(root, repo, memory, folder, up):
+    found = guards.pre_tool(root, {**bash(f'echo x >> {up}/s.jsonl'), 'cwd': str(memory / folder)})
     assert 'transcripts' in found['reason']
 
 
