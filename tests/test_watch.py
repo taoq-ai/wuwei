@@ -89,17 +89,31 @@ def test_a_pr_naming_two_items_links_both_and_closes_both_once_merged(root, fake
 def test_a_run_item_stays_open_with_run_owed_when_its_pr_merges_until_plan_done(root, fake):
     from wuwei import __main__ as cli
     import os
-    write_plan(root, [_item('R', kind='run'), _item('B')])
+    write_plan(root, [_item('R'), _item('B')])
+    os.chdir(root)
+    assert cli.main(['plan', 'run', 'R', '--reason', 'run: head none on production']) == 0
     fake.prs['9'] = make_pr(9, body='WUWEI-Item: R\nWUWEI-Item: B', state='MERGED')
     fake.prs['9']['mergedAt'] = ws.now().isoformat(timespec='seconds')
     rows = {r['item']: r for r in board.compute(root)}
     assert plan.find(root, 'R')['status'] == 'open' and plan.find(root, 'B')['status'] == 'done'
-    assert rows['R']['gaps'][0]['text'] == 'run: code merged as acme/app#9, run owed'
+    assert rows['R']['gaps'][0]['text'] == 'run: run: head none on production; code merged as acme/app#9, run owed'
     board.compute(root)
-    assert len([r for r in ws.rows(root, 'item.open') if r['data']['id'] == 'R']) == 1
-    os.chdir(root)
+    assert len([r for r in ws.rows(root, 'item.open') if 'run owed' in r['data']['reason']]) == 1
     assert cli.main(['plan', 'done', 'R', '--reason', 'run: head live in production']) == 0
     assert plan.find(root, 'R')['status'] == 'done'
+
+
+def test_a_run_item_with_a_merged_and_an_open_pr_keeps_its_run_evidence(root, fake):
+    from wuwei import __main__ as cli
+    import os
+    write_plan(root, [_item('R')])
+    os.chdir(root)
+    assert cli.main(['plan', 'run', 'R', '--reason', 'run: head none on production']) == 0
+    fake.prs['9'] = make_pr(9, body='WUWEI-Item: R', state='MERGED')
+    fake.prs['9']['mergedAt'] = ws.now().isoformat(timespec='seconds')
+    fake.prs['10'] = make_pr(10, body='WUWEI-Item: R')
+    assert [r['pr'] for r in board.compute(root) if r['item'] == 'R'] == ['acme/app#10']
+    assert plan.find(root, 'R')['reason'] == 'run: head none on production'
 
 
 def test_an_item_whose_pr_just_merged_closes_despite_a_stale_merged_cache(root, fake):

@@ -93,8 +93,8 @@ def compute(root, everything=False):
             if not linked and done and item.get('kind') != 'run':
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
-            if not linked and done and not item.get('reason'):  # merged code is not the run; plan done closes it (#1200)
-                item['reason'] = plan.mark(root, item['id'], 'open', f'code merged as {repo}#{done[0]["number"]}, run owed')['reason']
+            if not linked and done and 'run owed' not in item.get('reason', ''):  # merged code is not the run; plan done closes it (#1200)
+                item['reason'] = plan.mark(root, item['id'], 'open', '; '.join(filter(None, [item.get('reason'), f'code merged as {repo}#{done[0]["number"]}, run owed'])))['reason']
             if not linked:
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
                          if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
