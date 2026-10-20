@@ -43,3 +43,9 @@
 - [x] T024 Spec, plan, analysis, checklist, SECURITY.md (reftable limit removed), design.md and doors.md (a push whose refs git cannot read in 5 s)
 - [x] T025 Probe: rootfile (240) and stopper (194) classes; the whole probe, main 17ff289 against the head: 22,698 generated, 22,670 ran the push, 80 holes at the head (force digit clusters, the same at main), 1,420 at main, 0 regressions
 - [x] T026 Route corpus through main, the merged round 2 guard and the head; mutants of each batch rule; non-door checks with round 3's push shapes; runtime 3,340 against 3,322 (+18)
+
+## Phase 7: Fix round 4 (gates at 457f6a8)
+
+- [x] T027 Merged origin/main 5b5084b with a plain merge, no conflict; tests first: w's own root `--` pushed from w (3 rows) and after cd, env -C, pushd, a subshell and an absolute cd from c (5 rows), all 8 red at the merged head; `feature:feature ZZ` for the colon-in-batch mutant
+- [x] T028 A `--` refspec meets the door as `--all` does; the `main-worktree/--` lookup and the `--` batch exclusion go; green; the colon-in-batch and `--`-refusal mutants are killed
+- [x] T029 Route corpus row `git push origin -- --`; the corpus read through main 5b5084b, the merged round 3 guard and the head; the probe's rootfile class plants `--` in the common folder and in w's, and the stopper class pushes w's `--` from each clone and after cd, env -C, pushd and a subshell; runtime 3,369 against 3,351 (+18)
