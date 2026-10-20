@@ -60,7 +60,8 @@ Take your recommendation, record it under Assumptions in the spec or PR body (wh
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
 HARNESS = ("the harness's session transcripts (.claude/projects) are written only by the harness: WUWEI confirms owner answers and "
-           'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>.')
+           'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>. Claude Code\'s memory '
+           '(<project>/memory/<file>) takes Write, Edit, a redirect, tee, sed -i, truncate or rm on its literal path, from outside memory.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'

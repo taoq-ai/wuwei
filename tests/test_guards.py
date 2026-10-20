@@ -1804,7 +1804,8 @@ def test_a_memory_folder_that_is_a_link_is_refused(root, repo, memory):
     'env -C ~/.claude/projects/-repo/memory/sub tee -a ../../s.jsonl'])
 def test_a_link_maker_or_a_working_directory_in_memory_is_refused(root, repo, memory, command):
     """ln, mv, cp, python and find can stage a link in memory that a later write follows, and a working directory there climbs out."""
-    assert 'transcripts' in guards.pre_tool(root, bash(command))['reason'], command
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert 'transcripts' in reason and 'memory (<project>/memory/<file>) takes Write, Edit, a redirect' in reason, command
 
 
 @pytest.mark.parametrize('folder, up', [('memory', '..'), ('memory/sub', '../..')])
