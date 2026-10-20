@@ -363,14 +363,15 @@ def test_no_generated_accepted_gap_waives_a_gap_it_does_not_name(monkeypatch):
 
 def test_the_not_counted_lines_go_with_the_accepted_gate_gap(root, fake):
     light(root)
-    fake.prs['42'] = make_pr()
+    fake.prs['42'] = make_pr(files=('src/app.py',))
     stray = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
     stray.parent.mkdir(parents=True)
     stray.write_text(verdict_text(gate='quality', head=HEAD))  # never attested
     found = texts(evidence.gaps(root, 'acme/app', 42))
-    assert found[0] == 'gates missing at head aaaaaaa: quality' and 'not counted: not attested' in found[1] and len(found) == 2
-    except_gap(root, 'no test in the diff')  # a gap that is not the gate gap keeps its explanation
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == found
+    assert found[:2] == ['no test in the diff', 'gates missing at head aaaaaaa: quality'] and len(found) == 3
+    assert 'not counted: not attested' in found[2]
+    except_gap(root, 'no test in the diff')  # a gap that is not the gate gap keeps the gate gap's explanation
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found[1:]
     except_gap(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
