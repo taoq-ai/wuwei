@@ -1777,7 +1777,8 @@ def test_an_edit_of_a_memory_file_passes(root, memory, tool, name):
     '~/.claude/projects/-repo/memory/sub/n.md', '~/.claude/projects/-repo/%6demory/n.md', '~/.claude/projects/-repo/memory%2f..%2fs.jsonl',
     '~/.claude/projects/-repo/memor?/n.md', '~/.claude/projects/-repo/{memory,x}/n.md', '~/.claude/projects/-repo/memory/*.md',
     '~/.claude/projects/-repo/memory/link.md', '~/.claude/projects/-repo/memory/up/s.jsonl', '~/.claude/projects/-repo/memory/up',
-    '~/.claude/projects/-repo/s.jsonl', '$X/.claude/projects/-repo/memory/n.md', '.claude/projects/-repo/memory/n.md', '~/.claude/projects/memory/n.md'])
+    '~/.claude/projects/-repo/s.jsonl', '$X/.claude/projects/-repo/memory/n.md', '.claude/projects/-repo/memory/n.md', '~/.claude/projects/memory/n.md',
+    '~/.claude/projects/memory/tool-results/r.txt'])
 @pytest.mark.parametrize('write', ['echo x >> {p}', 'tee -a {p}', 'rm -f {p}'])
 def test_a_path_that_only_looks_like_memory_is_refused(root, repo, memory, write, path):
     (memory / 'memory' / 'link.md').symlink_to('../s.jsonl')
