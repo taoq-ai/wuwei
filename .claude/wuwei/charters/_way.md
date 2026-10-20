@@ -22,5 +22,3 @@ what you produced and says what is still missing (`wuwei status`, `wuwei evidenc
 - An operations item (a backfill, a re-drive, an operator step) has no pull request. Record its
   run evidence with `wuwei plan run <id> --reason "<run id, card, counts, what it still lacks>"`,
   and `wuwei plan done <id> --reason "<the final evidence>"` when it is through.
-- Every commit made under WUWEI ends with this trailer, after any others:
-  `Co-Authored-By: taoq-wuwei[bot] <345187888+taoq-wuwei[bot]@users.noreply.github.com>`.
