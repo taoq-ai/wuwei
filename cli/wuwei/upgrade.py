@@ -2,7 +2,6 @@
 PRs, the latest proposal, and the gate verdicts as attestations. Idempotent; it says what it moved."""
 
 import hashlib
-import json
 from pathlib import Path
 import re
 import tomllib
@@ -15,13 +14,6 @@ def _days(root):
     days = Path(root) / ws.DIR / 'days'
     return sorted((d for d in days.iterdir() if d.is_dir() and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', d.name)),
                   reverse=True) if days.is_dir() else []
-
-
-def _json(path):
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return None
 
 
 def review_channel(root):
@@ -88,7 +80,7 @@ def _add(root, item_id, title, row, framework, why, prs=(), approved=False):
 def items(root):
     framework, known = ws.config(root)['prioritisation'], {i['id'].lower() for i in plan.items(root)}
     before = len(known)  # each import adds one new id
-    state = next((_json(d / 'state.json') for d in _days(root) if (d / 'state.json').is_file()), None) or {}
+    state = next((ws.read_json(d / 'state.json') for d in _days(root) if (d / 'state.json').is_file()), None) or {}
     for name, row in (state.get('items') or {}).items():
         if not isinstance(row, dict) or row.get('phase') in ('merged', 'parked') or row.get('status') == 'done':
             continue
@@ -97,7 +89,7 @@ def items(root):
             _add(root, name, title, row, framework, 'imported from 0.34; rescore at the next pass',
                  [row['pr']] if isinstance(row.get('pr'), str) else (), approved=True)
             known.add(name.lower())
-    lead = next((_json(p) for d in _days(root) for p in sorted(d.glob('lead*.json'), reverse=True)), None)
+    lead = next((ws.read_json(p) for d in _days(root) for p in sorted(d.glob('lead*.json'), reverse=True)), None)
     candidates = lead.get('candidates', []) if isinstance(lead, dict) else lead if isinstance(lead, list) else []
     for row in candidates:
         if isinstance(row, dict) and isinstance(row.get('id'), str) and row['id'].lower() not in known:

@@ -25,10 +25,11 @@ and keep the owner's attention for what only the owner decides.
    reads the promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never
    names a verdict path: the gate charter states the one path.
    When a builder runs as a Codex background job (one that outlives this session), record it on
-   its item at once: `wuwei plan run <id> --reason "Codex builder job <job id> running in
-   <worktree>"`. The board shows that line as `run:` [waiting] until the PR opens, so a new
-   session starts no duplicate builder. When the job completes or fails, record it the same way
-   with the outcome and the path of its `HANDOFF.md`.
+   its item at once: `wuwei plan run <id> --reason "Codex builder in <worktree>" --job <job
+   file>`, the companion's `jobs/<job id>.json` beside the `Log:` path it prints. The board
+   reads that file and shows the job running, completed with its `HANDOFF.md` path, failed, or
+   asked a question, until the PR opens, so a new session starts no duplicate builder. Answer a
+   question or read the handoff when the board shows it; `job state unreadable` is never done.
 2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
    that head, in parallel, once CI has run. The tier is the ceiling and the diff decides
    (`_common.md`, Done); `gh pr ready` names what is still missing. Fix rounds carry every
@@ -68,7 +69,9 @@ and keep the owner's attention for what only the owner decides.
 8. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
    its run shows and still lacks with `wuwei plan run <id> --reason "..."`, and `wuwei plan done
    <id> --reason "<final evidence>"` when it is through.
-9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge. A Codex
+   handoff's network steps (push, PR body, thread replies, re-gate) go to the shepherd seat, not
+   to you. The board's `team` row names open PRs with no shepherd and owed gates with no gate seat.
 10. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner

@@ -45,7 +45,7 @@ ALIASES = {'business_value': 'value', 'user_business_value': 'value', 'time_crit
            'risk_reduction': 'risk', 'opportunity_enablement': 'risk', 'job_size': 'size'}
 
 
-def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=()):
+def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=(), prs=()):
     """Add an item, or update it in place when its id is already in the plan (a parked or dropped
     item reopens). The promise and acceptance travel with it, so every seat reads them here."""
     if tier not in TIERS:
@@ -53,13 +53,14 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
     framework = ws.config(root)['prioritisation']
     scores = {ALIASES.get(k, k): v for k, v in scores.items()}
     fields = {'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'framework': framework, 'scores': scores,
-              'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance)}
+              'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance), 'prs': list(prs)}
     rows = items(root)
     item = next((row for row in rows if row.get('id', '').lower() == str(item_id).lower()), None)
     if item is not None:
         if any(fields[k] and fields[k] != item.get(k) for k in ('promise', 'acceptance')):
             item['approved'] = False  # the owner approved the old contract, not this one
-        item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open')
+        item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open',
+                    prs=list(dict.fromkeys(item.get('prs', []) + fields['prs'])))  # a re-add keeps the PRs linked before
         save(root, rows)
         ws.record(root, 'item.updated', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
         return item

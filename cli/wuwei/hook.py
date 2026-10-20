@@ -3,6 +3,7 @@ lets the work go on and records why; a door call it fails on is refused."""
 
 import datetime
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -42,13 +43,6 @@ def last_text(payload):
 
 def context(event, text):
     return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': text}}
-
-
-def running(root):
-    """Seats launched today, by agent id, with no stop under the same id."""
-    ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
-           for kind in ('seat.started', 'seat.stopped', 'seat.unconfirmed')}
-    return len(ids['seat.started'] - ids['seat.stopped'] - ids['seat.unconfirmed'])
 
 
 def pre_tool(root, payload):
@@ -111,7 +105,7 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or running(root) > 0:
+    if payload.get('stop_hook_active') or closed(root) or board.running(root, payload.get('session_id')):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'
@@ -464,8 +458,8 @@ def codex(payload):
 
 
 def deliver(root, event, payload, out, said):
-    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode; plain text never reaches the
-    caller) and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
+    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode) unless its task notification
+    gave them, and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
     if said and 'permissionDecisionReason' in spec:  # a refused call still carries the notes of the answers recorded on it
         spec['permissionDecisionReason'] += '\n\n' + '\n'.join(said)
@@ -479,12 +473,15 @@ def deliver(root, event, payload, out, said):
             os.replace(path, kept := pending.parent / path.name)  # one hook wins a race; the other skips it
         except OSError:
             continue
-        _, agent, role, _ = kept.stem.split('--', 3)
-        found.append((agent, f'## {role} {agent} (kept at {kept})\n{kept.read_text(encoding="utf-8")}'))
-    if not said and not found:
+        (_, agent, role, _), text = kept.stem.split('--', 3), kept.read_text(encoding='utf-8')
+        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # a queued notification
+        told = any(html.unescape(body) == text for r in rows if isinstance(r, dict)  # may be dropped, so
+                   for body in re.findall(r'<result>(.*?)</result>', str(r.get('content')), re.S))
+        found.append((agent, f'## {role} {agent}: report already notified; kept at {kept}' if told else f'## {role} {agent} (kept at {kept})\n{text}'))
+    if not said and not found:  # a notified report is a pointer, never lost (#1198)
         return out
-    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their "
-                             'last messages:\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
+    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so the hook kept these seats' last messages (a "
+                             'report a task notification carried, by its path):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
     if event == 'Stop':
         return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
     if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):

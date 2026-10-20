@@ -103,6 +103,10 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A scratch push that git sends elsewhere through state the guard does not read: a `.git` entry
   another process plants inside the remote between the guard's read and the push (git enters
   `<path>/.git` first), or an exec path or receive hook that runs another push.
+- A push whose ref the same command changes first. The push door reads HEAD, and the ref a source
+  alone resolves to, when the guard runs: `git checkout main && git push origin HEAD`, or a local
+  symbolic ref written and pushed with no colon in one command
+  (`git symbolic-ref refs/heads/x refs/heads/main && git push origin x`).
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 
@@ -114,10 +118,17 @@ hand-made hook call that sets `HOME` or `CLAUDE_CONFIG_DIR` moves nothing. Anyth
 as `answer.unconfirmed` or `seat.unconfirmed` with the reason. The guards refuse writes under
 `.claude/projects` (and to `.claude` itself) in the spellings the records rule reads, and after `cd`,
 `pushd`, `-C`, `--chdir` or `-D` into it; reads pass, except a `python` command that names a
-transcript path, which the guards cannot tell from a write (read it with `python3 - < <path>`). What
-stays open: a process that writes the transcript itself, through a script file, a writer the guards
-do not list (`install`, `perl`, `rsync`), a path built at run time, or a symlink made outside the
-guards' sight. Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
+transcript path, which the guards cannot tell from a write (read it with `python3 - < <path>`).
+Claude Code's own memory stays writable: a regular file directly in `<project>/memory` under the
+account's projects folder takes Write, Edit, a redirect, `tee`, `sed -i`, `truncate` or `rm`, when
+its path is literal (`~`, `$HOME` or absolute, no glob, brace or `%` once quotes are removed) and
+resolves there with links read. `ln`, `mv`, `cp`, `find` and `python` never get that pass, since
+they can stage a link in memory that a later write follows, and a working directory in or below
+memory still holds every write. What stays open: a process that writes the transcript itself,
+through a script file, a writer the guards do not list (`install`, `perl`, `rsync`), a path built
+at run time, a symlink or hard link made outside the guards' sight (a hard link from a memory file
+to a transcript included), or a command that sets `HOME` before its `~` expands.
+Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
 (`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
 transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
 since each answer id is recorded once. Attestation still reads payload text on two paths: a
