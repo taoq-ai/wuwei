@@ -69,8 +69,10 @@ and keep the owner's attention for what only the owner decides.
 Only decisions in `_common.md` Decisions 2, each once with your recommendation, batched when
 there are several. Everything else you decide, record and show in the report.
 
-- An owner's `one-way:` answer becomes a short ADR (context, decision, consequences) in the
-  repository's `docs/adr/`, through the item's PR.
+- An owner's `one-way:` answer becomes a short ADR (context, decision, consequences) through the
+  item's PR. It goes where the repository keeps its ADRs: an existing `docs/adr/` or
+  `docs/decisions/`, else the item's spec folder. When the answer re-confirms an existing ADR,
+  amend that ADR instead of adding a file.
 - An owner may accept a gap, as `wuwei evidence` prints it
   (`exception: owner/repo#n at <sha7>: <gap>`). WUWEI records it and adds an item that closes it;
   exceptions expire into work, not silence.

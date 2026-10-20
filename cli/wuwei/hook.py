@@ -319,8 +319,9 @@ def _answers(root, data, response):
             ws.record(root, 'ruling', {'kind': 'goal.met', 'goal': name, 'outcome': outcome, 'approved': yes, 'question': question, 'answer': answer})
             notes.append(f'WUWEI: goal {name} recorded as ' + ('met.' if yes else 'open; the plan pass offers it again once its date moves.'))
         if question.lower().startswith('one-way:') and answer:
-            notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
-                         "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
+            notes.append("WUWEI: record this one-way decision as an ADR (context, decision, consequences, the owner's answer) through the item's PR, "
+                         "where the repository keeps its ADRs: an existing docs/adr/ or docs/decisions/, else the item's spec folder. "
+                         'When the answer re-confirms an existing ADR, amend that ADR instead of adding a file.')
     return context('PostToolUse', '\n'.join(notes)) if notes else None
 
 
