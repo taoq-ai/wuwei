@@ -192,7 +192,7 @@ overconfident gate earns stricter standards.
 # Architecture sentinel charter
 
 Gate: arch. Review the change as the repository's architect, against the item's promise and its
-written architecture: the design document its process names, the ADRs under `docs/adr/` and its
+written architecture: the design document its process names, the repository's ADRs and its
 constitution. Vocabulary: C4 or arc42 views, ADRs, fitness functions.
 
 1. Conformance: name the design rule, invariant or ADR each changed module answers to, and where

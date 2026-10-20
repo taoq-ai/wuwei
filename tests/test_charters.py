@@ -101,6 +101,14 @@ def test_the_arch_gate_reviews_as_an_architect():
     assert "are the security gate's" in text
 
 
+def test_an_adr_goes_where_the_repository_keeps_them_and_a_reconfirmed_one_is_amended():
+    planner = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
+    arch = ' '.join((PLUGIN / 'charters' / 'sentinel-arch.md').read_text(encoding='utf-8').split())
+    for home in ('`docs/adr/`', '`docs/decisions/`', "the item's spec folder", 'amend that ADR'):
+        assert home in planner, home
+    assert "the repository's ADRs" in arch and 'docs/adr/' not in arch
+
+
 def test_a_breaking_change_is_a_semver_major_of_the_declared_public_api():
     arch = ' '.join((PLUGIN / 'charters' / 'sentinel-arch.md').read_text(encoding='utf-8').split())
     rule = arch.split(' 7. ', 1)[1].split(' Trust boundaries', 1)[0]
