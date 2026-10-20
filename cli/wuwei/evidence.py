@@ -36,7 +36,7 @@ ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
-                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
+                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names its item by the old)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$'
                       r'|^(specs|openspec)/(.+/)?contracts/', re.I)  # a contract file, or a spec's contract
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
@@ -414,6 +414,8 @@ def gaps(root, repo, number, listed=None):
         tier = (item or {}).get('tier', 'standard')
         item_id, raised, gates, why = gates_for(root, repo, pr, () if generated else pr.get('files') or (), item)
         files, body, head = [f['path'] for f in pr.get('files') or ()], pr.get('body') or '', pr['headRefOid']
+        if (links := [m[0] for m in ITEM.finditer(body)]) and all(m.startswith('WUWEI-Item') for m in links):  # pre-4.x (#1178)
+            found.append(gap('PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'))
         if missing := [s for s in template_sections(root, repo) if s.lower() not in body.lower()]:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':

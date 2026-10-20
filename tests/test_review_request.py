@@ -62,3 +62,17 @@ def test_a_pr_raised_by_hand_is_adopted_by_the_board(root, fake):
     rows = [r for r in board.compute(root) if r['item'] == 'unplanned']
     assert [r['pr'] for r in rows] == ['acme/app#51']
     assert any(g['text'].startswith('review not requested') for g in rows[0]['gaps'])
+
+
+def test_the_old_item_line_shows_on_the_full_board_only(root, fake):
+    planned(root)
+    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1')
+    old = 'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'
+    shown = lambda everything: [g['text'] for row in board.compute(root, everything) if row['item'] == 'I-1' for g in row['gaps']]  # noqa: E731
+    assert old in shown(True) and old not in shown(False)
+
+
+def test_an_unlinked_draft_by_the_session_login_shows_as_unplanned(root, fake):
+    fake.prs['53'] = {**make_pr(number=53, body='wip', author='owner'), 'isDraft': True, 'headRefName': 'wip-thing'}
+    fake.prs['54'] = {**make_pr(number=54, body='wip', author='someone-else'), 'isDraft': True, 'headRefName': 'other'}
+    assert [r['pr'] for r in board.compute(root) if r['item'] == 'unplanned'] == ['acme/app#53']

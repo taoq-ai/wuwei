@@ -11,7 +11,8 @@ Instructions for coding agents working in this repository.
   `bin/wuwei agents build`; a test fails when they drift.
 - Keep it simple: reuse what exists, no speculative abstractions, shortest working diff.
 - No emojis and no em dashes in anything you write.
-- Every PR body names `WUWEI-Item: <issue number>`.
+- Every PR body ends with the WUWEI footer in `charters/_pr.md`, naming the issue number as its
+  item. The older `WUWEI-Item: <issue number>` line still links, as a process-fit line.
 - Commits are authored by the owner, `Leone <leone.lage@gmail.com>`, never by an agent. Before the first
   commit, check `git config user.name`; if it names an agent (Claude, Codex), set the owner's name and
   email in the repository config. An agent appears only as a `Co-Authored-By:` trailer.

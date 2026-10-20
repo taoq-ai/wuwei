@@ -3,7 +3,7 @@ import hashlib
 import shutil
 import time
 
-from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
+from conftest import HEAD, OLD, footer, make_pr, verdict_text, write_plan
 from wuwei import evidence, gh, ws
 
 
@@ -43,6 +43,22 @@ def test_missing_gates_tests_and_link_are_named(root, fake):
     assert 'not linked to a plan item (end the PR body with the WUWEI footer naming its item)' in found
     assert 'no test in the diff' in found
     assert any(text.startswith('gates missing at head') for text in found)
+
+
+OLD_LINE = 'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'
+
+
+def test_the_old_item_line_alone_is_process_fit_that_names_the_footer(root, fake):
+    standard(root)
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1')
+    found = evidence.gaps(root, 'acme/app', 42)
+    assert [(g['text'], g['kind']) for g in found] == [(OLD_LINE, 'process')]
+    assert evidence.visible(found) == evidence.blocking(found) == []
+    for body in (footer(), 'WUWEI-Item: I-1\n\n' + footer(), footer() + '\nWUWEI-Item: I-1'):
+        fake.prs['42'] = make_pr(body=body)
+        assert OLD_LINE not in texts(evidence.gaps(root, 'acme/app', 42))
 
 
 def test_a_verdict_counts_only_when_attested(root, fake):
@@ -96,7 +112,7 @@ def test_ci_threads_and_reviews(root, fake):
 
 def test_waiting_states_are_not_actionable(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
-    pr = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    pr = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body=footer() + '\nRollback: revert the PR')
     pr['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
     fake.prs['42'] = pr
     attest(root, 'quality')
@@ -198,7 +214,7 @@ def test_the_review_workflows_are_read_once_a_day(root, fake):
 def test_owner_approval_closes_owner_paths(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
     fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), reviews=(('owner', 'APPROVED'),),
-                             body='WUWEI-Item: I-1\nRollback: revert the PR')
+                             body=footer() + '\nRollback: revert the PR')
     attest(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
@@ -233,7 +249,7 @@ def test_a_big_batch_asks_to_split_or_say_why(root, fake):
     fake.prs['42'] = make_pr(lines=300)
     attest(root, 'quality')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['600 changed lines: split it, or add a Size: <reason> line']
-    fake.prs['42'] = make_pr(lines=300, body='WUWEI-Item: I-1\nSize: one generated migration')
+    fake.prs['42'] = make_pr(lines=300, body=footer() + '\nSize: one generated migration')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
@@ -250,7 +266,7 @@ def test_full_tier_and_owner_paths_need_a_rollback_line(root, fake):
     for gate in ('arch', 'quality', 'security', 'goal'):
         attest(root, gate)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no Rollback: line (how to undo this change)']
-    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1\nRollback: revert the PR; the column is additive')
+    fake.prs['42'] = make_pr(body=footer() + '\nRollback: revert the PR; the column is additive')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
@@ -270,7 +286,7 @@ def test_the_repository_pr_template_is_honoured(root, fake):
     attest(root, 'quality')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [
         "PR body misses the repository template's sections: Summary, Testing"]
-    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1\n## Summary\nx\n## Testing\ny')
+    fake.prs['42'] = make_pr(body=footer() + '\n## Summary\nx\n## Testing\ny')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
@@ -291,7 +307,7 @@ SECURITY, OWNER = 'gates missing at head aaaaaaa: security', 'owner review neede
 
 def owned_pr(root, fake):
     standard(root)
-    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body=footer() + '\nRollback: revert the PR')
     attest(root, 'quality')
 
 
@@ -336,7 +352,7 @@ def test_a_ruling_without_a_head_or_of_another_kind_waives_nothing_and_marks_aft
 
 def test_an_exception_naming_its_gate_list_exactly_waives_that_gate_gap(root, fake):
     standard(root)
-    fake.prs['42'] = make_pr(files=('infra/main.tf', 'src/app.py', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: x')
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'src/app.py', 'tests/test_x.py'), body=footer() + '\nRollback: x')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality, security', OWNER]
     for text in ('security', 'quality', 'arch', 'security, quality', 'quality, security, arch', 'quality security'):
         except_gap(root, text)
@@ -439,7 +455,7 @@ def test_full_tier_needs_clarify_a_clean_analysis_and_checked_checklists(root, f
         f'{SPEC}/spec.md': '# Spec\n',
         f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n| A1 | HIGH | FR-2 has no task |\n',
         f'{SPEC}/checklists/requirements.md': '- [x] testable\n- [ ] measurable\n'})
-    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [
         f'{SPEC}/spec.md has no ## Clarifications section: run clarify',
@@ -449,7 +465,7 @@ def test_full_tier_needs_clarify_a_clean_analysis_and_checked_checklists(root, f
 
 def test_a_clean_full_tier_speckit_feature_passes(root, fake):
     light(root, 'full')
-    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert evidence.gaps(root, 'acme/app', 42) == []
 
@@ -458,7 +474,7 @@ def test_a_retarget_at_the_same_head_reads_the_spec_of_the_new_file_list(root, f
     """A stacked PR moved onto main keeps its head, but its diff now carries its parent's feature (#1161)."""
     from wuwei import guards
     light(root, 'full')
-    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert guards.merge_door(root, 'acme/app', 42) is None
     fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
@@ -473,10 +489,10 @@ def test_a_path_holding_a_newline_does_not_share_a_spec_key_with_two_paths(root,
     light(root, 'full')
     files = speckit(fake)
     fake.files.update({'specs/8-stacked/spec.md': '# Spec\n', 'specs/8-stacked/plan.md': '# Plan\n', 'specs/8-stacked/tasks.md': '- [ ] T1\n'})
-    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md\nsrc/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md\nsrc/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert guards.merge_door(root, 'acme/app', 42) is None
-    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md', 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*files, 'specs/8-stacked/spec.md', 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     found = guards.merge_door(root, 'acme/app', 42)
     assert found is not None and 'specs/8-stacked/tasks.md has 1 unchecked item' in found['reason'], found
 
@@ -485,7 +501,7 @@ def test_a_wuwei_upgrade_reads_the_spec_again(root, fake, monkeypatch):
     """A new version may add or tighten a spec rule, so a result an older version cached is not reused."""
     from wuwei import guards
     light(root, 'full')
-    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert guards.merge_door(root, 'acme/app', 42) is None
     fake.files['specs/7-rate-limits/tasks.md'] = '- [ ] T1\n'
@@ -515,7 +531,7 @@ def test_an_old_feature_the_pr_only_amends_is_not_held_to_the_full_spec_set(root
     old = 'specs/2-identity'
     fake.files[f'{old}/contracts/api.yaml'] = 'openapi: 3.1.0\n'
     fake.prs['42'] = make_pr(files=(*files, f'{old}/contracts/api.yaml', 'src/app.py', 'tests/test_app.py'),
-                             body='WUWEI-Item: I-1\nRollback: revert')
+                             body=footer() + '\nRollback: revert')
     full_gates(root)
     assert evidence.gaps(root, 'acme/app', 42) == []
 
@@ -602,7 +618,7 @@ def test_house_style_spec_sections_count(root, fake):
              '## 7. Deferred\n- [ ] T010 slice 2 export (waits on the platform team PR)\n'
              '- [ ] T011 slice 5 backfill: blocked by platform#88\n')
     files = speckit(fake, **{f'{SPEC}/spec.md': '# Spec\n\n## 12. Clarifications\n- none open\n', f'{SPEC}/tasks.md': tasks})
-    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
     assert evidence.gaps(root, 'acme/app', 42) == []
 
@@ -619,7 +635,7 @@ def test_a_deferred_task_without_a_reason_still_counts(root, fake):
 
 def test_spec_gaps_block_at_full_tier_and_are_process_fit_below_it(root, fake):
     files = speckit(fake, **{f'{SPEC}/plan.md': None})
-    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     standard(root)
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
@@ -693,7 +709,7 @@ def analysis_pr(fake, row):
     write('analysis.md', '| ID | Severity | Disposition |\n|---|---|---|\n' + row + '\n')
     write('checklists/req.md', '- [x] done\n')
     fake.paths.add('.specify')
-    fake.prs['42'] = make_pr(files=(f'{SPEC}/spec.md', 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    fake.prs['42'] = make_pr(files=(f'{SPEC}/spec.md', 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
 
 
 def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
@@ -717,7 +733,7 @@ def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
     (('specs/004-voice/spec.md', 'specs/004-voice/plan.md'), 890, 'arch')])
 def test_the_diff_decides_which_gates_a_standard_item_needs(root, fake, files, lines, gates):
     standard(root)
-    fake.prs['42'] = make_pr(files=files, lines=lines, body='WUWEI-Item: I-1\nNo test: config')
+    fake.prs['42'] = make_pr(files=files, lines=lines, body=footer() + '\nNo test: config')
     found = [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if 'gate' in t]
     assert found == ([f'gates missing at head aaaaaaa: {gates}'] if gates else [])
 
@@ -785,7 +801,7 @@ def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(
 
 
 def test_verdicts_count_by_their_pr_when_the_item_is_not_in_the_plan(root, fake):
-    fake.prs['42'] = make_pr(body='WUWEI-Item: OPS-9')
+    fake.prs['42'] = make_pr(body=footer('OPS-9'))
     attest(root, 'quality', item='OPS-9')
     assert not any('gate' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
     fake.prs['42'] = make_pr(body='')
@@ -818,14 +834,14 @@ def test_the_wuwei_footer_links_a_pr_to_its_item(root, fake):
 def test_an_owner_approval_counts_only_at_the_head(root, fake):
     light(root)
     fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), reviews=(('owner', 'APPROVED', OLD),),
-                             body='WUWEI-Item: I-1\nRollback: revert the PR')
+                             body=footer() + '\nRollback: revert the PR')
     attest(root, 'quality')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['owner review needed (owner_paths: infra/main.tf)']
 
 
 def test_only_an_owner_review_ruling_clears_the_owner_review(root, fake):
     light(root)
-    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body=footer() + '\nRollback: revert the PR')
     attest(root, 'quality')
     for kind in ('breaking', 'exception', None, '', 0, False, []):
         ws.record(root, 'ruling', {'kind': kind, 'pr': 'acme/app#42', 'head': HEAD[:7], 'approved': True})
@@ -983,14 +999,14 @@ def test_a_repo_that_never_ran_a_pull_request_workflow_gets_no_ci_gap(root, fake
     (('AGENTS.md',), True), (('.claude/wuwei/charters/_gate.md',), True)])
 def test_only_a_docs_or_specs_diff_skips_ci_not_started(root, fake, files, shown):
     not_started(root, fake)
-    fake.prs['5'] = make_pr(number=5, checks=None, files=files, body='WUWEI-Item: I-1\nNo test: docs')
+    fake.prs['5'] = make_pr(number=5, checks=None, files=files, body=footer() + '\nNo test: docs')
     assert ('CI not started at aaaaaaa' in texts(evidence.gaps(root, 'o/r', 5))) == shown
     assert any('actions/runs' in call[1] for call in fake.calls) == shown  # a docs-only diff makes no Actions read
 
 
 def test_a_file_renamed_out_of_code_keeps_ci_not_started(root, fake):
     not_started(root, fake)
-    fake.prs['5'] = make_pr(number=5, checks=None, files=('docs/x.md',), body='WUWEI-Item: I-1\nNo test: docs')
+    fake.prs['5'] = make_pr(number=5, checks=None, files=('docs/x.md',), body=footer() + '\nNo test: docs')
     fake.prs['5']['files'][0]['previous_filename'] = 'cli/wuwei/x.py'
     assert 'CI not started at aaaaaaa' in texts(evidence.gaps(root, 'o/r', 5))
 
@@ -1129,14 +1145,14 @@ CONFIRM = ['breaking change needs the owner\'s confirmation: ask "breaking: acme
 ])
 def test_an_announcement_counts_only_as_one_http_url_alone_on_its_line(root, fake, line, found):
     standard(root)
-    fake.prs['42'] = {**make_pr(body=f'WUWEI-Item: I-1\n{line}'), 'title': 'feat!: drop the v1 export'}
+    fake.prs['42'] = {**make_pr(body=f'{footer()}\n{line}'), 'title': 'feat!: drop the v1 export'}
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == found
 
 
 def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
-    head = 'WUWEI-Item: I-1\nAnnouncement: https://'
+    head = footer() + '\nAnnouncement: https://'
     body = head + 'a' * (65536 - len(head) - 2) + ' x'  # a host run that never reaches the end of the line
     standard(root)
     fake.prs['42'] = {**make_pr(body=body), 'title': 'feat!: drop the v1 export'}
