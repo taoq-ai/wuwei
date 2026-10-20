@@ -1,0 +1,42 @@
+# Tasks: WUWEI names an orchestration gap
+
+## Phase 1: Tests first
+
+- [x] T001 [US1] Three open PRs owing gates on green heads, no seat: the team row lists both lines, and `board.text` prints it (tests/test_watch.py)
+- [x] T002 [US3] A shepherd seat in this session clears the shepherd line; a sentinel seat clears the gate line (tests/test_watch.py)
+- [x] T003 [US3] A seat of a dead session, a stopped seat, an unconfirmed seat, this session's seat from yesterday, a seat with no session, and no session known: none runs (tests/test_watch.py)
+- [x] T004 [US3] Two open PRs: no shepherd line (tests/test_watch.py)
+- [x] T005 [US2] CI running or failing, or a required check not run, on the owing heads: no gate line (tests/test_watch.py)
+- [x] T006 [US5] The lines are duties: visible, never blocking (tests/test_watch.py)
+- [x] T007 [US4] A seat another session left running never silences the Stop; the same state reminds once while the PR count moves from 4 to 3 (tests/test_hook.py)
+- [x] T008 Run the new tests red on main's code: tests/test_watch.py 5 failed, 13 passed; the two Stop tests 2 failed
+
+## Phase 2: Implementation
+
+- [x] T009 `board.running` and the team row in `board.compute` (cli/wuwei/board.py)
+- [x] T010 `DUTY` matches `orchestration:` (cli/wuwei/evidence.py)
+- [x] T011 `hook.stop` reads `board.running` with the payload's session (cli/wuwei/hook.py)
+- [x] T012 The link tests in tests/test_watch.py and the two cold-board tests in tests/test_status_perf.py expect the team row
+- [x] T013 [US6] Planner charter rule 9 and `/wuwei-run` step 3, with the .claude copies (charters/planner.md, skills/wuwei-run/SKILL.md)
+- [x] T014 Docs: the duties section of docs/site/concepts/evidence.md, the Stop paragraph of docs/site/concepts/hooks.md
+- [x] T015 Re-vendor .claude/ with setup.vendor('.'); `bin/wuwei agents build` reports the agents match
+
+## Phase 3: Checks
+
+- [x] T016 Full suite green apart from four tests that fail at main 0f6572e6 too on this machine (bash 3.2: three push shapes in tests/test_guards.py and the harness shell test in tests/test_codex.py)
+- [x] T017 Route corpus differential at main and the head, with its sha256 (plan.md, Measurements)
+- [x] T018 Fifteen mutants in fresh copies, both trees, one at a time: 15 killed
+
+## Phase 4: Merge of main at 1877565 (#1172, #1176)
+
+- [x] T019 Merge origin/main with a merge commit; the `DUTY` conflict with #1176's `AUTO` keeps both lines
+- [x] T020 Remove `hook.running` from both copies; its tests in tests/test_hook.py and tests/test_codex.py read `board.running(root, 's1')`
+- [x] T021 A required check not run at a green head owes no gate seat (cli/wuwei/board.py, tests/test_watch.py)
+- [x] T022 Touched test files, the route differential at main 1877565 and the head, and the board and Stop mutants
+
+## Phase 5: Fix round 1 (arch at 9bb6c7d)
+
+- [x] T023 The Stop and the session start keep the team row at 10, 29, 40 and 60 open PRs, and the left-out count counts items only (tests/test_hook.py)
+- [x] T024 Run it red at 9bb6c7d's order: 4 failed at the Stop; with the Stop half removed, 2 failed at the session start (40 and 60)
+- [x] T025 The team row comes first in `board.compute` (cli/wuwei/board.py); tests that read the first row or the row order follow it
+- [x] T026 Merge origin/main at 2226d90; touched tests, mutants and the route differential at the new main

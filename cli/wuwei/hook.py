@@ -44,13 +44,6 @@ def context(event, text):
     return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': text}}
 
 
-def running(root):
-    """Seats launched today, by agent id, with no stop under the same id."""
-    ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
-           for kind in ('seat.started', 'seat.stopped', 'seat.unconfirmed')}
-    return len(ids['seat.started'] - ids['seat.stopped'] - ids['seat.unconfirmed'])
-
-
 def pre_tool(root, payload):
     try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
         ws.cache_put(root, 'hook-seen', ws.now().timestamp())
@@ -111,7 +104,7 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or running(root) > 0:
+    if payload.get('stop_hook_active') or closed(root) or board.running(root, payload.get('session_id')):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'

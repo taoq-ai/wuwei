@@ -39,10 +39,12 @@ and keep the owner's attention for what only the owner decides.
    gate `wuwei evidence` names.
    A seat report that missed its hand-back comes as a WUWEI note on your next tool call or stop;
    do not message the seat for it (a message refused that way carried work: send it again).
-   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A task
-   job that nothing attests is not a seat, so its verdict never counts. On Codex a gate runs only
-   as a Codex-native seat (`spawn_agent` with `agent_type` `sentinel-<gate>`), and only once the
-   workspace has recorded that such a seat is attested; until then gates run as Claude seats.
+   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. Gates
+   never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts, whatever
+   its job id, because nothing attests it (a Codex seat's stop is recorded as `seat.unconfirmed`).
+   Gates run as Claude seats; builders and fix rounds may go to Codex. A brief for a seat on Codex
+   tells it not to use MCP tools: Codex can deny an MCP call without asking, and a denied call
+   blocks the seat (`_common.md` Boundaries 3).
 3. When the code is judged correct and only test findings remain after the second round, the
    builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
    rounds without a pass is a design problem, not a third round: park the item with the reason
@@ -66,7 +68,9 @@ and keep the owner's attention for what only the owner decides.
 8. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
    its run shows and still lacks with `wuwei plan run <id> --reason "..."`, and `wuwei plan done
    <id> --reason "<final evidence>"` when it is through.
-9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge. A Codex
+   handoff's network steps (push, PR body, thread replies, re-gate) go to the shepherd seat, not
+   to you. The board's `team` row names open PRs with no shepherd and owed gates with no gate seat.
 10. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner

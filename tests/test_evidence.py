@@ -361,6 +361,23 @@ def test_no_generated_accepted_gap_waives_a_gap_it_does_not_name(monkeypatch):
     assert len(accepted) > 9000 and wrong == []
 
 
+def test_the_not_counted_lines_go_with_the_accepted_gate_gap(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    stray = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    stray.parent.mkdir(parents=True)
+    stray.write_text(verdict_text(gate='quality', head=HEAD))  # never attested
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert found[:2] == ['no test in the diff', 'gates missing at head aaaaaaa: quality'] and len(found) == 3
+    assert 'not counted: not attested' in found[2]
+    except_gap(root, 'no test in the diff')  # a gap that is not the gate gap keeps the gate gap's explanation
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found[1:]
+    except_gap(root, 'quality')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.prs['42']['statusCheckRollup'] = [{'name': 'x not counted: y', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['CI failing: x not counted: y']  # a check name is the author's
+
+
 def test_a_delta_review_exception_names_its_gate(root, fake):
     standard(root)
     fake.prs['42'] = make_pr()
@@ -371,6 +388,15 @@ def test_a_delta_review_exception_names_its_gate(root, fake):
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by quality)']
     except_gap(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_the_error_budget_counts_a_revert_by_its_first_word_in_any_case(root, fake):
+    titles = ['revert(infra/TIN-817): drop the issuer', 'revert: x', 'Revert "y"', 'fix: a revert-proof parser']
+    for n, title in enumerate(titles, 1):
+        merged = make_pr(number=n, state='MERGED')
+        merged.update(title=title, mergedAt=ws.now().isoformat(timespec='seconds'))
+        fake.prs[str(n)] = merged
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.75, 'merged': 4, 'raised': False}
 
 
 def test_an_error_budget_overrun_raises_the_tier(root, fake):
@@ -584,7 +610,8 @@ def test_a_wellformed_verdict_nobody_attested_says_how_to_fix_it(root, fake):
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text())
     found = texts(evidence.gaps(root, 'acme/app', 42))
-    assert any('not counted: not attested' in t and 'sentinel-quality' in t for t in found)
+    assert any('not counted: not attested' in t and 'as a Claude Code seat of agent type sentinel-quality' in t
+               and 'a Codex task job or Codex seat never attests' in t for t in found)
 
 
 def test_the_not_counted_lines_name_only_the_gates_the_gap_names(root, fake):

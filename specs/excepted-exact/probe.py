@@ -51,6 +51,9 @@ def gates_of(text):
     return None
 
 
+GATE_GAPS = [g for g in printed() if gates_of(g) is not None]
+
+
 def same(text):
     """Variants of one text that name it: case, spacing, end marks, a printed [waiting]."""
     words = text.split(' ')
@@ -79,7 +82,8 @@ def canon(text):
 
 
 def names(a, g):
-    return bool(canon(a)) and (canon(a) == canon(g) or gates_of(g) is not None and canon(a) == canon(gates_of(g)))
+    went = g.startswith('verdict ') and ' not counted: ' in g and any(names(a, x) for x in GATE_GAPS)  # with its gate gap (#1168)
+    return went or bool(canon(a)) and (canon(a) == canon(g) or gates_of(g) is not None and canon(a) == canon(gates_of(g)))
 
 
 def pairs():

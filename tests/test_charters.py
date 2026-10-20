@@ -460,3 +460,12 @@ def test_the_gate_charter_shows_finding_lines_the_parser_accepts_and_the_shapes_
     for bad in ('- [high] cli/app.py:42 blocks: yes. Failure: a blank token passes\n  - seen at line 50',
                 '- [low] PR body, "Size:" line. blocks: no.', '- [medium] specs/x/plan.md:29 blocks: yes. Failure (contract, R-1)'):
         assert verdict.parse(head + bad + '\n')['errors'], bad
+
+
+def test_the_planner_keeps_gates_off_codex_with_no_condition_and_a_codex_brief_bars_mcp():
+    text = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
+    assert 'Gates never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts' in text
+    assert 'builders and fix rounds may go to Codex' in text and 'only once the workspace has recorded' not in text
+    assert 'A brief for a seat on Codex tells it not to use MCP tools' in text
+    docs = ' '.join((PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8').split())
+    assert 'a Codex seat never counts' in docs and 'counts only once' not in docs
