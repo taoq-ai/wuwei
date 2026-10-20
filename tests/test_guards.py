@@ -1791,6 +1791,9 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
 
 
+WT_DASHES = "git worktree add -q -b w ../w && printf 'ref: refs/heads/main\\n' > .git/worktrees/w/--"  # w's own root ref named --
+
+
 @pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
 @pytest.mark.parametrize('setup, at, command', [
     ('git update-ref refs/heads/-x HEAD', 'c', 'git push origin -- -x:main'),
@@ -1833,12 +1836,18 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     ("printf 'ref: refs/heads/main\\n' > .git/--", 'c', 'git push origin -- feature --'),
     ("printf 'ref: refs/heads/main\\n' > .git/-x", 'c', 'git push origin -- -x'),
     ("printf 'ref: refs/heads/main\\n' > .git/foo && git update-ref refs/foo HEAD", 'c', 'git push origin foo'),
-    ("printf 'ref: refs/heads/feature\\n' > .git/ZZ && git symbolic-ref refs/heads/ZZ refs/heads/main", 'c', 'git push origin ZZ')])
+    ("printf 'ref: refs/heads/feature\\n' > .git/ZZ && git symbolic-ref refs/heads/ZZ refs/heads/main", 'c', 'git push origin ZZ'),
+    ("printf 'ref:refs/heads/main' > .git/ZZ", 'c', 'git push origin feature:feature ZZ'),
+    *((WT_DASHES, 'w', c) for c in ('git push origin -- --', 'git push origin -- feature --', 'git push origin --end-of-options --')),
+    *((WT_DASHES, 'c', c) for c in ('cd ../w && git push origin -- --', 'env -C ../w git push origin -- --', 'pushd ../w && git push origin -- --',
+                                     '(cd ../w; git push origin -- --)', 'cd {w} && git push origin -- --'))])
 def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeypatch, setup, at, command):
     """Gates push-refspecs at b16d799: every word after -- is a refspec, and a source alone takes the destination its ref resolves
     to (another worktree's HEAD, a symbolic ref). Gates at aa63d3b: git reads root refs in forms a file reader of its own missed
     (no space after ref:, a tab, 300 spaces, a symlink, a nested name, another worktree's refs), so git resolves each word itself;
-    a word rev-parse cannot read (tag, ^x, a glob, --) stays out of its batch. Real git moves main; the door refuses it."""
+    a word rev-parse cannot read (tag, ^x, a glob, a colon) stays out of its batch. Gates at 457f6a8: git reads a root ref named --
+    per worktree, so a push of a ref named -- meets the door wherever it runs. Real git moves main; the door refuses it."""
+    command = command.replace('{w}', str(ahead / 'w'))
     subprocess.run(['bash', '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     before = main_at(ahead / 's.git')
     subprocess.run(['bash', '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)

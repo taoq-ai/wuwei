@@ -170,12 +170,12 @@ def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a 
     deleting = any('delete'.startswith(n) for n in named)  # -d, -vd, --del
     tags = [n for n in named if n[1:] and ('tags'.startswith(n) or 'no-tags'.startswith(n))]  # the last wins; -n is --dry-run
     refspecs = operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD'])  # --tags alone sends tags alone
-    # rev-parse reads no word after one it cannot resolve, where git push fails too; tag, ^x, globs and -- are not sources, and -- ends it
-    words = [r for r in refspecs if not re.search('^\\^|[:*]', r) and r not in ('tag', '--')] + ['main-worktree/--'] * ('--' in refspecs)
+    # rev-parse reads no word after one it cannot resolve, where git push fails too; tag, ^x and globs are not sources. A ref named --
+    words = [r for r in refspecs if not re.search('^\\^|[:*]', r) and r != 'tag']  # is read per worktree and only plumbing writes one: refused
     if (read := _sources(cwd, words)) is None:
         return deny('push refused: git could not read the refs in 5 s, so the door cannot tell whether it reaches the default branch. Push fewer refspecs.')
     (refs, targets), head = read, current_branch(cwd)  # one read per push, whatever the number of refspecs
-    targets += ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches
+    targets += ['refs/heads/*'] if '--' in refspecs or any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches, --
     for ref in refspecs:
         source, colon, destination = ref.rpartition(':')
         deleting = deleting or bool(colon and not source and destination)
