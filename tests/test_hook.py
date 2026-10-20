@@ -223,9 +223,11 @@ def answer(root, question, reply):
     return hook.handle(root, 'PostToolUse', answered(root, [question], {question: reply}))
 
 
-def test_a_one_way_answer_asks_for_an_adr(root):
-    out = answer(root, 'one-way: drop the legacy sessions table in acme/app?', 'Yes, drop it')
-    assert 'ADR' in out['hookSpecificOutput']['additionalContext']
+def test_a_one_way_answer_asks_for_an_adr_where_the_repository_keeps_them(root):
+    note = answer(root, 'one-way: drop the legacy sessions table in acme/app?', 'Yes, drop it')['hookSpecificOutput']['additionalContext']
+    assert 'ADR' in note and "repository's docs/adr/" not in note
+    assert all(home in note for home in ('docs/adr/', 'docs/decisions/', "the item's spec folder"))
+    assert 'amend that ADR' in note
 
 
 def test_an_accepted_exception_becomes_a_follow_up_item(root):
