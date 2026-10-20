@@ -35,9 +35,9 @@ warns while the role files differ from the charters.
 | `Bash` | `Bash` (shell and exec) | the same command guards |
 | `Write`, `Edit` | `apply_patch` | the files the patch adds, updates, deletes or moves to; the ledger stays protected |
 | `Agent` with `subagent_type` | `spawn_agent` with `agent_type` | a running seat; the Stop hook stays quiet while it runs |
-| `AskUserQuestion` | `request_user_input` | the same owner classes; answers recorded by question |
+| `AskUserQuestion` | `request_user_input` | the same owner classes; answers recorded as `answer.unconfirmed` until WUWEI reads Codex's transcript |
 | `mcp__server__tool` | `mcp__server__tool` | the same leak and merge doors |
-| SubagentStop | SubagentStop | verdicts attested the same way |
+| SubagentStop | SubagentStop | recorded as `seat.unconfirmed`, with no attestation, until WUWEI reads Codex's transcript |
 | `.claude/settings.json` rules | `.codex/rules/*.rules` | written by `wuwei init` and `wuwei init --codex` |
 
 On Claude Code each seat's model and effort come from the [model table](models.md). On Codex the
@@ -52,12 +52,19 @@ A gate counts only when WUWEI attests its verdict from the seat's own hand-back 
 `codex-companion` task job started from a Claude session is not a seat: it has no SubagentStop, so
 its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078, #1181). Its job
 id does not change that: a job id is not a hand-back the harness recorded. A Codex-native
-seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks; whether it is
-attested is what the codex-attest-probe item checks. Until that probe records an attested seat, run
+seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks, but its stop counts only
+once WUWEI reads Codex's own transcript (hook-transcript records it as `seat.unconfirmed` until then). Run
 gates as Claude seats.
 
 A brief for a seat on Codex tells it not to use MCP tools. Codex can deny an MCP call without
 asking, and a seat treats any denied call as a blocker, so one denial can stop a sound review.
+
+**Breaking change (hook-transcript, #1172):** before it, a Codex `request_user_input` answer was
+recorded as a ruling by its question and a Codex seat's stop was attested. Now both are recorded as
+`answer.unconfirmed` and `seat.unconfirmed`, because WUWEI cannot yet read Codex's transcript to
+confirm them. Ask owner questions (`owner review:`, `breaking:`, `exception:`, `plan:`, `goal:`) and
+run gates from a Claude Code session, or approve on the code host. The rows name why, so nothing is
+lost silently.
 
 **Why:** the process is the product, not the harness. The same evidence, doors and questions hold
 whichever agent does the work, and a team can run both without two rule books.

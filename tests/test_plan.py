@@ -1,5 +1,6 @@
 import pytest
 
+from conftest import answered
 from wuwei import plan, ws
 
 
@@ -159,9 +160,7 @@ def plan_pass(capsys):
 
 def answer_goal(root, question, reply):
     from wuwei import hook
-    return hook.handle(root, 'PostToolUse', {
-        'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
-        'tool_input': {'questions': [{'question': question}]}, 'tool_response': {'answers': {question: reply}}})
+    return hook.handle(root, 'PostToolUse', answered(root, [question], {question: reply}))
 
 
 def test_a_plan_pass_offers_each_goal_whose_date_passed_once(root, monkeypatch, capsys):
