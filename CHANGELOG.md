@@ -1,5 +1,38 @@
 # Changelog
 
+## [5.0.0](https://github.com/taoq-ai/wuwei/compare/v4.2.2...v5.0.0) (2026-10-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hook:** an owner answer and a seat stop are recorded only when the session transcript shows them ([#1172](https://github.com/taoq-ai/wuwei/issues/1172))
+
+### Bug Fixes
+
+* **board:** an owe keyed to a PR closes on a recorded send that names that PR, in any session ([#1183](https://github.com/taoq-ai/wuwei/issues/1183)) ([8a92be7](https://github.com/taoq-ai/wuwei/commit/8a92be7083b614d5fcafa5d3b10ff1beab4b4dba))
+* **decisions:** the one-way ADR note follows the repository's own ADR home ([#1184](https://github.com/taoq-ai/wuwei/issues/1184)) ([2226d90](https://github.com/taoq-ai/wuwei/commit/2226d90799d60133edce2f9cc0ff1214558e3c23))
+* **evidence:** a required status check that never ran on the head is a gap ([#1176](https://github.com/taoq-ai/wuwei/issues/1176)) ([f716aec](https://github.com/taoq-ai/wuwei/commit/f716aecae53e7e3ae4e1e9dd5cdd72579f0fabf5))
+* **evidence:** say plainly that no gate on Codex counts and a Codex brief bars MCP ([#1186](https://github.com/taoq-ai/wuwei/issues/1186)) ([20dae1e](https://github.com/taoq-ai/wuwei/commit/20dae1eb3142a2300b0167bdefe3257a8b51d082))
+* **evidence:** the spec cache key encodes the file list unambiguously ([#1174](https://github.com/taoq-ai/wuwei/issues/1174)) ([89e7064](https://github.com/taoq-ai/wuwei/commit/89e7064e381f3235999934cc6315ba149dcd8277))
+* **hook:** a hook entry that fails before it can judge exits 2, so a broken install keeps the doors shut ([#1175](https://github.com/taoq-ai/wuwei/issues/1175)) ([646e462](https://github.com/taoq-ai/wuwei/commit/646e4625b4b71e0c132c5af6da91918a654dc97e))
+* **hook:** an owner answer and a seat stop are recorded only when the session transcript shows them ([#1172](https://github.com/taoq-ai/wuwei/issues/1172)) ([1877565](https://github.com/taoq-ai/wuwei/commit/1877565cf18bd079fdb3d59ecbf220ebfbda5664))
+
+
+### Performance Improvements
+
+* **status:** a warm board pays no compare and no spec read, and a list read prunes old entries ([#1161](https://github.com/taoq-ai/wuwei/issues/1161)) ([#1167](https://github.com/taoq-ai/wuwei/issues/1167)) ([d4a803f](https://github.com/taoq-ai/wuwei/commit/d4a803f3aedcb44d886a2ee0f09e42215cf1fc1d))
+
+
+### Reverts
+
+* drop the taoq-wuwei co-author trailer from the charters ([#1194](https://github.com/taoq-ai/wuwei/issues/1194)) ([17ff289](https://github.com/taoq-ai/wuwei/commit/17ff289ff72d0e4513c324a64210ea8e9dda17b7))
+
+
+### Documentation
+
+* **charters:** every commit made under WUWEI credits the taoq-wuwei bot as a co-author ([#1193](https://github.com/taoq-ai/wuwei/issues/1193)) ([36afe72](https://github.com/taoq-ai/wuwei/commit/36afe72910bd22ac9637d6080f59c943bbf35ce0))
+* **planner:** record a Codex background builder on its item so the board shows the running seat ([#1170](https://github.com/taoq-ai/wuwei/issues/1170)) ([#1182](https://github.com/taoq-ai/wuwei/issues/1182)) ([0f6572e](https://github.com/taoq-ai/wuwei/commit/0f6572e63fadab636ac867a9a9834a616ad34563))
+
 ## [4.2.2](https://github.com/taoq-ai/wuwei/compare/v4.2.1...v4.2.2) (2026-10-19)
 
 
