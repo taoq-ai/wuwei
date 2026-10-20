@@ -288,14 +288,50 @@ def test_an_owe_keyed_to_a_pr_stays_open_on_a_later_send_naming_another_pr(root,
     assert plan.find(root, 'R-1')['status'] == 'open'
 
 
+OPENED, BEFORE, AFTER = '2026-10-20T06:11:00+00:00', '2026-10-20T06:10:59Z', '2026-10-20T06:11:00Z'
+
+
+def node(*comments):
+    """An unresolved GraphQL review thread from (login, createdAt) pairs."""
+    return {'isResolved': False, 'comments': {'nodes': [{'author': {'login': who}, 'createdAt': at} for who, at in comments]}}
+
+
 def test_an_owe_keyed_to_a_pr_closes_when_every_unresolved_thread_ends_with_the_owners_reply(root, fake):
-    _owe_pr(root)
-    node = lambda *logins: {'isResolved': False, 'comments': {'nodes': [{'author': {'login': login}} for login in logins]}}
-    fake.threads['7'] = [node('alice', 'owner'), node('alice', 'owner', 'alice')]
+    _owe_pr(root, opened=OPENED)
+    fake.threads['7'] = [node(('alice', BEFORE), ('owner', AFTER)), node(('owner', BEFORE), ('alice', AFTER))]
     assert _listed(root)
-    fake.threads['7'][1] = node('alice', 'owner', 'alice', 'owner')
+    fake.threads['7'][1] = node(('owner', BEFORE), ('alice', AFTER), ('owner', AFTER))
     assert not _listed(root)
     assert 'owner' in plan.find(root, 'R-1')['reason']
+
+
+def test_an_owe_stays_open_while_a_thread_ends_with_an_owner_reply_older_than_the_owe(root, fake):
+    _owe_pr(root, opened=OPENED)  # the ask is newer than every reply the owner gave on the PR
+    fake.threads['7'] = [node(('alice', BEFORE), ('owner', AFTER)), node(('alice', BEFORE), ('owner', BEFORE))]
+    assert _listed(root)
+    fake.threads['7'][1] = node(('alice', BEFORE), ('owner', AFTER))
+    assert not _listed(root)
+
+
+def test_an_owe_on_the_ccr_route_reads_the_reply_time_there(root, fake):
+    fake.graphql = False
+    _owe_pr(root, opened=OPENED)
+    fake.ccr['7'] = [{'is_resolved': False, 'comments': [{'user': {'login': 'owner'}, 'created_at': BEFORE}]}]
+    assert _listed(root)
+    fake.ccr['7'][0]['comments'].append({'user': {'login': 'owner'}, 'created_at': AFTER})
+    assert not _listed(root)
+
+
+def test_an_owe_naming_two_prs_stays_open_while_either_waits_on_the_owner(root, fake):
+    plan.owe(root, 'acme/app#7 and acme/app#8', 'replies on both', 'Ana')
+    rows = plan.items(root)
+    rows[0]['opened'] = OPENED
+    plan.save(root, rows)
+    fake.threads['7'] = [node(('alice', BEFORE), ('owner', AFTER))]
+    fake.threads['8'] = [node(('owner', BEFORE), ('alice', AFTER))]
+    assert _listed(root)
+    fake.threads['8'] = [node(('owner', BEFORE), ('alice', AFTER), ('owner', AFTER))]
+    assert not _listed(root)
 
 
 def test_an_owe_keyed_to_a_pr_stays_open_when_its_threads_are_unreadable(root, fake, monkeypatch):

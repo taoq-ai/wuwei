@@ -26,7 +26,7 @@ def run(args, timeout=30):
 
 
 THREADS = '''query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){
-pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login}}}}}}}}'''
+pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login} createdAt}}}}}}}'''
 
 
 # REST only: GraphQL is refused in Claude Code cloud sessions.
@@ -87,31 +87,27 @@ def _author(comment):
     return ((comment or {}).get('user') or (comment or {}).get('author') or {}).get('login')
 
 
-def unanswered_threads(repo, number, logins):
-    """Unresolved review threads whose last comment is by none of logins (#1199): GraphQL locally, the
-    CCR route in a cloud session, else review comments grouped by reply (no resolved flag there)."""
+def unanswered_threads(repo, number, logins, since=''):
+    """Unresolved review threads whose last comment is not by one of logins at or after since (#1199): GraphQL locally,
+    the CCR route in a cloud session, else review comments grouped by reply (no resolved flag there)."""
     owner, name = repo.split('/', 1)
     try:
         data = run(['api', 'graphql', '-f', f'query={THREADS}', '-F', f'owner={owner}', '-F', f'name={name}',
                     '-F', f'number={number}'])
-        nodes = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
-        return sum(1 for node in nodes if not node['isResolved']
-                   and ((node['comments']['nodes'] or [{}])[-1].get('author') or {}).get('login') not in logins)
+        threads = [(t['isResolved'], t['comments']) for t in data['data']['repository']['pullRequest']['reviewThreads']['nodes']]
     except GhError:
-        pass
-    try:
-        data = run(['api', f'repos/{repo}/pulls/{number}/ccr/review_threads'])
-        threads = data.get('threads', data.get('review_threads', [])) if isinstance(data, dict) else data
-        count = 0
-        for thread in threads:
-            comments = thread.get('comments') or []
-            comments = comments.get('nodes', []) if isinstance(comments, dict) else comments
-            count += bool(not thread.get('is_resolved', thread.get('isResolved', thread.get('resolved', False))) and comments and _author(comments[-1]) not in logins)
-        return count
-    except GhError:
-        pass
-    last = {c.get('in_reply_to_id') or c['id']: _author(c) for c in run(['api', f'repos/{repo}/pulls/{number}/comments?per_page=100'])}
-    return sum(1 for login in last.values() if login not in logins)
+        try:
+            data = run(['api', f'repos/{repo}/pulls/{number}/ccr/review_threads'])
+            found = data.get('threads', data.get('review_threads', [])) if isinstance(data, dict) else data
+            threads = [(t.get('is_resolved', t.get('isResolved', t.get('resolved', False))), t.get('comments')) for t in found]
+        except GhError:
+            last = {c.get('in_reply_to_id') or c['id']: c for c in run(['api', f'repos/{repo}/pulls/{number}/comments?per_page=100'])}
+            threads = [(False, [c]) for c in last.values()]
+    count = 0
+    for resolved, comments in threads:
+        end = ((comments.get('nodes') if isinstance(comments, dict) else comments) or [{}])[-1]
+        count += not resolved and not (_author(end) in logins and (end.get('createdAt') or end.get('created_at') or '') >= since)
+    return count
 
 
 def compare(repo, older, newer):

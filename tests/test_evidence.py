@@ -596,9 +596,10 @@ def test_in_a_cloud_session_threads_come_from_the_ccr_route(root, fake):
     fake.prs['42'] = make_pr()
     fake.ccr['42'] = [{'is_resolved': False, 'comments': [{'user': {'login': 'alice'}}]},
                       {'is_resolved': True, 'comments': [{'user': {'login': 'alice'}}]},
+                      {'is_resolved': False, 'comments': [{'user': {'login': 'owner'}}, {'user': None}]},  # a deleted account
                       {'is_resolved': False, 'comments': [{'user': {'login': 'alice'}}, {'user': {'login': 'owner'}}]}]
     attest(root, 'quality')
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['1 review thread unanswered']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['2 review threads unanswered']
 
 
 def test_without_graphql_or_ccr_threads_fall_back_to_review_comments(root, fake, monkeypatch):
