@@ -21,3 +21,8 @@
 
 - [x] T009 A 200 KB nested-array job file reads `job state unreadable` (red: RecursionError); a failed or cancelled job ending in `?` keeps its status (red against the mutant that drops the completed check) (tests/test_plan.py)
 - [x] T010 Move the reader to `ws.read_json`, catching RecursionError; the board no longer imports upgrade (cli/wuwei/ws.py, board.py, upgrade.py and copies); runtime at 3,356 (+5)
+
+## Fix round 2 (quality FIX at 7ba5f67)
+
+- [x] T011 A list status, and arrays nested 100,000 deep in `status` or `result.rawOutput`, read `job state unreadable` or the plain status, never a crash; red on Python 3.14.5 (RecursionError in repr), which parses that depth (tests/test_plan.py)
+- [x] T012 The board takes `status` and `rawOutput` only when they are str (cli/wuwei/board.py and copy); runtime +5 over main at 40b5fb5

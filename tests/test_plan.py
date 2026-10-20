@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from conftest import answered
@@ -256,7 +258,10 @@ def test_a_registered_codex_job_shows_its_state_on_the_board(root, fake, monkeyp
 
 
 @pytest.mark.parametrize('content', [None, 'not json', '[1]', '{}', '{"status": null}', '{"status": "running", "result": "x"}',
-                                     pytest.param('[' * 100000 + ']' * 100000, id='nested-200KB')])
+                                     pytest.param('[' * 100000 + ']' * 100000, id='nested-200KB'), '{"status": ["running"]}',
+                                     pytest.param('{"status": ' + '[' * 100000 + ']' * 100000 + '}', id='nested-status'),
+                                     pytest.param('{"status": "running", "result": {"rawOutput": ' + '[' * 100000 + ']' * 100000 + '}}',
+                                                  id='nested-rawOutput')])
 def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, tmp_path, content):
     from wuwei import __main__ as cli, board
     monkeypatch.chdir(root)
@@ -265,7 +270,11 @@ def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, 
     job = tmp_path / 'job.json'
     content is None or job.write_text(content)
     assert cli.main(['plan', 'run', 'A', '--reason', 'Codex builder in /wt/a', '--job', str(job)]) == 0
-    shown = 'job running' if content and 'running' in content else 'job state unreadable'
+    try:  # Python 3.14 parses arrays nested 100,000 deep; 3.13 does not
+        parsed = json.loads(content or '')
+    except (ValueError, RecursionError):
+        parsed = None
+    shown = 'job running' if isinstance(parsed, dict) and parsed.get('status') == 'running' else 'job state unreadable'
     assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == [f'run: Codex builder in /wt/a; {shown}']
     assert cli.main(['plan', 'run', 'A', '--reason', 'job done, HANDOFF read']) == 0
     assert plan.find(root, 'A')['job'] == str(job)
