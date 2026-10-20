@@ -29,13 +29,13 @@ pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(l
 
 
 # REST only: GraphQL is refused in Claude Code cloud sessions.
-def pages(path, limit=30):
-    """Every item of a list endpoint, 100 per page (GitHub lists at most 3,000 PR files)."""
+def pages(path, limit=30, stop=None):
+    """Every item of a list endpoint, 100 per page (GitHub lists at most 3,000 PR files), to the page whose last item stops."""
     found, sep = [], '&' if '?' in path else '?'
     for number in range(1, limit + 1):
         batch = run(['api', f'{path}{sep}per_page=100&page={number}'])
         found += batch
-        if len(batch) < 100:
+        if len(batch) < 100 or stop and stop(batch[-1]):
             break
     return found
 
@@ -77,8 +77,8 @@ def open_prs(repo):
     return [_summary(p) for p in run(['api', f'repos/{repo}/pulls?state=open&per_page=100'])]
 
 
-def merged_prs(repo, since):
-    found = run(['api', f'repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100'])
+def merged_prs(repo, since, limit=30):
+    found = pages(f'repos/{repo}/pulls?state=closed&sort=updated&direction=desc', limit, lambda p: (p.get('updated_at') or '') < since)
     return [_summary(p) for p in found if p.get('merged_at') and p['merged_at'] >= since]
 
 
@@ -137,12 +137,12 @@ def login():
     return run(['api', 'user', '--jq', '.login'])
 
 
-def deployments(repo):
-    return run(['api', f'repos/{repo}/deployments?per_page=100'])
+def deployments(repo, since):
+    return pages(f'repos/{repo}/deployments', stop=lambda d: (d.get('created_at') or '') < since)
 
 
-def releases(repo):
-    return run(['api', f'repos/{repo}/releases?per_page=100'])
+def releases(repo, since):
+    return pages(f'repos/{repo}/releases', stop=lambda r: (r.get('created_at') or '') < since)
 
 
 def rules(repo, branch):

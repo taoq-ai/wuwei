@@ -109,6 +109,18 @@ def test_a_warm_board_reads_the_same_and_an_entry_expires_by_its_first_read(root
     assert _pr_reads(calls) == 1
 
 
+def test_a_board_reads_one_page_of_merged_prs_however_many_merged(root, fake):
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                       'status': 'open', 'added': '2026-01-01'}])
+    now = ws.now().isoformat(timespec='seconds')
+    for n in range(1, 251):
+        fake.prs[str(n)] = {**make_pr(n, state='MERGED', body=''), 'headRefName': f'other-{n}', 'mergedAt': now, 'updatedAt': now}
+    board.compute(root)
+    fake.calls.clear()
+    board.compute(root)
+    assert len([args for args in fake.calls if 'state=closed' in args[1]]) == 1
+
+
 def _hosted(calls):
     return [args for args in calls if 'state=closed' not in ' '.join(args)]  # the merged list is read fresh by design
 

@@ -37,6 +37,8 @@ class FakeGh:
         self.files = {}
         self.default = 'main'
         self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
+        self.deployments = []
+        self.releases = []
 
     @staticmethod
     def rest(pr):
@@ -45,6 +47,16 @@ class FakeGh:
                 'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName']},
                 'user': {'login': pr['author']['login']}, 'html_url': pr['url'], 'merged_at': pr['mergedAt'],
                 'created_at': pr['createdAt'], 'updated_at': pr.get('updatedAt'), 'requested_reviewers': pr['reviewRequests'], 'requested_teams': []}
+
+    @staticmethod
+    def page(query, items):
+        """The slice GitHub answers for a paged read (page and per_page in the query); a read without a page gets all."""
+        import urllib.parse
+        asked = dict(urllib.parse.parse_qsl(query))
+        if 'page' not in asked:
+            return items
+        size, number = int(asked.get('per_page', 30)), int(asked['page'])
+        return items[(number - 1) * size:number * size]
 
     def pr(self, number):
         if number not in self.prs:
@@ -91,7 +103,9 @@ class FakeGh:
             return {'workflow_runs': [{'id': int(i), 'path': p, 'event': e} for i, (p, e) in self.runs.items() if e == event]}
         if args[0] == 'api' and re.fullmatch(r'repos/[^/]+/[^/]+/pulls', path):
             wanted = 'open' if 'state=open' in query else 'closed'
-            return [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted]
+            return self.page(query, [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted])
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/(deployments|releases)', path)):
+            return self.page(query, getattr(self, m[1]))
         if args[0] == 'api' and '/compare/' in path:
             older, newer = path.split('/compare/')[1].split('...')
             pr = next((pr for pr in self.prs.values() if newer in (pr['headRefOid'], pr['headRefName'])), None)

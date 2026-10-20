@@ -225,6 +225,11 @@ def spec_gaps(repo, engine, tier, files, head):
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 
+def reverts(prs):
+    """The PRs whose title starts with the word revert in any case: 'Revert "x"', 'revert: x', 'revert(scope): x'."""
+    return sum(1 for pr in prs if re.match(r'revert\b', pr.get('title') or '', re.I))
+
+
 def budget(root, repo):
     """The 28-day change failure rate; over BUDGET with five or more merges raises every tier one step."""
     def read():
@@ -233,8 +238,7 @@ def budget(root, repo):
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
         except gh.GhError:
             return {'cfr': None, 'merged': 0}
-        reverts = sum(1 for pr in merged if pr.get('title', '').startswith('Revert'))
-        return {'cfr': round(reverts / len(merged), 2) if merged else None, 'merged': len(merged)}
+        return {'cfr': round(reverts(merged) / len(merged), 2) if merged else None, 'merged': len(merged)}
     found = _cached(root, 'budget-' + repo.replace('/', '__'), read)
     return {**found, 'raised': found['cfr'] is not None and found['merged'] >= 5 and found['cfr'] > BUDGET}
 

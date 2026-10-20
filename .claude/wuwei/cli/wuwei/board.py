@@ -65,7 +65,7 @@ def compute(root, everything=False):
             slug = repo.replace('/', '__')  # a list read also drops PR and compare entries a day old (#1161)
             prs = evidence._cached(root, 'prs-' + slug, lambda: ws.cache_prune(root, 86400, f'pr-{slug}-*', f'cmp-{slug}-*')
                                    or gh.open_prs(repo), TTL)
-            merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
+            merged = gh.merged_prs(repo, since, limit=1) if mine else []  # read fresh, one page: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]} for i in mine]

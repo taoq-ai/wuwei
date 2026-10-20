@@ -142,7 +142,7 @@
   "[\"api\", \"repos/acme/app/pulls/57/reviews?per_page=100\"]": {
    "out": []
   },
-  "[\"api\", \"repos/acme/app/pulls?state=closed&sort=updated&direction=desc&per_page=100\"]": {
+  "[\"api\", \"repos/acme/app/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1\"]": {
    "out": []
   },
   "[\"api\", \"user\", \"--jq\", \".login\"]": {

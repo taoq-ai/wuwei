@@ -1,5 +1,9 @@
+import datetime
+
+import pytest
+
 from conftest import make_pr, write_plan
-from wuwei import report, ws
+from wuwei import evidence, report, ws
 
 
 def test_the_report_lists_the_day_and_what_slipped(root, fake):
@@ -26,14 +30,51 @@ def test_close_is_a_checkpoint_the_next_pass_reopens(root, fake):
     assert report.close(root) == path
 
 
-def test_dora_reads_the_code_host(root, fake, monkeypatch):
-    rows = [{'number': 1, 'title': 'feat: a', 'createdAt': '2026-10-01T00:00:00Z', 'mergedAt': '2026-10-01T10:00:00Z'},
-            {'number': 2, 'title': 'Revert "feat: a"', 'createdAt': '2026-10-02T00:00:00Z', 'mergedAt': '2026-10-02T02:00:00Z'}]
-    monkeypatch.setattr(report.gh, 'merged_prs', lambda repo, since: rows)
-    monkeypatch.setattr(report.gh, 'deployments', lambda repo: [{'created_at': '2026-10-03T00:00:00Z'}])
+def merged(fake, number, title, at, created=None):
+    pr = make_pr(number=number, state='MERGED', body='')
+    pr.update(title=title, createdAt=created or at, mergedAt=at, updatedAt=at)
+    fake.prs[str(number)] = pr
+
+
+REVERTS = ['revert(infra/TIN-817): drop the issuer', 'revert: x', 'Revert "y"', 'fix: a revert-proof parser']
+
+
+def test_dora_reads_the_code_host(root, fake):
+    merged(fake, 2, 'Revert "feat: a"', '2026-10-02T02:00:00Z', '2026-10-02T00:00:00Z')
+    merged(fake, 1, 'feat: a', '2026-10-01T10:00:00Z', '2026-10-01T00:00:00Z')
+    fake.deployments = [{'created_at': '2026-10-03T00:00:00Z'}]
     table = report.dora(root, window=28, today='2026-10-15')
     assert table['acme/app'] == {'lead_time_hours': 6.0, 'deploys': 1, 'deploy_source': 'deployments',
                                  'change_failure_rate': 0.5, 'merged': 2, 'time_to_restore': 'unmeasured'}
+
+
+def test_dora_counts_a_revert_by_its_first_word_in_any_case(root, fake):
+    for number, title in enumerate(REVERTS, 1):
+        merged(fake, number, title, '2026-10-01T00:00:00Z')
+    table = report.dora(root, window=28, today='2026-10-15')['acme/app']
+    assert (table['change_failure_rate'], table['merged']) == (0.75, 4)
+
+
+@pytest.mark.parametrize('source', ['deployments', 'releases'])
+def test_dora_counts_every_deploy_in_the_window_past_the_first_page(root, fake, source):
+    rows = [{'created_at': f'2026-{day}T00:00:00Z', 'published_at': f'2026-{day}T00:00:00Z'}
+            for day in ['10-10'] * 150 + ['09-01'] * 150]
+    setattr(fake, source, rows)
+    table = report.dora(root, window=28, today='2026-10-15')['acme/app']
+    assert (table['deploys'], table['deploy_source'], table['time_to_restore']) == (150, source, 'unmeasured')
+    assert len([args for args in fake.calls if f'/{source}?' in args[1]]) == 2  # the page that leaves the window is the last
+
+
+def test_budget_and_dora_count_every_merge_in_the_window_and_stop_past_it(root, fake):
+    inside, before = ((ws.now() - datetime.timedelta(days=days)).isoformat(timespec='seconds') for days in (1, 60))
+    for number in range(1, 401):
+        merged(fake, number, 'Revert "x"' if number % 50 == 0 else f'feat: {number}', inside if number <= 250 else before)
+    reads = lambda: len([args for args in fake.calls if 'state=closed' in args[1]])  # noqa: E731
+    table = report.dora(root, window=28, today=ws.today())['acme/app']
+    assert (table['merged'], table['change_failure_rate'], reads()) == (250, 0.02, 3)
+    fake.calls.clear()
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.02, 'merged': 250, 'raised': False}
+    assert reads() == 3  # the third page holds the first PR updated before the window
 
 
 def test_the_report_learns_from_what_shipped(root, fake):
