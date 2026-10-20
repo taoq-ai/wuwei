@@ -27,13 +27,21 @@ def andon(root, repo, reason='', clear=False):
     ws.cache_put(root, 'board', None)
 
 
+def answered(root, prs, since):  # each PR has an unresolved review thread, each ending with the owner's reply at or after since (#1199)
+    try:
+        return all(gh.unanswered_threads(repo, n, (evidence.owner_login(root),), since) == 0 < gh.unanswered_threads(repo, n, ())
+                   for repo, n in (p.split('#') for p in prs))
+    except (gh.GhError, TypeError):  # an unreadable host keeps the owe
+        return False
+
+
 def replies(root):
     out, now = [], ws.now().isoformat(timespec='seconds')
     for item in plan.items(root):
         if item.get('kind') == 'reply' and item.get('status') == 'open':
             prs, opened = evidence.refs(item['where']), item.get('opened') or item.get('added', '')
-            if prs and (row := next((r for r in ws.rows(root, 'sent') if r['ts'] >= opened and prs & set(r['data'].get('refs', ()))), None)):
-                plan.mark(root, item['id'], 'done', f'sent naming {", ".join(sorted(prs))} via {row["data"].get("tool")}')
+            if prs and ((row := next((r for r in ws.rows(root, 'sent') if r['ts'] >= opened and prs & set(r['data'].get('refs', ()))), None)) or answered(root, prs, opened)):
+                plan.mark(root, item['id'], 'done', f'sent naming {", ".join(sorted(prs))} via {row["data"].get("tool")}' if row else 'answered by the owner on the PR')
                 continue  # a send that names the owe's PR, recorded in any session (#1169)
             when = (f'overdue since {item["due"][:16]}' if item['due'] < now else f'due {item["due"][:16]}')
             out.append({'item': item['id'], 'title': item['title'], 'pr': None,

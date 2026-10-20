@@ -581,14 +581,25 @@ def test_gaps_are_classed_as_process_or_safety(root, fake):
                      'gates missing at head aaaaaaa: arch, quality': 'safety', 'no reviewer requested': 'process'}
 
 
+def test_a_thread_whose_last_comment_is_the_owners_is_answered_though_unresolved(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()  # authored by wuwei-bot; the owner, whose login WUWEI reads, answers on it (#1199)
+    node = lambda *logins: {'isResolved': False, 'comments': {'nodes': [{'author': login and {'login': login}} for login in logins]}}
+    fake.threads['42'] = [node('alice', 'owner'), node('owner', 'alice'), node('alice', None)]  # None: a deleted account
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['2 review threads unanswered']
+
+
 def test_in_a_cloud_session_threads_come_from_the_ccr_route(root, fake):
     light(root)
     fake.graphql = False
     fake.prs['42'] = make_pr()
     fake.ccr['42'] = [{'is_resolved': False, 'comments': [{'user': {'login': 'alice'}}]},
-                      {'is_resolved': True, 'comments': [{'user': {'login': 'alice'}}]}]
+                      {'is_resolved': True, 'comments': [{'user': {'login': 'alice'}}]},
+                      {'is_resolved': False, 'comments': [{'user': {'login': 'owner'}}, {'user': None}]},  # a deleted account
+                      {'is_resolved': False, 'comments': [{'user': {'login': 'alice'}}, {'user': {'login': 'owner'}}]}]
     attest(root, 'quality')
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['1 review thread unanswered']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['2 review threads unanswered']
 
 
 def test_without_graphql_or_ccr_threads_fall_back_to_review_comments(root, fake, monkeypatch):
@@ -603,7 +614,8 @@ def test_without_graphql_or_ccr_threads_fall_back_to_review_comments(root, fake,
         return original(args, timeout)
     monkeypatch.setattr(evidence.gh, 'run', no_ccr)
     fake.comments['42'] = [{'id': 1, 'user': {'login': 'alice'}}, {'id': 2, 'in_reply_to_id': 1, 'user': {'login': 'wuwei-bot'}},
-                           {'id': 3, 'user': {'login': 'bob'}}]
+                           {'id': 3, 'user': {'login': 'bob'}}, {'id': 4, 'user': {'login': 'carol'}},
+                           {'id': 5, 'in_reply_to_id': 4, 'user': {'login': 'owner'}}]
     attest(root, 'quality')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['1 review thread unanswered']
 

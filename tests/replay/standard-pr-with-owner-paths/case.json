@@ -38,7 +38,7 @@
   }
  ],
  "gh": {
-  "[\"api\", \"graphql\", \"-f\", \"query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){\\npullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login}}}}}}}}\", \"-F\", \"owner=acme\", \"-F\", \"name=app\", \"-F\", \"number=57\"]": {
+  "[\"api\", \"graphql\", \"-f\", \"query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){\\npullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login} createdAt}}}}}}}\", \"-F\", \"owner=acme\", \"-F\", \"name=app\", \"-F\", \"number=57\"]": {
    "out": {
     "data": {
      "repository": {
