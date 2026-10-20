@@ -32,6 +32,8 @@ MUTANTS = {
                                              "any(r['data'].get('agent') for r in ws.rows(root, 'seat.started', ws.today()))"),
     'the team lines hold the merge': (EVIDENCE, "|the approval from|orchestration:)", "|the approval from)"),
     'the team row is never added': (BOARD, "* bool(duties)", "* 0"),
+    'the team row comes last': (BOARD, "[{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out",
+                                "out + [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties)"),
 }
 
 
