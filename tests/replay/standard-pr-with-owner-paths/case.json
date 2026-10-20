@@ -4,6 +4,12 @@
    "actionable": true,
    "kind": "process",
    "owner": false,
+   "text": "PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer"
+  },
+  {
+   "actionable": true,
+   "kind": "process",
+   "owner": false,
    "text": "780 changed lines: split it, or add a Size: <reason> line"
   },
   {

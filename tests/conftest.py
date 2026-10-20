@@ -12,6 +12,11 @@ HEAD = 'a' * 40
 OLD = 'b' * 40
 
 
+def footer(item='I-1'):
+    """The WUWEI footer that links a PR body to its plan item."""
+    return f'<sub>[WUWEI 4.2.2](https://taoq-ai.github.io/wuwei/) \u00b7 Item `{item}` \u00b7 change \u00b7 Goal G-1 \u00b7 Tier standard</sub>'
+
+
 @pytest.fixture(autouse=True)
 def projects(monkeypatch, tmp_path_factory):
     """The harness's projects folder for every test, never the real ~/.claude/projects."""
@@ -206,7 +211,7 @@ def fake(monkeypatch):
 
 
 def make_pr(number=42, head=HEAD, files=('src/app.py', 'tests/test_app.py'), checks='SUCCESS',
-            body='WUWEI-Item: I-1', reviews=(), requests=('alice',), state='OPEN', author='wuwei-bot',
+            body=footer(), reviews=(), requests=('alice',), state='OPEN', author='wuwei-bot',
             lines=20, created=None):
     return {'number': number, 'title': f'feat: change {number}', 'body': body, 'state': state, 'isDraft': False,
             'headRefName': f'i-1-change', 'headRefOid': head, 'baseRefName': 'main',

@@ -192,7 +192,7 @@ def test_an_exception_for_a_process_gap_goes_back_to_the_model(root):
 def test_a_merge_flows_past_process_gaps_and_records_them(root, fake, repo):
     import hashlib
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
-    fake.prs['42'] = make_pr(lines=300, requests=())
+    fake.prs['42'] = make_pr(lines=300, requests=(), body='WUWEI-Item: I-1')
     path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text())
@@ -200,6 +200,7 @@ def test_a_merge_flows_past_process_gaps_and_records_them(root, fake, repo):
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     assert guards.pre_tool(root, bash('gh pr merge 42 --squash')) is None
     assert ws.rows(root, 'merge.checked')[-1]['data']['process'] == [
+        'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer',
         '600 changed lines: split it, or add a Size: <reason> line', 'no reviewer requested']
 
 

@@ -111,4 +111,4 @@ Codex, cloud sessions and several repositories: see [getting started](https://ta
 python3 -m pytest -q
 ```
 
-WUWEI audits its own changes: every PR names `WUWEI-Item: <issue>` and passes its gates.
+WUWEI audits its own changes: every PR ends with the WUWEI footer naming its issue and passes its gates.

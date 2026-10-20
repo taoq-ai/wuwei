@@ -44,12 +44,12 @@ ADOPT_DAYS = 7
 
 
 def adopted(root, repo, prs, keep):
-    """Open PRs this session's identity raised on the repository without a plan link: shepherded all the same."""
+    """Open PRs, drafts too, this session's identity raised on the repository without a plan link: shepherded all the same."""
     since = (ws.now() - datetime.timedelta(days=ADOPT_DAYS)).isoformat()
     login = evidence.owner_login(root)
     return [{'item': 'unplanned', 'title': pr['title'], 'pr': f'{repo}#{pr["number"]}',
              'gaps': keep(evidence.gaps(root, repo, pr['number'], pr))}
-            for pr in prs if (pr.get('author') or {}).get('login') == login and not pr.get('isDraft')
+            for pr in prs if (pr.get('author') or {}).get('login') == login
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 

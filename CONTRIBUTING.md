@@ -19,5 +19,6 @@ start. What to build is in the [design](docs/design.md).
 
 - `python3 -m pytest -q` passes from the repository root (`pytest -q` where python3 lacks the
   module).
-- The body names `WUWEI-Item: <issue number>`; WUWEI audits its own changes.
+- The body ends with the WUWEI footer naming the issue as its item (see `charters/_pr.md`);
+  WUWEI audits its own changes. The older `WUWEI-Item: <issue number>` line still links.
 - Conventional commit messages (`feat:`, `fix:`, `docs:` and so on).

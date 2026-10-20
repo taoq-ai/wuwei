@@ -59,7 +59,8 @@ never a parallel allow list.
 
 - One GitHub issue is one change. A feature runs the spec-kit steps in `.agents/skills/` and keeps
   its spec in `specs/<issue>-<slug>/`. A bug fix is a failing test and the fix.
-- WUWEI audits itself: every PR names `WUWEI-Item: <issue>` and passes the gates its tier needs.
+- WUWEI audits itself: every PR ends with the WUWEI footer naming its issue (the older
+  `WUWEI-Item: <issue>` line still links) and passes the gates its tier needs.
 - Cycle budget: one fix round and one delta review. A change that needs more is a design
   reconsideration agreed with the owner before more code.
 

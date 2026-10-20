@@ -79,7 +79,7 @@ exceptions alike, and the `verdict ... not counted` lines under an accepted gate
 
 | Evidence | Applies |
 |---|---|
-| The WUWEI footer (or a `WUWEI-Item: <id>` line) names a plan item | every PR |
+| The WUWEI footer names a plan item (the older `WUWEI-Item: <id>` line still links, with a process-fit line naming the footer) | every PR |
 | The repository's PR template sections | when it has a template |
 | A test in the diff, or `No test: <reason>` (docs-only exempt) | every PR |
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
