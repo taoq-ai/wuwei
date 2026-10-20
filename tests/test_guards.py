@@ -869,7 +869,7 @@ def test_the_route_corpus_names_a_source_and_a_known_verdict_for_each_route():
 
 
 @pytest.mark.parametrize('route', ROUTES, ids=[r['command'] for r in ROUTES])
-def test_every_route_reads_as_recorded(root, fake, monkeypatch, route):
+def test_every_route_reads_as_recorded(root, fake, monkeypatch, memory, route):
     """A guard change that moves a verdict edits tests/fixtures/routes.json, so its diff shows the move."""
     monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
     monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'i-1-change')
@@ -1738,6 +1738,85 @@ def test_an_edit_under_the_projects_folder_is_refused(root, tool, key, path):
                                         ('Write', '/repo/.claude/wuwei/cli/wuwei/hook.py')])
 def test_reading_a_transcript_or_editing_beside_it_passes(root, tool, path):
     assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': path}, 'cwd': '/repo'}) is None
+
+
+# memory-writable (#1196): Claude Code's memory (<project>/memory/<file>) stays writable; the transcripts beside it do not
+
+@pytest.fixture
+def memory(tmp_path, monkeypatch):
+    """A home with one project folder and its memory folder; ws.PROJECTS and HOME point at it."""
+    home = tmp_path / 'home'
+    (home / '.claude' / 'projects' / '-repo' / 'memory').mkdir(parents=True)
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setattr(ws, 'PROJECTS', home / '.claude' / 'projects')
+    return home / '.claude' / 'projects' / '-repo'
+
+
+MEMORY_PATHS = ['~/.claude/projects/-repo/memory/note.md', '~/.claude/projects/-repo/memory/MEMORY.md', '$HOME/.claude/projects/-repo/memory/n.md',
+                '"$HOME"/.claude/projects/-repo/memory/n.md', '${HOME}/.claude/projects/-repo/memory/n.md', '~//.claude//projects//-repo//memory/n.md',
+                '~/./.claude/./projects/-repo/./memory/n.md', '~/x/../.claude/projects/-repo/memory/n.md']
+MEMORY_WRITES = ['echo x >> {p}', 'printf x > {p}', 'tee -a {p}', 'cat f | tee -a {p}', 'sed -i s/a/b/ {p}', 'rm -f {p}', 'truncate -s 0 {p}',
+                 'bash -c "echo x >> {p}"', 'env A=1 tee -a {p}', 'echo x >> {p} && cat {p}']
+
+
+@pytest.mark.parametrize('path', MEMORY_PATHS)
+@pytest.mark.parametrize('write', MEMORY_WRITES)
+def test_a_write_to_a_memory_file_passes(root, repo, memory, write, path):
+    assert guards.pre_tool(root, bash(write.format(p=path))) is None, write.format(p=path)
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit'])
+@pytest.mark.parametrize('name', ['note.md', 'MEMORY.md'])
+def test_an_edit_of_a_memory_file_passes(root, memory, tool, name):
+    assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': str(memory / 'memory' / name)}, 'cwd': '/repo'}) is None
+
+
+@pytest.mark.parametrize('path', [
+    '~/.claude/projects/-repo/memory/../s.jsonl', '~/.claude/projects/-repo/memory/../tool-results/r.txt',
+    '~/.claude/projects/-repo/memory/../s/subagents/agent-a.jsonl', '~/.claude/projects/-repo/memory', '~/.claude/projects/-repo/memory/',
+    '~/.claude/projects/-repo/memory/sub/n.md', '~/.claude/projects/-repo/%6demory/n.md', '~/.claude/projects/-repo/memory%2f..%2fs.jsonl',
+    '~/.claude/projects/-repo/memor?/n.md', '~/.claude/projects/-repo/{memory,x}/n.md', '~/.claude/projects/-repo/memory/*.md',
+    '~/.claude/projects/-repo/memory/link.md', '~/.claude/projects/-repo/memory/up/s.jsonl', '~/.claude/projects/-repo/memory/up',
+    '~/.claude/projects/-repo/s.jsonl', '$X/.claude/projects/-repo/memory/n.md', '.claude/projects/-repo/memory/n.md', '~/.claude/projects/memory/n.md',
+    '~/.claude/projects/memory/tool-results/r.txt'])
+@pytest.mark.parametrize('write', ['echo x >> {p}', 'tee -a {p}', 'rm -f {p}'])
+def test_a_path_that_only_looks_like_memory_is_refused(root, repo, memory, write, path):
+    (memory / 'memory' / 'link.md').symlink_to('../s.jsonl')
+    (memory / 'memory' / 'up').symlink_to('..')
+    found = guards.pre_tool(root, bash(write.format(p=path)))
+    assert found and 'transcripts' in found['reason'], write.format(p=path)
+
+
+def test_a_memory_folder_that_is_a_link_is_refused(root, repo, memory):
+    (memory / 'memory').rmdir()
+    (memory / 'memory').symlink_to('.')
+    assert 'transcripts' in guards.pre_tool(root, bash('echo x >> ~/.claude/projects/-repo/memory/s.jsonl'))['reason']
+    found = guards.pre_tool(root, {'tool_name': 'Write', 'tool_input': {'file_path': str(memory / 'memory' / 's.jsonl')}, 'cwd': '/repo'})
+    assert 'transcripts' in found['reason']
+
+
+@pytest.mark.parametrize('command', [
+    'ln -s ../s.jsonl ~/.claude/projects/-repo/memory/n.md && echo x >> ~/.claude/projects/-repo/memory/n.md',
+    'mv /tmp/l ~/.claude/projects/-repo/memory/n.md', 'cp -P /tmp/l ~/.claude/projects/-repo/memory/n.md',
+    'python3 -c "open(\'~/.claude/projects/-repo/memory/n.md\', \'a\').write(1)"', 'find ~/.claude/projects/-repo/memory/n.md -delete',
+    'cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl', 'env -C ~/.claude/projects/-repo/memory tee -a ../s.jsonl',
+    'sudo -D ~/.claude/projects/-repo/memory tee ../s.jsonl', 'cd ~/.claude/projects/-repo/memory/sub && echo x >> ../../s.jsonl',
+    'env -C ~/.claude/projects/-repo/memory/sub tee -a ../../s.jsonl'])
+def test_a_link_maker_or_a_working_directory_in_memory_is_refused(root, repo, memory, command):
+    """ln, mv, cp, python and find can stage a link in memory that a later write follows, and a working directory there climbs out."""
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert 'transcripts' in reason and 'memory (<project>/memory/<file>) takes Write, Edit, a redirect' in reason, command
+
+
+@pytest.mark.parametrize('folder, up', [('memory', '..'), ('memory/sub', '../..')])
+def test_a_session_inside_the_memory_folder_is_refused(root, repo, memory, folder, up):
+    found = guards.pre_tool(root, {**bash(f'echo x >> {up}/s.jsonl'), 'cwd': str(memory / folder)})
+    assert 'transcripts' in found['reason']
+
+
+def test_a_memory_file_outside_the_account_projects_folder_is_refused(root, repo, memory, monkeypatch):
+    monkeypatch.setattr(ws, 'PROJECTS', memory.parent.parent / 'elsewhere')
+    assert 'transcripts' in guards.pre_tool(root, bash('echo x >> ~/.claude/projects/-repo/memory/n.md'))['reason']
 
 
 @pytest.mark.parametrize('wrapper', ['env A=1', 'nice -n 1', 'timeout 5', 'sudo', 'stdbuf -o0'])
