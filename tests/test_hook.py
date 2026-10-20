@@ -345,6 +345,25 @@ def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
     assert stop(root, session='s2')['decision'] == 'block'
 
 
+def test_a_seat_another_session_left_running_never_silences_the_stop(root, fake):
+    plan_one(root)
+    ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'old', 'session': 'gone'})  # died without a stop
+    assert stop(root, session='s2')['decision'] == 'block'
+
+
+def test_the_same_orchestration_state_reminds_once_while_the_pr_count_moves(root, fake):
+    write_plan(root, [{'id': f'I-{n}', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, 5)])
+    for n in range(1, 5):
+        fake.prs[str(40 + n)] = make_pr(number=40 + n, head=f'{n}' * 40, body=f'WUWEI-Item: I-{n}')
+    assert 'team: orchestration: open PRs with no shepherd seat running' in stop(root)['reason']
+    write_plan(root, [{'id': f'I-{n}', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, 4)])
+    del fake.prs['44']
+    ws.cache_put(root, 'board', None)
+    assert len([r for r in board.compute(root) if r['pr']]) == 3 and stop(root) is None
+
+
 def test_a_rejected_agent_launch_records_no_seat(root):
     assert pre(root, 'Agent', {'subagent_type': 'wuwei:nobody', 'prompt': 'Build I-1'}) is None
     assert ws.rows(root, 'seat.started') == []

@@ -111,7 +111,7 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or running(root) > 0:
+    if payload.get('stop_hook_active') or closed(root) or board.running(root, payload.get('session_id')):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'

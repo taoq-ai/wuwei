@@ -3,7 +3,7 @@
 import datetime
 
 from conftest import make_pr, write_plan
-from wuwei import board, hook, plan, report, ws
+from wuwei import board, evidence, hook, plan, report, ws
 
 THREAD = 'https://acme.slack.com/archives/C0123ABC/p1760510000000200'
 
@@ -79,7 +79,7 @@ def _item(id_, **extra):
 def test_a_pr_naming_two_items_links_both_and_closes_both_once_merged(root, fake):
     write_plan(root, [_item('A'), _item('B')])
     fake.prs['9'] = make_pr(9, body='Fixes both.\n\nWUWEI-Item: A\nWUWEI-Item: B')
-    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#9', 'B': 'acme/app#9'}
+    assert {r['item']: r['pr'] for r in board.compute(root) if r['item'] != 'team'} == {'A': 'acme/app#9', 'B': 'acme/app#9'}
     fake.prs['9'].update(state='MERGED', mergedAt=ws.now().isoformat(timespec='seconds'))
     ws.cache_put(root, 'prs-acme__app', None)
     board.compute(root)
@@ -113,7 +113,7 @@ def test_an_item_with_no_pr_names_its_uncounted_verdicts(root, fake):
 def test_a_footerless_pr_links_by_branch_name_and_closes_the_item_once_merged(root, fake):
     write_plan(root, [_item('A'), _item('B')])
     fake.prs['5'] = {**make_pr(5, body='No footer here.'), 'headRefName': 'A-fix'}
-    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#5', 'B': None}
+    assert {r['item']: r['pr'] for r in board.compute(root) if r['item'] != 'team'} == {'A': 'acme/app#5', 'B': None}
     fake.prs['5'].update(state='MERGED', mergedAt=ws.now().isoformat(timespec='seconds'))
     ws.cache_put(root, 'prs-acme__app', None)
     board.compute(root)
@@ -123,4 +123,74 @@ def test_a_footerless_pr_links_by_branch_name_and_closes_the_item_once_merged(ro
 def test_a_footerless_pr_links_through_the_plan_prs_list(root, fake):
     write_plan(root, [_item('A', prs=['acme/app#6']), _item('B')])
     fake.prs['6'] = {**make_pr(6, body=''), 'headRefName': 'unrelated'}
-    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#6', 'B': None}
+    assert {r['item']: r['pr'] for r in board.compute(root) if r['item'] != 'team'} == {'A': 'acme/app#6', 'B': None}
+
+
+SHEPHERD = 'orchestration: open PRs with no shepherd seat running'
+GATES = 'orchestration: gates owed on green heads with no gate seat running'
+
+
+def open_prs(root, fake, count=3, rollup=None):
+    """count open PRs, each owing its quality gate at its own head, CI green unless rollup says otherwise."""
+    write_plan(root, [{'id': f'I-{n}', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, count + 1)])
+    for n in range(1, count + 1):
+        fake.prs[str(40 + n)] = make_pr(number=40 + n, head=f'{n}' * 40, body=f'WUWEI-Item: I-{n}')
+        fake.prs[str(40 + n)]['statusCheckRollup'] = rollup or fake.prs[str(40 + n)]['statusCheckRollup']
+
+
+def team(root):
+    return [g['text'] for r in board.compute(root) if r['item'] == 'team' for g in r['gaps']]
+
+
+def seat(root, role, session='s1', agent='a1', kind='seat.started'):
+    ws.record(root, kind, {'role': role, 'agent': agent, 'session': session})
+
+
+def test_open_prs_and_owed_gates_with_no_seat_running_show_one_team_row(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
+    open_prs(root, fake)
+    assert team(root) == [SHEPHERD, GATES]
+    assert '- team seats: ' + SHEPHERD in board.text(board.compute(root), root)
+
+
+def test_a_running_seat_in_this_session_clears_its_line(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
+    open_prs(root, fake)
+    seat(root, 'shepherd')
+    assert team(root) == [GATES]
+    seat(root, 'sentinel-quality', agent='a2')
+    assert team(root) == []
+
+
+def test_a_dead_stopped_or_unconfirmed_seat_never_counts_as_running(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's2')
+    open_prs(root, fake)
+    seat(root, 'shepherd', session='s1')  # a session that died without a stop
+    seat(root, 'shepherd', session='s2', agent='a2')
+    seat(root, 'shepherd', session='s2', agent='a2', kind='seat.stopped')
+    seat(root, 'sentinel-quality', session='s2', agent='a3')
+    seat(root, 'sentinel-quality', session='s2', agent='a3', kind='seat.unconfirmed')
+    assert team(root) == [SHEPHERD, GATES]
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID')
+    assert team(root) == [SHEPHERD, GATES]  # no session known: no seat of any session counts
+
+
+def test_two_open_prs_need_no_shepherd_line(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
+    open_prs(root, fake, count=2)
+    assert team(root) == [GATES]
+
+
+def test_owed_gates_on_a_head_whose_ci_runs_or_fails_owe_no_gate_seat(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
+    seat(root, 'shepherd')
+    open_prs(root, fake, rollup=[{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}])
+    assert team(root) == []
+    open_prs(root, fake, rollup=[{'name': 'test', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}])
+    assert team(root) == []
+
+
+def test_a_team_line_is_a_duty_that_never_holds_a_merge(root):
+    found = [evidence.gap(SHEPHERD), evidence.gap(GATES)]
+    assert {g['kind'] for g in found} == {'duty'} and evidence.blocking(found) == [] and evidence.visible(found) == found

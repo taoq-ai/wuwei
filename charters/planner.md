@@ -66,7 +66,9 @@ and keep the owner's attention for what only the owner decides.
 8. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
    its run shows and still lacks with `wuwei plan run <id> --reason "..."`, and `wuwei plan done
    <id> --reason "<final evidence>"` when it is through.
-9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+9. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge. A Codex
+   handoff's network steps (push, PR body, thread replies, re-gate) go to the shepherd seat, not
+   to you. The board's `team` row names open PRs with no shepherd and owed gates with no gate seat.
 10. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner

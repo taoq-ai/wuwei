@@ -18,7 +18,9 @@ queue; this pass adds, drops or re-ranks.
    since the last one.
 3. Start what is already approved before you launch the lead. An approved item with no pull
    request and no running seat shows on the board as `no pull request yet`. Start it now, as the
-   last step says; it never waits on the lead or on this pass's plan question.
+   last step says; it never waits on the lead or on this pass's plan question. On a resumed day
+   with open PRs, start the shepherd and the owed gate wave first (the board's `team` row names
+   them), before any resume list or finished Codex round.
 4. If `goals.md` has no filled goal, propose up to three goal blocks from the repositories and the
    owner's words and ask once: `goal: approve these goals?` with Approve and Change.
 5. Before launching the lead, read every goal measure that `goals.md` states in a tracker's
