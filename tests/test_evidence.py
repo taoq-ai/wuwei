@@ -584,7 +584,8 @@ def test_a_wellformed_verdict_nobody_attested_says_how_to_fix_it(root, fake):
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text())
     found = texts(evidence.gaps(root, 'acme/app', 42))
-    assert any('not counted: not attested' in t and 'sentinel-quality' in t for t in found)
+    assert any('not counted: not attested' in t and 'as a Claude Code seat of agent type sentinel-quality' in t
+               and 'a Codex task job or Codex seat never attests' in t for t in found)
 
 
 def test_one_exception_can_cover_several_prs_with_loose_gap_text(root, fake):
