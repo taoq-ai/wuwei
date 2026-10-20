@@ -64,6 +64,20 @@
     }
    }
   },
+  "[\"api\", \"repos/acme/app/branches/main\"]": {
+   "out": {
+    "name": "main",
+    "protected": false,
+    "protection": {
+     "enabled": false,
+     "required_status_checks": {
+      "checks": [],
+      "contexts": [],
+      "enforcement_level": "off"
+     }
+    }
+   }
+  },
   "[\"api\", \"repos/acme/app/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100\"]": {
    "out": {
     "check_runs": [
@@ -149,6 +163,9 @@
    "out": []
   },
   "[\"api\", \"repos/acme/app/pulls?state=closed&sort=updated&direction=desc&per_page=100\"]": {
+   "out": []
+  },
+  "[\"api\", \"repos/acme/app/rules/branches/main?per_page=100&page=1\"]": {
    "out": []
   },
   "[\"api\", \"user\", \"--jq\", \".login\"]": {

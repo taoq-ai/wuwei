@@ -1,0 +1,12 @@
+{
+  "session_id": "a5b186cc-8b7e-5e87-a6c5-2dbe8d72968d",
+  "transcript_path": "~/.claude/projects/-repo/a5b186cc-8b7e-5e87-a6c5-2dbe8d72968d.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_id": "a0130a2652c480942",
+  "agent_type": "builder",
+  "agent_transcript_path": "~/.claude/projects/-repo/a5b186cc-8b7e-5e87-a6c5-2dbe8d72968d/subagents/agent-a0130a2652c480942.jsonl",
+  "last_assistant_message": "Built it; the suite is green.\n\nConfidence: high\nBlocked: none\nGap: none\nChange: none"
+}

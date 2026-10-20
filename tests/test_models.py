@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import make_pr, verdict_text, write_plan
+from conftest import launched, make_pr, verdict_text, write_plan
 from test_charters import PATHS, _model_table, _models_section, _setting
 from wuwei import agents, hook, report, setup, ws
 
@@ -241,9 +241,9 @@ def test_a_launch_records_what_ran_what_was_asked_and_the_reason_and_the_attest_
     path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: it drops a row'))
-    assert hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality',
-                                              'last_assistant_message': 'Verdict file: .wuwei/verdicts/I-1/quality.md',
-                                              'effort': {'level': 'high'}, 'cwd': str(root)}) is None
+    assert hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality',
+                                                       'last_assistant_message': 'Verdict file: .wuwei/verdicts/I-1/quality.md',
+                                                       'effort': {'level': 'high'}, 'cwd': str(root)})) is None
     [attest] = ws.rows(root, 'attest')
     assert (attest['data']['model'], attest['data']['effort'], attest['data']['blocking']) == ('claude-opus-5-5', 'high', 1)
 
@@ -257,9 +257,9 @@ def test_the_attest_copies_the_launch_with_its_own_agent_id(root, fake):
     path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text(verdict='PASS'))
-    assert hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality',
-                                              'last_assistant_message': 'Verdict file: .wuwei/verdicts/I-1/quality.md',
-                                              'cwd': str(root)}) is None
+    assert hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality',
+                                                       'last_assistant_message': 'Verdict file: .wuwei/verdicts/I-1/quality.md',
+                                                       'cwd': str(root)})) is None
     [attest] = ws.rows(root, 'attest')
     assert (attest['data']['agent'], attest['data']['model'], attest['data']['effort']) == ('rev1', 'claude-sonnet-5-5', 'high')
 

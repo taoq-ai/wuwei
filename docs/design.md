@@ -85,7 +85,7 @@ security`); a part of either waives nothing.
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
 | The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
-| CI green, threads answered, a reviewer requested | every PR |
+| CI green (every check the base branch requires ran), threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |
 
@@ -114,6 +114,19 @@ holds more than prose (`.md`, `.rst`, `.adoc`), `LICENSE`, `NOTICE`, `specs/` an
 `AGENTS.md`, are not prose), in a repository that ran a `pull_request` or `pull_request_target` workflow (Actions reads cached a
 day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR it skips until an
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
+
+Required checks: the checks the base branch requires, by branch protection (the branch read) and by
+the rulesets for the branch, cached 15 minutes per repository and branch. A required check with no
+check run and no status of that name on the head, once CI has settled, reads `required check not run
+at <sha7>: <names>`, an actionable safety gap, with or without auto-merge (a push with the workflow
+token starts no workflow, #1156). While CI runs it reads `required check not run yet`, waiting, and
+arming auto-merge passes (GitHub creates a job's check run only once it is queued). A release PR's
+gap points at the way through: a `RELEASE_PAT` secret for release-please (contents and
+pull-requests write), meanwhile a close and reopen or an owner exception. A failed or malformed
+read shows `required checks unreadable on <branch>: <error>`, waiting, and is not cached. A PR
+GitHub reports `mergeable_state` blocked with no other safety gap reads `GitHub reports the merge
+blocked for a reason WUWEI cannot name`, waiting; it holds a direct merge, and arming auto-merge
+passes, since GitHub's auto-merge waits on that hold.
 
 Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
 declared public API. The public API and
@@ -149,8 +162,8 @@ missing PR, and `wuwei plan done` closes it with the final evidence.
 
 Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or
 `ccr/auto_merge` in any spelling of method, path, host or `{owner}/{repo}`, a GitHub MCP merge
-tool; arming auto-merge passes while only CI runs); a PR opened ready for review (`gh pr create`,
-`gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
+tool; arming auto-merge passes while only CI runs or only GitHub's own merge hold is left); a PR
+opened ready for review (`gh pr create`, `gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
 needs pass at the branch head, while a draft (`--draft`, `-F draft=true`, MCP `draft` true) opens so
 CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP
 `update_pull_request` with `draft` false) and a reviewer request on a draft (`gh pr edit
@@ -177,7 +190,9 @@ sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-
 `-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
-removing a cache file passes; a hand-made `wuwei hook` call; an owner question without a class.
+removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, or `.claude` itself) in the
+same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call; an
+owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
@@ -195,6 +210,8 @@ or a network program in `guards.NETWORK`, read with its quotes and backslashes r
 it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`.
 The launcher is the one exception: when the PreToolUse hook fails before it can judge (an import, its
 arguments, the version read), `bin/wuwei` exits 2 and refuses every PreToolUse call, not only door calls.
+An account with no password-database entry is not such a failure: the hook loads, its doors judge, and
+answers and seat stops record as unconfirmed (section 8).
 `wuwei doctor` reports each door's strength per repository: wall (code host or credentials), refused
 (hook), detected (audit).
 
@@ -207,9 +224,25 @@ flow.
 |---|---|
 | SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back |
-| PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes |
-| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat |
+| PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
+| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed` |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
+
+An owner answer and a seat stop count only when the harness wrote them (#962). The harness keeps
+each session's transcript under the projects folder (`.claude/projects` in the account's home,
+read from the password database, never from `HOME`). An answer counts when that transcript holds the
+AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
+the same answers. Claude Code writes that row after PostToolUse returns, so PostToolUse records
+`answer.pending` and keeps the first answer for its ids, and the planner's next hook call records it before
+any door reads the ledger. An error in that step records `hook.error` and the doors still judge the call. A Stop rereads for up to 1.5 s and then records `answer.unconfirmed` with the
+reason, as PostToolUse does at once for a transcript path outside the projects folder. An
+`answer.pending` row that no `prompt` or `answer.unconfirmed` row with its id follows (a session that
+ended before another hook call) reads as unconfirmed. Each answer id is recorded once: a replay
+records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
+type and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops, a
+moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
+recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
+transcript itself stays open (SECURITY.md).
 
 ## 9. Learning
 
@@ -250,7 +283,9 @@ Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
-- Attestations cross-checked against the harness transcript (#962).
+- Attestations read from the seat's own transcript (#962): a sentinel's SubagentHandback at
+  PreToolUse still attests from its payload, and a SubagentStop that replays a real launch attests
+  and keeps the report text its payload carries.
 - A shared standards repository for teams; auditing human PRs as first-class items.
 
 ## 13. From 0.x

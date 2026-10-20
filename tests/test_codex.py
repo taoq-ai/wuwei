@@ -60,25 +60,27 @@ def test_a_codex_spawn_without_a_string_id_records_no_seat(root, response):
     assert ws.rows(root, 'seat.started') == [] and hook.running(root) == 0
 
 
-def test_a_codex_question_without_a_class_is_sent_back_and_an_answer_is_recorded(root):
+def test_a_codex_question_without_a_class_is_sent_back_and_an_answer_is_recorded_unconfirmed(root):
+    """No reader for Codex's own transcript yet: its answers count for nothing and say why (hook-transcript)."""
     asked = {'questions': [{'id': 'q1', 'header': 'Go?', 'question': 'Should I continue with the next item?'}]}
     assert pre(root, 'request_user_input', asked)['hookSpecificOutput']['permissionDecision'] == 'deny'
     question = 'one-way: drop the legacy table? Recommended: yes, it has had no reads for 90 days.'
     asked = {'questions': [{'id': 'q1', 'header': 'Drop', 'question': question}], 'isBlocking': True}
     assert pre(root, 'request_user_input', asked) is None
-    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input',
-                                      'tool_input': asked, 'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
-    assert ws.rows(root, 'prompt')[-1]['data']['answers'] == {question: 'Yes'}
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input', 'tool_use_id': 'c1',
+                                      'transcript_path': str(root / 'rollout.jsonl'), 'tool_input': asked,
+                                      'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
+    assert ws.rows(root, 'prompt') == [] and ws.rows(root, 'answer.unconfirmed')[-1]['data']['answers'] == {question: 'Yes'}
 
 
-def test_a_codex_gate_verdict_is_attested(root):
+def test_a_codex_gate_verdict_is_unconfirmed_until_a_codex_transcript_reader_exists(root):
     path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
     path.parent.mkdir(parents=True)
     path.write_text(verdict_text())
     hook.handle(root, 'SubagentStop', {'session_id': 's1', 'turn_id': 't1', 'agent_id': 'a1', 'agent_type': 'sentinel-quality',
                                        'cwd': str(root), 'stop_hook_active': False, 'agent_transcript_path': None,
                                        'last_assistant_message': 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md'})
-    assert ws.rows(root, 'attest')[0]['data']['gate'] == 'quality'
+    assert ws.rows(root, 'attest') == [] and ws.rows(root, 'seat.unconfirmed')[0]['data']['agent'] == 'a1'
 
 
 def test_init_codex_writes_the_role_agents_and_the_door_rules(tmp_path, monkeypatch):
@@ -103,10 +105,10 @@ def test_doctor_says_when_the_codex_roles_drift_from_the_charters(tmp_path, monk
     assert ('codex roles', 'warn', 'stale: lead: run wuwei init --codex') in setup.doctor(tmp_path)
 
 
-def test_a_codex_goal_met_answer_records_the_goal(root):
+def test_a_codex_goal_met_answer_records_no_goal(root):
     question = 'goal: G-2 met? 0 bugs open past three days.'
     asked = {'questions': [{'id': 'q1', 'header': 'Met', 'question': question}], 'isBlocking': True}
     assert pre(root, 'request_user_input', asked) is None
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input',
                                       'tool_input': asked, 'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
-    assert [(r['data']['kind'], r['data']['goal'], r['data']['approved']) for r in ws.rows(root, 'ruling')] == [('goal.met', 'G-2', True)]
+    assert ws.rows(root, 'ruling') == [] and 'not a transcript' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']

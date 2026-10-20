@@ -1635,3 +1635,69 @@ def test_a_remote_named_in_global_config_keeps_the_push_door(root, scratch, monk
 def test_a_push_to_a_git_directory_outside_the_temporary_folders_meets_the_push_door(root, scratch, monkeypatch):
     monkeypatch.setattr(guards, 'TEMP', (str(scratch / 'c'),))
     assert 'the default branch main' in guards.bash(root, 'git push ../r.git main', str(scratch / 'c'), 's1')['reason']
+
+
+# hook-transcript: the harness's transcripts (.claude/projects) are written only by the harness
+
+TRANSCRIPT_PATHS = ['~/.claude/projects/-repo/s.jsonl', '/root/.claude/projects/-repo/s.jsonl', '$HOME/.claude/projects/-repo/s.jsonl',
+                    '"$HOME"/.claude/projects/-repo/s.jsonl', '~//.claude//projects//-repo/s.jsonl', '~/./.claude/./projects/s.jsonl',
+                    '~/x/../.claude/projects/s.jsonl', '~/.claude/x/../projects/s.jsonl', '~/.c*/projects/s.jsonl', '~/.claude/proj*/s.jsonl',
+                    '~/.claude/pro[j]ects/s.jsonl', '~/.claude/{projects,x}/s.jsonl', '~/.{claude,x}/projects/s.jsonl',
+                    '~/.claude/projects', '~/.claude/projects/', '~/.claude']
+TRANSCRIPT_WRITES = ['echo x >> {p}', 'printf x > {p}', 'tee -a {p}', 'cp f {p}', 'mv f {p}', 'rm -f {p}', 'sed -i s/a/b/ {p}',
+                     'dd of={p}', 'ln -s f {p}', 'truncate -s 0 {p}', 'python3 -c "open(\'{p}\', \'a\').write(1)"',
+                     'find {p} -delete', 'bash -c "echo x >> {p}"', 'env A=1 tee -a {p}', 'cat f | tee -a {p}']
+TRANSCRIPT_DIRS = ['cd ~/.claude/projects/-repo && echo x >> s.jsonl', 'cd ~/.claude && tee -a projects/-repo/s.jsonl',
+                   'cd ~/.claude/projects; printf x > -repo/s.jsonl', 'pushd ~/.claude/projects/-repo && cp f s.jsonl',
+                   'env -C ~/.claude/projects/-repo tee -a s.jsonl', 'sudo -D ~/.claude/projects/-repo tee s.jsonl',
+                   'env --chdir=/root/.claude/projects/-repo tee s.jsonl', 'cd ~ && cd .claude && echo x > projects/s.jsonl']
+
+
+@pytest.mark.parametrize('path', TRANSCRIPT_PATHS)
+@pytest.mark.parametrize('write', TRANSCRIPT_WRITES)
+def test_a_write_under_the_projects_folder_is_refused(root, repo, write, path):
+    found = guards.pre_tool(root, bash(write.format(p=path)))
+    assert found['decision'] == 'deny' and 'transcripts' in found['reason'], write.format(p=path)
+
+
+@pytest.mark.parametrize('command', TRANSCRIPT_DIRS)
+def test_a_write_after_a_working_directory_in_the_projects_folder_is_refused(root, repo, command):
+    assert 'transcripts' in guards.pre_tool(root, bash(command))['reason']
+
+
+def test_a_write_from_a_session_inside_the_projects_folder_is_refused(root, repo):
+    assert 'transcripts' in guards.pre_tool(root, {**bash('echo x >> s.jsonl'), 'cwd': '/root/.claude/projects/-repo'})['reason']
+
+
+@pytest.mark.parametrize('command', [
+    'cat ~/.claude/projects/-repo/s.jsonl', 'grep -c tool_use ~/.claude/projects/-repo/s.jsonl', 'python3 - < ~/.claude/projects/-repo/s.jsonl',
+    'wc -l < ~/.claude/projects/-repo/s.jsonl', 'ls -la ~/.claude/projects', 'tail -n 5 ~/.claude/projects/-repo/s.jsonl > /tmp/last.jsonl',
+    'cat ~/.claude/projects/-repo/s.jsonl | python3 -c "import sys; print(len(sys.stdin.read()))"',
+    'echo x >> ~/.claude%2Fprojects/s.jsonl', 'cp -r cli/wuwei .claude/wuwei/cli/', 'echo x > ~/.claude/settings.local.json',
+    'cd ~/.claude/projects/-repo && grep -c x s.jsonl', 'echo x >> ~/claude/projects/s.jsonl'])
+def test_reading_a_transcript_or_writing_beside_the_projects_folder_passes(root, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+@pytest.mark.parametrize('tool, key, path', [
+    ('Write', 'file_path', '/root/.claude/projects/-repo/s.jsonl'), ('Edit', 'file_path', '/root/.claude//projects/-repo/s.jsonl'),
+    ('MultiEdit', 'file_path', '/root/.claude/./projects/s.jsonl'), ('Write', 'file_path', '/root/.claude/x/../projects/s.jsonl'),
+    ('NotebookEdit', 'notebook_path', '/root/.claude/projects/n.ipynb'), ('Edit', 'file_paths', ['src/a.py', '~/.claude/projects/s.jsonl'])])
+def test_an_edit_under_the_projects_folder_is_refused(root, tool, key, path):
+    found = guards.pre_tool(root, {'tool_name': tool, 'tool_input': {key: path}, 'cwd': '/repo'})
+    assert found['decision'] == 'deny' and 'Reading passes' in found['reason']
+
+
+@pytest.mark.parametrize('tool, path', [('Read', '/root/.claude/projects/-repo/s.jsonl'), ('Write', '/root/.claude/settings.json'),
+                                        ('Write', '/repo/.claude/wuwei/cli/wuwei/hook.py')])
+def test_reading_a_transcript_or_editing_beside_it_passes(root, tool, path):
+    assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': path}, 'cwd': '/repo'}) is None
+
+
+@pytest.mark.parametrize('wrapper', ['env A=1', 'nice -n 1', 'timeout 5', 'sudo', 'stdbuf -o0'])
+@pytest.mark.parametrize('target, word', [('~/.claude/projects', 'transcripts'), ('.wuwei/ledger', 'ledger'), ('.wuwei/cache', 'cache')])
+def test_find_with_a_delete_after_a_wrapper_is_refused(root, repo, wrapper, target, word):
+    """The write probe's hole class at the head (39 of 1,527 under real bash): a wrapper hid find, for the ledger at main too."""
+    for action in ('-delete', '-exec rm {} +'):
+        assert word in guards.pre_tool(root, bash(f'{wrapper} find {target} {action}'))['reason']
+    assert guards.pre_tool(root, bash(f'{wrapper} find . -name x')) is None

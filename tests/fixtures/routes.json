@@ -257,6 +257,12 @@
     {"command": "cd ../g && git push origin main", "source": "item scratch-remotes (a cd before the push: the scratch rule reads one plain git call only)", "verdict": "push"},
     {"command": "git push -o ../r.git origin main", "source": "item scratch-remotes (-o takes the next word, so the remote is origin)", "verdict": "push"},
     {"command": "git --work-tree=../x push .git :main", "source": "gates scratch-remotes at 6a5d00d (security: a work tree outside the shell's directory; real git deleted main in the working repository)", "verdict": "push"},
-    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"}
+    {"command": "git push ../r.git --receive-pack=./x main", "source": "gates scratch-remotes at 6a5d00d (quality: git runs the named program for the push)", "verdict": "push"},
+    {"command": "echo x >> ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
+    {"command": "tee -a ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
+    {"command": "cd ~/.claude/projects/-repo && printf x >> s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
+    {"command": "env -C ~/.claude/projects/-repo tee -a s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "refusal"},
+    {"command": "cat ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "pass"},
+    {"command": "grep -c tool_use ~/.claude/projects/-repo/s.jsonl", "source": "hook-transcript acceptance 3 (writes under the harness projects folder are refused; reads pass)", "verdict": "pass"}
   ]
 }
