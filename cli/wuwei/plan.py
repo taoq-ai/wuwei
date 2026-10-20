@@ -59,7 +59,8 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
     if item is not None:
         if any(fields[k] and fields[k] != item.get(k) for k in ('promise', 'acceptance')):
             item['approved'] = False  # the owner approved the old contract, not this one
-        item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open')
+        item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open',
+                    prs=list(dict.fromkeys(item.get('prs', []) + fields['prs'])))  # a re-add keeps the PRs linked before
         save(root, rows)
         ws.record(root, 'item.updated', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
         return item

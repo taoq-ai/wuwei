@@ -277,3 +277,32 @@ def test_plan_add_with_pr_links_a_taken_over_pr(root, fake, monkeypatch):
                      '--value', '3', '--time', '3', '--risk', '3', '--size', '3']) == 0
     assert plan.find(root, 'T')['prs'] == ['acme/app#7']
     assert next(r for r in board.compute(root) if r['item'] == 'T')['pr'] == 'acme/app#7'
+
+
+def test_an_item_naming_another_items_open_pr_gets_no_not_linked_line(root, fake):
+    write_plan(root, [_item('A', promise='start after #9', approved=True), _item('B')])
+    fake.prs['9'] = make_pr(9, body='WUWEI-Item: B')
+    assert next(r for r in board.compute(root) if r['item'] == 'A')['gaps'][0]['text'] == 'no pull request yet'
+
+
+def _add(*extra):
+    from wuwei import __main__ as cli
+    return cli.main(['plan', 'add', 'T', 'take over', '--goal', 'G-1', '--repo', 'acme/app',
+                     '--value', '3', '--time', '3', '--risk', '3', '--size', '3', *extra])
+
+
+def test_plan_add_refuses_a_pr_that_is_not_owner_repo_number(root, fake, monkeypatch):
+    import pytest
+    monkeypatch.chdir(root)
+    for bad in ('7', 'foo', 'acme/app#x'):
+        with pytest.raises(SystemExit, match='name the PR as owner/repo#number'):
+            _add('--pr', bad)
+        assert plan.find(root, 'T') is None
+
+
+def test_plan_add_keeps_and_merges_recorded_prs_and_matches_the_repo_case(root, fake, monkeypatch):
+    monkeypatch.chdir(root)
+    _add('--pr', 'Acme/App#7')
+    _add('--promise', 'new contract')
+    _add('--pr', 'acme/app#8')
+    assert plan.find(root, 'T')['prs'] == ['acme/app#7', 'acme/app#8']
