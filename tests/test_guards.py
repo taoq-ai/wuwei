@@ -1677,7 +1677,7 @@ def test_a_refspec_that_moves_main_under_real_git_meets_the_push_door(root, ahea
 @pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
 @pytest.mark.parametrize('command', ['git push origin feature', 'git push origin feature:feature', 'git push --tags origin',
                                      "git push origin 'refs/heads/f/*:refs/heads/f/*'", 'git push origin feature:refs/heads/f/main',
-                                     'git push origin HEAD:refs/f/main', 'git push origin feature:heads/f'])
+                                     'git push origin HEAD:refs/f/main', 'git push origin feature:heads/f', 'git push origin tag v1'])
 def test_a_refspec_that_cannot_reach_main_passes_the_push_door(root, ahead, monkeypatch, command):
     before = main_at(ahead / 's.git')
     subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
@@ -1710,7 +1710,8 @@ def test_a_refspec_reaching_the_default_branch_by_git_rules_meets_the_push_door(
                                              ('git push origin :heads/main', 'deleting the default branch main refused'),
                                              ('git push origin --delete refs/heads/main', 'deleting the default branch main refused'),
                                              ('git push --mi origin', 'force push refused: history on a shared branch'),
-                                             ('git push -vd origin main', 'deleting the default branch main refused')])
+                                             ('git push -vd origin main', 'deleting the default branch main refused'),
+                                             ('git push origin --del main', 'deleting the default branch main refused')])
 def test_a_refspec_refusal_keeps_the_push_door_text(root, fake, repo, command, reason):
     assert guards.pre_tool(root, bash(command))['reason'].startswith(reason), command
 
@@ -1766,10 +1767,31 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     ('git symbolic-ref refs/heads/y refs/heads/main && git symbolic-ref ORIG_HEAD refs/heads/y', 'c', 'git push origin ORIG_HEAD'),
     ("git switch -q main && git worktree add -q ../w feature && printf 'ref: refs/heads/main\\n' > .git/zz", 'w', 'git push origin zz'),
     ("printf 'ref: refs/heads/main\\n' > .git/zz", 'c', 'git push origin zz'),
-    ('git worktree add -q ../w2 main && mv ../w2 ../w3 && git worktree repair ../w3', 'c', 'git push origin worktrees/w2/HEAD')])
+    ('git worktree add -q ../w2 main && mv ../w2 ../w3 && git worktree repair ../w3', 'c', 'git push origin worktrees/w2/HEAD'),
+    ("printf 'ref:refs/heads/main' > .git/ZZ", 'c', 'git push origin ZZ'),
+    ("printf 'ref:\\trefs/heads/main\\n' > .git/ZZ", 'c', 'git push origin ZZ'),
+    ("printf 'ref:%300srefs/heads/main\\n' > .git/ZZ", 'c', 'git push origin ZZ'),
+    ('ln -s refs/heads/main .git/ZZ', 'c', 'git push origin ZZ'),
+    ("mkdir .git/a && printf 'ref: refs/heads/main\\n' > .git/a/zz", 'c', 'git push origin a/zz'),
+    ("mkdir -p .git/x/y && printf 'ref: refs/heads/main\\n' > .git/x/y/ZZ", 'c', 'git push origin x/y/ZZ'),
+    ('git worktree add -q -b w ../w && git -C ../w symbolic-ref refs/bisect/x refs/heads/main', 'c', 'git push origin worktrees/w/refs/bisect/x'),
+    ('git worktree add -q -b w ../w && git symbolic-ref refs/bisect/x refs/heads/main', 'w', 'git push origin main-worktree/refs/bisect/x'),
+    ('git worktree add -q -b w ../w && git symbolic-ref refs/worktree/x refs/heads/main', 'w', 'git push origin main-worktree/refs/worktree/x'),
+    ("git worktree add -q -b w ../w && printf 'ref: refs/heads/main\\n' > .git/zz && printf 'ref: refs/heads/feature\\n' > .git/worktrees/w/zz",
+     'w', 'git push origin zz'),
+    ("printf 'ref:refs/heads/main' > .git/ZZ", 'c', 'git push origin tag v1 ZZ'),
+    ("printf 'ref:refs/heads/main' > .git/ZZ", 'c', "git push origin 'refs/heads/f/*' ZZ"),
+    ("printf 'ref:refs/heads/main' > .git/ZZ", 'c', 'git push origin ^nope ZZ'),
+    ("printf 'ref:refs/heads/main' > .git/ZZ && git update-ref refs/heads/-- HEAD", 'c', 'git push origin -- -- ZZ'),
+    ("printf 'ref: refs/heads/main\\n' > .git/--", 'c', 'git push origin -- feature --'),
+    ("printf 'ref: refs/heads/main\\n' > .git/-x", 'c', 'git push origin -- -x'),
+    ("printf 'ref: refs/heads/main\\n' > .git/foo && git update-ref refs/foo HEAD", 'c', 'git push origin foo'),
+    ("printf 'ref: refs/heads/feature\\n' > .git/ZZ && git symbolic-ref refs/heads/ZZ refs/heads/main", 'c', 'git push origin ZZ')])
 def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeypatch, setup, at, command):
     """Gates push-refspecs at b16d799: every word after -- is a refspec, and a source alone takes the destination its ref resolves
-    to (another worktree's HEAD, a symbolic ref). Real git moves main; the door refuses it."""
+    to (another worktree's HEAD, a symbolic ref). Gates at aa63d3b: git reads root refs in forms a file reader of its own missed
+    (no space after ref:, a tab, 300 spaces, a symlink, a nested name, another worktree's refs), so git resolves each word itself;
+    a word rev-parse cannot read (tag, ^x, a glob, --) stays out of its batch. Real git moves main; the door refuses it."""
     subprocess.run(['bash', '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     before = main_at(ahead / 's.git')
     subprocess.run(['bash', '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
@@ -1797,7 +1819,8 @@ def test_a_source_alone_git_sends_elsewhere_passes_the_push_door(root, ahead, mo
 
 @pytest.mark.skipif(not shutil.which('git') or not hasattr(os, 'mkfifo'), reason='needs git and a FIFO')
 def test_a_fifo_in_the_git_directory_does_not_hold_the_push_door(root, scratch, monkeypatch):
-    """Round 2 reads the root ref files: opening a FIFO there would block, and a hook that times out lets the tool run."""
+    """Round 2 read the root ref files, where opening a FIFO blocks and a hook that times out lets the tool run. Round 3 opens no
+    file: git reads the refs, and a git that does not finish in 5 s keeps the door shut."""
     os.mkfifo(scratch / 'c' / '.git' / 'ORIG_HEAD')
     monkeypatch.setattr(guards, 'TEMP', (str(scratch / 'c'),))
     done = []
@@ -1809,16 +1832,36 @@ def test_a_fifo_in_the_git_directory_does_not_hold_the_push_door(root, scratch, 
 
 @pytest.mark.skipif(not shutil.which('git'), reason='needs git')
 @pytest.mark.parametrize('word', ['t{} ', 't{}: ', ': '])
-def test_a_push_of_15000_refspecs_reads_in_under_a_second(root, ahead, monkeypatch, word):
+def test_a_push_of_15000_refspecs_makes_the_git_calls_a_push_of_one_makes(root, ahead, monkeypatch, word):
     """Gates push-refspecs at 9cb834a: one git call per refspec took 77 s for 15,000 tags (main: 63 s for 15,000 `:`), and a hook
-    that times out lets the tool run. The door reads the refs once per push: 15,000 words with 15,000 tags and feature:main, under 1 s."""
+    that times out lets the tool run. The door reads the refs once per push, so 15,000 words make the git calls one word makes."""
     subprocess.run(['git', 'update-ref', '--stdin'], cwd=ahead / 'c', check=True, capture_output=True, text=True,
                    input=''.join(f'create refs/tags/t{i} HEAD\n' for i in range(15_000)))
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
-    command = 'git push origin ' + ''.join(word.format(i) for i in range(15_000)) + 'feature:main'
-    start = time.monotonic()
-    assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', word
-    assert time.monotonic() - start < 1, word
+    calls, real = [], subprocess.run
+    monkeypatch.setattr(guards.subprocess, 'run', lambda argv, *a, **k: calls.append(argv) or real(argv, *a, **k))
+    counts = []
+    for n in (1, 15_000):
+        calls.clear()
+        command = 'git push origin ' + ''.join(word.format(i) for i in range(n)) + 'feature:main'
+        assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', word
+        counts.append(len(calls))
+    assert counts[0] == counts[1], (word, counts)
+
+
+@pytest.mark.skipif(not shutil.which('git'), reason='needs git')
+@pytest.mark.parametrize('stalls', ['--symbolic-full-name', 'for-each-ref'])
+def test_a_push_whose_refs_git_cannot_read_in_time_is_refused(root, ahead, monkeypatch, stalls):
+    """Round 3: git resolves the refs, so a git that cannot run or finish its read in 5 s leaves the door no evidence; it stays shut."""
+    real = subprocess.run
+
+    def run(argv, *a, **k):
+        if stalls in argv:
+            raise subprocess.TimeoutExpired(argv, 5)
+        return real(argv, *a, **k)
+    monkeypatch.setattr(guards.subprocess, 'run', run)
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    assert door_reached(guards.bash(root, 'git push origin feature', str(ahead / 'c'), 's1')) == 'push', stalls
 
 
 # hook-transcript: the harness's transcripts (.claude/projects) are written only by the harness

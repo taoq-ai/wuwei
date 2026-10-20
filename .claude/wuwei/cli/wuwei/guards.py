@@ -2,7 +2,6 @@
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
 read a command lets it through unless it names a door program (the audit still sees it)."""
 
-from contextlib import suppress
 from fnmatch import fnmatchcase
 import json
 from os.path import join, normpath, realpath
@@ -87,11 +86,11 @@ def deny(reason):
     return {'decision': 'deny', 'reason': reason}
 
 
-def _git(cwd, *args):
+def _git(cwd, *args, failed=''):  # failed: what a git that cannot run or finish in 5 s gives
     try:
         return subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
-        return ''
+        return failed
 
 
 def origin(cwd):  # owner/repo of the origin remote at cwd, or ''
@@ -152,16 +151,10 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def _sources(cwd):  # name -> the ref a source alone is sent to: each symbolic ref (a plain one names itself), then each root ref file
-    refs = dict(re.findall(r'(?m)^([^ \n]+) ([^ \n]+)$', _git(cwd, 'for-each-ref', '--format=%(refname) %(symref)')))
-    own, common = (_git(cwd, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir') + '\n\n').split('\n')[:2]
-    roots = [(Path(common), ''), (Path(common), 'main-worktree/'), *((w, f'worktrees/{w.name}/') for w in Path(common).glob('worktrees/*')),
-             (Path(own), '')] if own and common else []  # HEAD, ORIG_HEAD, main-worktree/HEAD, worktrees/<id>/HEAD; this tree's HEAD last
-    for f, at in [(f, at) for d, at in roots for f in d.glob('*') if f.is_file()]:  # two git calls and a few small files per push
-        with suppress(OSError), open(f, 'rb') as text:  # an error reads no ref: the text reading stands
-            if (head := text.read(256)).startswith(b'ref: '):
-                refs[at + f.name] = refs.get(t := head[5:].decode(errors='replace').strip(), t)
-    return refs
+def _sources(cwd, words):  # each symbolic ref's final target, and the ref git resolves each word to; None if git did not finish
+    listed = _git(cwd, 'for-each-ref', '--format=%(refname) %(symref)', failed=None)
+    found = _git(cwd, '-c', 'core.warnAmbiguousRefs=false', 'rev-parse', '--symbolic-full-name', '--revs-only', '--end-of-options', *words, failed=None)
+    return None if None in (listed, found) else (dict(re.findall(r'(?m)^([^ \n]+) ([^ \n]+)$', listed)), found.split())
 
 
 def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
@@ -174,8 +167,12 @@ def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a 
     deleting = any('delete'.startswith(n) for n in named)  # -d, -vd, --del
     tags = [n for n in named if n[1:] and ('tags'.startswith(n) or 'no-tags'.startswith(n))]  # the last wins; -n is --dry-run
     refspecs = operands[1:] or ([] if tags and tags[-1][0] == 't' else ['HEAD'])  # --tags alone sends tags alone
-    refs, head = _sources(cwd), current_branch(cwd)  # one read per push, whatever the number of refspecs
-    targets = ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches
+    # rev-parse reads no word after one it cannot resolve, where git push fails too; tag, ^x, globs and -- are not sources, and -- ends it
+    words = [r for r in refspecs if not re.search('^\\^|[:*]', r) and r not in ('tag', '--')] + ['main-worktree/--'] * ('--' in refspecs)
+    if (read := _sources(cwd, words)) is None:
+        return deny('push refused: git could not read the refs in 5 s, so the door cannot tell whether it reaches the default branch. Push fewer refspecs.')
+    (refs, targets), head = read, current_branch(cwd)  # one read per push, whatever the number of refspecs
+    targets += ['refs/heads/*'] if any('all'.startswith(n) or 'branches'.startswith(n) for n in named) else []  # --all, --branches
     for ref in refspecs:
         source, colon, destination = ref.rpartition(':')
         deleting = deleting or bool(colon and not source and destination)
