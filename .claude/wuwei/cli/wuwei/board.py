@@ -77,6 +77,7 @@ def compute(root, everything=False):
         out += adopted(root, repo, prs, keep)
         print(f'wuwei: reading {repo}: {len(prs)} open PRs', file=sys.stderr)
         links = [[pr for pr in prs if names(root, pr, repo, item['id'])] for item in mine]
+        any(links) and evidence.budget(root, repo)  # read once here: each pool thread would read it again (#1177)
         with concurrent.futures.ThreadPoolExecutor(8) as pool:  # the host calls dominate a cold board (#1121)
             read = dict(zip(want := {pr['number']: pr for linked in links for pr in linked}, pool.map(lambda pr: keep(evidence.gaps(root, repo, pr['number'], pr)), want.values())))
         for item, linked in zip(mine, links):

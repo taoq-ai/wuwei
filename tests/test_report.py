@@ -86,6 +86,79 @@ def test_a_failed_production_deploy_is_a_change_failure_restored_by_the_next_gre
     assert evidence.budget(root, 'acme/app') == {'cfr': 0.6, 'merged': 5, 'raised': True}
 
 
+def runs(fake, *rows):
+    """evidence.failures over deploys an hour apart, oldest first: (environment, statuses newest first)."""
+    for number, (environment, states) in enumerate(rows, 1):
+        deploy(fake, number, environment, (datetime.datetime(2026, 10, 10) + datetime.timedelta(hours=number)).isoformat() + 'Z', *states)
+    return evidence.failures('acme/app', [], fake.deployments)
+
+
+def test_a_green_deploy_a_later_one_superseded_still_ends_the_failed_run(fake):
+    found = runs(fake, ('Tinuiti Production', ['failure']), ('Tinuiti Production', ['inactive', 'success']),
+                 ('Tinuiti Production', ['success']))
+    assert found == (1, [('2026-10-10T01:00:00Z', '2026-10-10T02:00:00Z')])
+
+
+@pytest.mark.parametrize('state', ['in_progress', 'queued', 'pending'])
+def test_a_rerun_not_yet_finished_restores_nothing(fake, state):
+    assert runs(fake, ('production', ['failure']), ('production', [state])) == (1, [])
+
+
+def test_a_success_in_another_production_environment_leaves_the_run_open(fake):
+    assert runs(fake, ('eu Production', ['failure']), ('us Production', ['success'])) == (1, [])
+
+
+@pytest.mark.parametrize('environment', ['preprod', 'pre-prod', 'Pre-Production', 'pre_prod', 'nonprod', 'non-prod',
+                                         'non-production', 'productivity-sandbox', 'reproduce', 'staging', ''])
+def test_a_deploy_outside_production_is_no_change_failure_and_costs_no_status_read(fake, environment):
+    assert runs(fake, (environment, ['failure'])) == (0, [])
+    assert not [args for args in fake.calls if '/statuses' in args[1]]
+
+
+@pytest.mark.parametrize('environment', ['production', 'Tinuiti Production', 'PROD-eu', 'prod', 'prod_eu', 'eu-prod'])
+def test_a_failed_deploy_to_a_production_environment_is_a_change_failure(fake, environment):
+    assert runs(fake, (environment, ['failure'])) == (1, [])
+
+
+def test_github_s_production_flag_marks_production_whatever_the_name(fake):
+    deploy(fake, 1, 'live', '2026-10-10T01:00:00Z', 'failure')
+    fake.deployments[0]['production_environment'] = True
+    assert evidence.failures('acme/app', [], fake.deployments) == (1, [])
+
+
+@pytest.mark.parametrize('title', ['revertible: x', 'reverting x', 'fix: revert x'])
+def test_a_title_that_only_starts_with_the_letters_of_revert_is_no_revert(title):
+    assert evidence.failures('acme/app', [{'title': title}], []) == (0, [])
+
+
+@pytest.mark.parametrize('refused', ['deployments', 'a status'])
+def test_a_refused_deploy_read_still_counts_the_reverts_and_raises_the_tier(root, fake, refused):
+    """A token without Deployments read dropped the whole rate, so the tier was not raised for a day (CWE-636)."""
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    for number in range(1, 11):
+        merged(fake, number, 'Revert "x"' if number < 3 else f'feat: {number}', at)
+    deploy(fake, 1, 'production', at, 'failure')
+    if refused == 'deployments':
+        fake.deployments = None
+    else:
+        del fake.statuses['1']
+    assert evidence.budget(root, 'acme/app') == {'cfr': 0.2, 'merged': 10, 'raised': True}
+
+
+def test_the_rate_is_at_most_one_when_failed_runs_outnumber_merges(root, fake):
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    merged(fake, 1, 'feat: a', at)
+    for number in range(1, 4):
+        deploy(fake, number, f'production {number}', at, 'failure')
+    assert report.dora(root, window=28, today=ws.today())['acme/app']['change_failure_rate'] == 1.0
+    assert evidence.budget(root, 'acme/app')['cfr'] == 1.0
+
+
+def test_only_the_newest_hundred_production_deploys_cost_a_status_read(fake):
+    found = runs(fake, *[('production', ['failure'] if n == 1 else ['success']) for n in range(1, 151)])
+    assert found == (0, []) and len([args for args in fake.calls if '/statuses' in args[1]]) == 100
+
+
 def test_budget_and_dora_count_every_merge_in_the_window_and_stop_past_it(root, fake):
     inside, before = ((ws.now() - datetime.timedelta(days=days)).isoformat(timespec='seconds') for days in (1, 60))
     for number in range(1, 401):

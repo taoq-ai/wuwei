@@ -80,9 +80,9 @@ class FakeGh:
         self.files = {}
         self.default = 'main'
         self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
-        self.deployments = []
+        self.deployments = []  # None plays a refused read, as for releases
         self.releases = []
-        self.statuses = {}  # deployment id -> its status states, newest first
+        self.statuses = {}  # deployment id -> its status states, newest first; a missing id answers 404
         self.protection = {}  # base branch -> the contexts its protection requires, or a GhError; absent plays no protection
         self.rulesets = {}  # base branch -> the contexts its rulesets require
 
@@ -152,8 +152,12 @@ class FakeGh:
             wanted = 'open' if 'state=open' in query else 'closed'
             return self.page(query, [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted])
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/deployments/(\d+)/statuses', path)):
+            if m[1] not in self.statuses:
+                raise gh.GhError('HTTP 404: Not Found')
             return [{'state': state} for state in self.statuses[m[1]]]  # newest first, as GitHub lists them
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/(deployments|releases)', path)):
+            if getattr(self, m[1]) is None:
+                raise gh.GhError('HTTP 403: Resource not accessible by integration')
             return self.page(query, getattr(self, m[1]))
         if args[0] == 'api' and '/compare/' in path:
             older, newer = path.split('/compare/')[1].split('...')

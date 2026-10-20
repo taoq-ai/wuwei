@@ -1,5 +1,6 @@
 """A cold status reads each repository's PR evidence in parallel and says what it is reading (#1121)."""
 
+import datetime
 import json
 import os
 import threading
@@ -119,6 +120,18 @@ def test_a_board_reads_one_page_of_merged_prs_however_many_merged(root, fake):
     fake.calls.clear()
     board.compute(root)
     assert len([args for args in fake.calls if 'state=closed' in args[1]]) == 1
+
+
+def test_a_cold_board_reads_the_error_budget_once_and_at_most_a_hundred_deploy_statuses(root, fake, monkeypatch):
+    """Eight threads each read the budget, so 100 production deploys cost 800 status reads (#1177)."""
+    _eighteen(root, fake)
+    at = (ws.now() - datetime.timedelta(days=1)).isoformat(timespec='seconds')
+    fake.deployments = [{'id': n, 'environment': 'production', 'created_at': at} for n in range(150)]
+    fake.statuses = {str(n): ['success'] for n in range(150)}
+    calls = _slow(fake, monkeypatch)
+    board.compute(root)
+    assert sum('/statuses' in args[1] for args in calls) == 100
+    assert sum('/deployments?' in args[1] for args in calls) == 2
 
 
 def _hosted(calls):

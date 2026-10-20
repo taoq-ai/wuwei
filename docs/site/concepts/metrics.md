@@ -24,9 +24,11 @@ invisible.
 
 `wuwei report --dora` gives the four keys per repository from the code host alone: lead time (PR
 open to merge), deployment frequency (deployments, or releases when a repository never deploys),
-change failure rate (change failures over merges) and time to restore. A change failure is a revert
-(a merged PR whose title starts with the word revert) or a run of failed production deployments
-until the next green deployment of the same environment. Time to restore is the median time from the
+change failure rate (change failures over merges, at most 1) and time to restore. A change failure is
+a revert (a merged PR whose title starts with the word revert) or a run of failed production
+deployments until the next green deployment of the same environment. Production means an environment
+GitHub flags as production, or one named with prod or production as a word (not preprod, pre-prod or
+non-prod); only the newest 100 production deployments in the window are read. Time to restore is the median time from the
 first failed deployment of a run to that green one, unmeasured when nothing was restored.
 
 **Why:** reading the code host means the history is complete from day one, even for work done
