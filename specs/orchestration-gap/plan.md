@@ -9,8 +9,8 @@ The charter and the skill get a sentence each. No new ledger kind, config key, d
 
 ## Technical context
 
-Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,321 at main 8a92be70,
-3,326 at the head: +12 for the team row and the guard, -7 for `hook.running`). Tests in `tests/test_watch.py` (board) and `tests/test_hook.py` (Stop), with
+Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,322 at main 17ff289f,
+3,327 at the head: +12 for the team row and the guard, -7 for `hook.running`). Tests in `tests/test_watch.py` (board) and `tests/test_hook.py` (Stop), with
 `tests/test_status_perf.py` updated for the new row.
 
 ## Design
@@ -29,7 +29,7 @@ Stdlib Python 3.11+, runtime under `cli/wuwei/` at most 3,400 lines (3,321 at ma
 ## Constitution check
 
 Stdlib only, test first, shortest diff, no speculative abstraction (one helper with two callers),
-runtime budget held (+5 net at main 8a92be70; +12 before the removal).
+runtime budget held (+5 net at main 17ff289f; +12 before the removal).
 
 ## Measurements
 
@@ -54,3 +54,9 @@ runtime budget held (+5 net at main 8a92be70; +12 before the removal).
 - Mutants at 28c67389, with a `gh` stub that exits 1 first on PATH: 16 of 16 killed. The added
   mutant (a required check not run still owes a gate seat) survived the first run at 90dcfb89,
   where the case shared a test with a cached empty required-check read; it has its own test now.
+- Fix round 1, after the merge of main at 17ff289f (#1184, #1193, #1194), at head d19c13cf: route
+  differential against 17ff289f, corpus sha256
+  4f6e25d0864d7922f17515d94a99be77590c11816113c273f211626318be4d49, 263 routes, 544 cases, 5 moved,
+  the same five as before. SessionStart 40 items now keeps the team row (9,523 characters, nothing
+  left out; main 9,387). Mutants with the `gh` stub on PATH and no session in the environment: 17
+  of 17 killed, the new one putting the team row last among them.
