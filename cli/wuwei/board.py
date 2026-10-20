@@ -29,6 +29,10 @@ def replies(root):
     out, now = [], ws.now().isoformat(timespec='seconds')
     for item in plan.items(root):
         if item.get('kind') == 'reply' and item.get('status') == 'open':
+            prs, opened = evidence.refs(item['where']), item.get('opened') or item.get('added', '')
+            if prs and (row := next((r for r in ws.rows(root, 'sent') if r['ts'] >= opened and prs & set(r['data'].get('refs', ()))), None)):
+                plan.mark(root, item['id'], 'done', f'sent naming {", ".join(sorted(prs))} via {row["data"].get("tool")}')
+                continue  # a send that names the owe's PR, recorded in any session (#1169)
             when = (f'overdue since {item["due"][:16]}' if item['due'] < now else f'due {item["due"][:16]}')
             out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                         'gaps': [evidence.gap(f'reply owed to {item["who"]} in {item["where"]}, {when}')]})
@@ -62,7 +66,9 @@ def compute(root, everything=False):
         mine = [item for item in open_items if item.get('repo') == repo]
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
-            prs = evidence._cached(root, 'prs-' + repo.replace('/', '__'), lambda: gh.open_prs(repo), TTL)
+            slug = repo.replace('/', '__')  # a list read also drops PR and compare entries a day old (#1161)
+            prs = evidence._cached(root, 'prs-' + slug, lambda: ws.cache_prune(root, 86400, f'pr-{slug}-*', f'cmp-{slug}-*')
+                                   or gh.open_prs(repo), TTL)
             merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,

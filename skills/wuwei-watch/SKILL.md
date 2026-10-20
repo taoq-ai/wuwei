@@ -24,7 +24,9 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
 5. Keep the flow going: an approved item with no pull request and no running seat gets its builder,
    highest score first. A pushed branch whose builder handed back gets its draft PR and its gates.
    A draft whose gates passed turns ready with reviewers. An operations item (`run:` on the board)
-   gets its run checked and its evidence recorded with `wuwei plan run <id> --reason "..."`. When
+   gets its run checked and its evidence recorded with `wuwei plan run <id> --reason "..."`. A run
+   row that names a Codex job gets the job checked: if it completed or failed, record the outcome
+   and its `HANDOFF.md` path the same way. When
    the queue is empty, run a plan pass from the goals (`/wuwei-run`).
 6. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
    `nothing changed` and end the turn without a message to the owner.
