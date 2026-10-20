@@ -27,6 +27,11 @@ An answer or stop the transcript does not show is recorded as `answer.unconfirme
 confirms an answer leaves the answer's `answer.pending` row, which reads as unconfirmed. An error while
 the next call confirms an answer is a `hook.error`; the doors still judge that call.
 
+**Seat reports outside auto mode:** Claude Code refuses SubagentHandback there, so SubagentStop keeps
+each seat's last message under `.wuwei/reports/`. The planner's next tool call or Stop gives a kept
+report once, and only when no task notification in the session transcript already carried that
+seat's result. A report the notification carried is not given again, and the Stop does not block on it.
+
 In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
 see [cloud sessions](cloud.md).
 

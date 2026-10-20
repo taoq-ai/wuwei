@@ -1092,9 +1092,19 @@ def lead_stop(root, transcript, mode='default', session='s1'):
                                                        'permission_mode': mode, 'agent_transcript_path': transcript, 'cwd': str(root)}))
 
 
-def planner_call(root, tool='Read', data=None, session='s1'):
-    return hook.handle(root, 'PreToolUse', {'session_id': session, 'cwd': str(root), 'tool_name': tool,
-                                           'tool_input': data or {'file_path': str(root / 'README.md')}})
+def planner_call(root, tool='Read', data=None, session='s1', event='PreToolUse'):
+    return hook.handle(root, event, {'session_id': session, 'cwd': str(root), 'tool_name': tool, 'transcript_path': str(
+        ws.PROJECTS / '-repo' / f'{session}.jsonl'), 'tool_input': data or {'file_path': str(root / 'README.md')}})
+
+
+def notified(agent, text, session='s1'):
+    """The harness's task notification for a seat's stop, as Claude Code 2.1.299 enqueues it in the session transcript
+    (2026-10-20): the result escaped for &, < and >."""
+    result = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    with (ws.PROJECTS / '-repo' / f'{session}.jsonl').open('a', encoding='utf-8') as out:
+        out.write(json.dumps({'type': 'queue-operation', 'operation': 'enqueue', 'sessionId': session, 'content':
+                              f'<task-notification>\n<task-id>{agent}</task-id>\n<status>completed</status>\n'
+                              f'<summary>Agent finished</summary>\n<result>{result}</result>\n</task-notification>'}) + '\n')
 
 
 @pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
@@ -1154,6 +1164,36 @@ def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
     assert REPORT_1160 in note and 'second round done' in note
 
+
+
+REPORT_1198 = 'Verdict: PASS at <head> & CI green.\nBlocked: none\nGap: none'
+
+
+def test_a_report_the_harness_already_notified_is_not_given_again_and_stays_kept(root, tmp_path):
+    """Outside auto mode Claude Code's task notification carries a background seat's result (#1198)."""
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    notified('lead1', REPORT_1198)
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+    assert [p.read_text() for p in (root / ws.DIR / 'reports').glob('*.md')] == [REPORT_1198]
+
+
+def test_two_seats_each_report_reaches_the_planner_once_across_its_call_and_stop(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'lead2', 'agent_type': 'wuwei:lead',
+                                                'agent_transcript_path': seat_transcript(tmp_path / 'lead2.jsonl'), 'cwd': str(root)}))
+    notified('lead1', REPORT_1198)
+    notified('lead2', 'an earlier interim report')  # another result of the same seat is no delivery of this one
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert REPORT_1160 in note and REPORT_1198 not in note and '## lead lead2' in note
+    assert planner_call(root, event='Stop') is None  # given: the Stop neither lists nor blocks on it
+
+
+def test_a_stop_whose_transcript_is_not_the_harness_one_still_gets_the_report(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    notified('lead1', REPORT_1198)
+    (tmp_path / 'forged.jsonl').write_bytes((ws.PROJECTS / '-repo' / 's1.jsonl').read_bytes())
+    out = hook.handle(root, 'Stop', {'session_id': 's1', 'cwd': str(root), 'transcript_path': str(tmp_path / 'forged.jsonl')})
+    assert out['decision'] == 'block' and REPORT_1198 in out['reason']
 
 # hook-transcript: an owner answer and a seat stop count only when the session transcript shows them (#962)
 

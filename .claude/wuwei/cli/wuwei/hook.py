@@ -3,6 +3,7 @@ lets the work go on and records why; a door call it fails on is refused."""
 
 import datetime
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -457,8 +458,8 @@ def codex(payload):
 
 
 def deliver(root, event, payload, out, said):
-    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode; plain text never reaches the
-    caller) and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
+    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode) unless its task notification
+    gave them, and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
     if said and 'permissionDecisionReason' in spec:  # a refused call still carries the notes of the answers recorded on it
         spec['permissionDecisionReason'] += '\n\n' + '\n'.join(said)
@@ -472,8 +473,10 @@ def deliver(root, event, payload, out, said):
             os.replace(path, kept := pending.parent / path.name)  # one hook wins a race; the other skips it
         except OSError:
             continue
-        _, agent, role, _ = kept.stem.split('--', 3)
-        found.append((agent, f'## {role} {agent} (kept at {kept})\n{kept.read_text(encoding="utf-8")}'))
+        (_, agent, role, _), text = kept.stem.split('--', 3), kept.read_text(encoding='utf-8')
+        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # the harness's notifications
+        if not any(isinstance(r, dict) and text.strip() in html.unescape(str(r.get('content'))) for r in rows):  # gave none (#1198)
+            found.append((agent, f'## {role} {agent} (kept at {kept})\n{text}'))
     if not said and not found:
         return out
     note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so these seats' reports never reached you; their "
