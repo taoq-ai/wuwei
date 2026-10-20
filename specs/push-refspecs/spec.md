@@ -138,9 +138,9 @@ recursion, `core.hooksPath`) are item push-git-runs.
   folder). Round 3 asks git instead: one `git -c core.warnAmbiguousRefs=false rev-parse
   --symbolic-full-name --revs-only --end-of-options <words>` prints the full name git resolves
   each colon-less word to, through the same ref code git push uses. The guard opens no file in the
-  git directory. One word and 15,000 words make the same git calls; the lead's sketch read 15,000
-  tag words in 0.8 to 1.2 s on loose refs and 0.2 to 0.3 s packed (git 2.54), where round 1 took
-  74 s.
+  git directory. One word and 15,000 words make the same git calls. At the head, 15,000 tag words
+  read in 1.2 to 1.3 s on loose refs and 0.4 s packed (git 2.54, load 6 to 7 on 10 cores), where
+  round 1 took 74 s.
 - Q: Why keep for-each-ref when rev-parse resolves the word? A: rev-parse takes the first rule
   that matches, a root ref before `refs/heads/<name>`; git push matches the word among the local
   refs first. With a root `ZZ` naming feature beside `refs/heads/ZZ`, a symbolic ref to main, git

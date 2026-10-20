@@ -41,7 +41,7 @@ No open finding at CRITICAL or HIGH.
 | FR-002 | T004, T008 | test_a_refspec_reaching_the_default_branch_by_git_rules_meets_the_push_door, test_a_push_from_main_reads_at_and_tags_as_git_does |
 | FR-003 | T004 | test_a_refspec_refusal_keeps_the_push_door_text |
 | FR-004 | T006, T011, T016 | routes differential: 0 of main's 257 move; 16 rows added, 11 move |
-| FR-005 | T007, T010, T017 | probe at the head: 21,282 generated, 21,254 ran git push, 80 holes, all in the force class and the same at main (digit clusters, a separate item); 1,064 at main |
+| FR-005 | T007, T010, T017, T025 | probe at the head (round 3): 22,698 generated, 22,670 ran git push, 80 holes, all in the force class and the same at main (digit clusters, a separate item); 1,420 at main; 0 regressions |
 | FR-006 | T005, T015 | design.md, doors.md, SECURITY.md; test_the_vendored_plugin_matches_the_tree_it_was_copied_from |
 | FR-007 | T014 | test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push, test_a_refspec_git_resolves_to_main_meets_the_push_door |
 | FR-008 | T014, T020, T022 | test_a_refspec_git_resolves_to_main_meets_the_push_door, test_a_source_alone_git_sends_elsewhere_passes_the_push_door; probe rootfile and stopper classes |

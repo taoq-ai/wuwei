@@ -35,3 +35,11 @@
 - [x] T019 Merged origin/main 5a33509, then dc9aad9; tests first: 7 valued rows from main (`--exec`, `--receive-pack`, `--rece`, `--recurse-submodules`, `--recu`), `--tags -n`, `-vd`, the ambiguous `origin`, two later end markers, and a push of 15,000 refspecs in under 1 s; 7 red at 9cb834a
 - [x] T020 `_sources` reads the refs once per push; every candidate of git's ref rules counts; the first end marker only; the current branch read once; green, with rows for root refs, remote-tracking symbolic refs, a worktree id that is not its folder's name, a linked worktree's own HEAD, and a FIFO in the git directory
 - [x] T021 Route corpus read through main, 9cb834a and the head; probe with the round 2 classes; the gates' probe re-run; non-door checks with the new shapes; mutants of each name set member and each candidate
+
+## Phase 6: Fix round 3 (gates at aa63d3b)
+
+- [x] T022 Merged origin/main 17ff289 with a plain merge; tests first: 18 real-git rows for the security gate's root ref forms and the words that stop rev-parse, `tag v1` as a pass row, a call-count test in place of the 1 s bound, a fail-shut test per ref read, a `--del` text row; 16 red at the merged round 2 guard
+- [x] T023 `_sources(cwd, words)`: one `for-each-ref` and one batched `rev-parse --symbolic-full-name` (`core.warnAmbiguousRefs=false`, `--end-of-options`); `tag`, `^x`, globs and `--` out of the batch, `main-worktree/--` last; a read that cannot run or finish in 5 s refuses; the root file reader and `suppress` removed; green
+- [x] T024 Spec, plan, analysis, checklist, SECURITY.md (reftable limit removed), design.md and doors.md (a push whose refs git cannot read in 5 s)
+- [x] T025 Probe: rootfile (240) and stopper (194) classes; the whole probe, main 17ff289 against the head: 22,698 generated, 22,670 ran the push, 80 holes at the head (force digit clusters, the same at main), 1,420 at main, 0 regressions
+- [x] T026 Route corpus through main, the merged round 2 guard and the head; mutants of each batch rule; non-door checks with round 3's push shapes; runtime 3,340 against 3,322 (+18)
