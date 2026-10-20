@@ -86,6 +86,22 @@ def test_a_pr_naming_two_items_links_both_and_closes_both_once_merged(root, fake
     assert plan.find(root, 'A')['status'] == 'done' and plan.find(root, 'B')['status'] == 'done'
 
 
+def test_a_run_item_stays_open_with_run_owed_when_its_pr_merges_until_plan_done(root, fake):
+    from wuwei import __main__ as cli
+    import os
+    write_plan(root, [_item('R', kind='run'), _item('B')])
+    fake.prs['9'] = make_pr(9, body='WUWEI-Item: R\nWUWEI-Item: B', state='MERGED')
+    fake.prs['9']['mergedAt'] = ws.now().isoformat(timespec='seconds')
+    rows = {r['item']: r for r in board.compute(root)}
+    assert plan.find(root, 'R')['status'] == 'open' and plan.find(root, 'B')['status'] == 'done'
+    assert rows['R']['gaps'][0]['text'] == 'run: code merged as acme/app#9, run owed'
+    board.compute(root)
+    assert len([r for r in ws.rows(root, 'item.open') if r['data']['id'] == 'R']) == 1
+    os.chdir(root)
+    assert cli.main(['plan', 'done', 'R', '--reason', 'run: head live in production']) == 0
+    assert plan.find(root, 'R')['status'] == 'done'
+
+
 def test_an_item_whose_pr_just_merged_closes_despite_a_stale_merged_cache(root, fake):
     import os
     write_plan(root, [_item('C')])
