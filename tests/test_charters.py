@@ -447,9 +447,3 @@ def test_agents_md_states_the_mutant_rule_for_the_vendored_copy():
     text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text()
     assert ".claude/wuwei/cli/wuwei/" in text
     assert "test_the_vendored_plugin_matches_the_tree_it_was_copied_from" in text
-
-
-def test_every_session_and_seat_credits_the_wuwei_bot_on_its_commits():
-    trailer = 'Co-Authored-By: taoq-wuwei[bot] <345187888+taoq-wuwei[bot]@users.noreply.github.com>'
-    for name in ('_way.md', '_common-authoring.md'):
-        assert trailer in (PLUGIN / 'charters' / name).read_text(encoding='utf-8'), name

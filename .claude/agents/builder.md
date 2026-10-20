@@ -113,8 +113,6 @@ These apply whenever you draft, post, commit or propose a change.
    factual language, with no emoji or em dash. Verify every count, link, status and claim.
 2. Commit with the repository's configured identity and conventional commits. Never rewrite
    published history.
-   End every commit message with this trailer, after any others:
-   `Co-Authored-By: taoq-wuwei[bot] <345187888+taoq-wuwei[bot]@users.noreply.github.com>`.
 3. A rule change is a proposal for the steward's retro, never an edit to a charter in passing.
 
 ## Writing for a person
