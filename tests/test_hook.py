@@ -340,6 +340,40 @@ def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
     assert stop(root, session='s2')['decision'] == 'block'
 
 
+def test_a_seat_another_session_left_running_never_silences_the_stop(root, fake):
+    plan_one(root)
+    ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'old', 'session': 'gone'})  # died without a stop
+    assert stop(root, session='s2')['decision'] == 'block'
+
+
+def test_the_same_orchestration_state_reminds_once_while_the_pr_count_moves(root, fake):
+    write_plan(root, [{'id': f'I-{n}', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, 5)])
+    for n in range(1, 5):
+        fake.prs[str(40 + n)] = make_pr(number=40 + n, head=f'{n}' * 40, body=f'WUWEI-Item: I-{n}')
+    assert 'team: orchestration: open PRs with no shepherd seat running' in stop(root)['reason']
+    write_plan(root, [{'id': f'I-{n}', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, 4)])
+    del fake.prs['44']
+    ws.cache_put(root, 'board', None)
+    assert len([r for r in board.compute(root) if r['pr']]) == 3 and stop(root) is None
+
+
+@pytest.mark.parametrize('count', [10, 29, 40, 60])
+def test_the_team_row_survives_the_stop_and_session_start_cuts(root, fake, monkeypatch, count):
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID', raising=False)
+    write_plan(root, [{'id': f'I-{n}', 'title': f'change {n} with a title as long as a real plan item carries it, promise and all',
+                       'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'} for n in range(1, count + 1)])
+    for n in range(1, count + 1):
+        fake.prs[str(100 + n)] = make_pr(number=100 + n, head=f'{n:040d}', body=f'WUWEI-Item: I-{n}')
+    assert '- team: orchestration: open PRs with no shepherd seat running' in stop(root)['reason']
+    assert stop(root) is None
+    start = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+    assert '- team seats: orchestration: open PRs with no shepherd seat running' in start
+    left = re.search(r'([0-9]+) more items? left out', start)
+    assert (int(left[1]) if left else 0) == count - start.count('\n- I-')
+
+
 def test_a_rejected_agent_launch_records_no_seat(root):
     assert pre(root, 'Agent', {'subagent_type': 'wuwei:nobody', 'prompt': 'Build I-1'}) is None
     assert ws.rows(root, 'seat.started') == []
@@ -362,23 +396,23 @@ def test_only_an_agent_launch_with_a_string_id_records_a_seat(root, tool, respon
                                              'tool_input': {'subagent_type': 'wuwei:builder'},
                                              'tool_response': response}) is None
     assert ws.rows(root, 'seat.started') == [] and ws.rows(root, 'hook.error') == []
-    assert hook.running(root) == 0
+    assert board.running(root, 's1') == set()
 
 
 def test_running_skips_rows_without_a_string_agent_id(root):
-    ws.record(root, 'seat.started', {'role': 'builder'})
-    ws.record(root, 'seat.started', {'role': 'builder', 'agent': ['a1']})
-    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': ['a1']})
-    assert hook.running(root) == 0
+    ws.record(root, 'seat.started', {'role': 'builder', 'session': 's1'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': ['a1'], 'session': 's1'})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': ['a1'], 'session': 's1'})
+    assert board.running(root, 's1') == set()
 
 
 def test_running_counts_seats_by_agent_id_not_rows(root):
     for _ in range(3):
-        ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'a1'})
-        ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1'})
-    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1'})
-    ws.record(root, 'seat.started', {'role': 'planner', 'agent': 'a2'})
-    assert hook.running(root) == 1
+        ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'a1', 'session': 's1'})
+        ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1', 'session': 's1'})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1', 'session': 's1'})
+    ws.record(root, 'seat.started', {'role': 'planner', 'agent': 'a2', 'session': 's1'})
+    assert board.running(root, 's1') == {'planner'}
 
 
 def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
@@ -1308,9 +1342,10 @@ def test_a_forged_seat_stop_records_no_stop_no_attestation_and_no_report(root, s
 
 
 def test_an_unconfirmed_seat_no_longer_counts_as_running(root):
-    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'aforged'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'aforged', 'session': 's1'})
+    assert board.running(root, 's1') == {'builder'}
     hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'aforged', 'agent_type': 'builder', 'cwd': str(root)})
-    assert hook.running(root) == 0
+    assert board.running(root, 's1') == set()
 
 
 @pytest.mark.parametrize('variable', ['HOME', 'CLAUDE_CONFIG_DIR'])

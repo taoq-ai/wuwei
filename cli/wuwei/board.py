@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import datetime
+import os
 import sys
 
 from wuwei import evidence, gh, plan, ws
@@ -52,6 +53,13 @@ def adopted(root, repo, prs, keep):
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 
+def running(root, session):
+    """Roles of the seats the session started today with no stop or unconfirmed row: a dead session's never count (1180-probe)."""
+    gone = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k, ws.today()) if isinstance(a := r['data'].get('agent'), str)}
+    return {r['data'].get('role') for r in ws.rows(root, 'seat.started', ws.today()) if session and r['data'].get('session') == session
+            and isinstance(a := r['data'].get('agent'), str) and a not in gone}
+
+
 def names(root, pr, repo, item_id):
     named = {i.lower() for i in evidence.ITEM.findall(pr.get('body') or '')} or {(evidence.item_for(root, pr, repo) or {}).get('id', '').lower()}
     return item_id.lower() in named
@@ -96,7 +104,11 @@ def compute(root, everything=False):
     for item in (i for i in open_items if not i.get('repo')):  # a reply has no repository; see replies()
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
-    return out
+    seats, prs = running(root, os.environ.get('CLAUDE_CODE_SESSION_ID')), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
+    owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
+    duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
+        evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
+    return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
 
 
 def rows(root):
