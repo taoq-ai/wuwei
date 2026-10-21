@@ -278,3 +278,20 @@ def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, 
     assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == [f'run: Codex builder in /wt/a; {shown}']
     assert cli.main(['plan', 'run', 'A', '--reason', 'job done, HANDOFF read']) == 0
     assert plan.find(root, 'A')['job'] == str(job)
+
+
+def test_a_job_file_read_while_the_companion_writes_it_is_read_again(root, fake, monkeypatch, tmp_path):
+    """#1212: a read that meets the companion's half-written job file shows the job's state, never state unreadable."""
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores())
+    plan.approve(root, 'Approve')
+    path = codex_job(tmp_path, 'running')
+    whole = path.read_text()
+    assert cli.main(['plan', 'run', 'A', '--job', str(path)]) == 0
+    path.write_text(whole[:40])  # the companion truncated the file and has not finished writing it
+
+    def written(seconds):
+        path.write_text(whole)
+    monkeypatch.setattr(board.time, 'sleep', written)
+    assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == ['run: job running']

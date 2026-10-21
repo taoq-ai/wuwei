@@ -5,6 +5,7 @@ import datetime
 import os
 import re
 import sys
+import time
 
 from wuwei import evidence, gh, plan, ws
 
@@ -126,7 +127,8 @@ def compute(root, everything=False):
 
 
 def job(root, path):  # only the Codex companion job file the planner registered with plan run --job; no plugin folder is scanned (#1201)
-    said = (o.rstrip() if isinstance(o := r.get('rawOutput'), str) else '') if isinstance(r := (found := d if isinstance(d := ws.read_json(os.path.join(root, path)), dict) else {}).get('result'), dict) else ''
+    found = next((d for _ in range(3) if isinstance(d := ws.read_json(os.path.join(root, path)), dict) or time.sleep(0.2)), {})  # mid-write: again (#1212)
+    said = (o.rstrip() if isinstance(o := r.get('rawOutput'), str) else '') if isinstance(r := found.get('result'), dict) else ''
     status = 'asked a question' if (s := found.get('status')) == 'completed' and said.endswith('?') else s if isinstance(s, str) and s else 'state unreadable'
     return f'job {status}' + ''.join(f', handoff {w}' for w in [w for w in (w.strip('`\'"<>[]*,.:;') for w in said.replace('(', ' ').replace(')', ' ').split()) if w.endswith('HANDOFF.md')][-1:])
 
