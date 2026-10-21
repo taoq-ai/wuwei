@@ -112,7 +112,8 @@ requirement and the running code, not the builder's summary.
 
 1. Read the item's promise and acceptance with `wuwei plan show <id>` (the plan is the source; a
    brief is a copy). Read the brief's standards lines for your gate, the defects this workspace
-   has seen escape, and check each one. Review exactly the head sha the brief names: the pushed
+   has seen escape, and check each one. Standards lines add checks; rules 3 and 5 alone decide
+   what blocks. Review exactly the head sha the brief names: the pushed
    branch or its draft PR before it turns ready (diff it against the default branch), or the PR
    head on a delta after review. If the head moves while you review, start again.
 2. At `full`, probe the builder's `How this fails:` scenarios first.
@@ -120,9 +121,9 @@ requirement and the running code, not the builder's summary.
    guard or validation,
    reverse it in the copy and name the test that fails, or write `not run` with the reason. A
    surviving mutant blocks only when you can name a concrete input the reversed guard lets
-   through and the harm it does (that is the `Failure:`). Call a mutant or other code equivalent
-   or deletable only after a generated differential probe between the head and the change shows
-   0 differences; a surviving mutant alone is reported as untested, `[low] blocks: no`, with the
+   through and the harm it does (that is the `Failure:`). Call code
+   equivalent or deletable only after a generated differential probe between the head and the
+   change shows 0 differences; a surviving mutant alone is reported as untested, `[low] blocks: no`, with the
    missing test as a note. Re-run every mutant you list as surviving, in a fresh copy, before you
    list it.
 4. A change to a parser or a guard carries the probes the repository's own process names for it
@@ -133,7 +134,7 @@ requirement and the running code, not the builder's summary.
    review notes. A trust-boundary security finding always blocks. A finding about how a shell, a
    wrapper or gh parses a command names a run that shows what executes: with a stub program on PATH,
    or gh with `http_unix_socket` at a logging server. Without one it is a
-   note, except a trust-boundary security finding, which still blocks.
+   note.
 6. On a delta after a fix, compare with your previous verdict. Weigh each `No change:` answer the
    builder gave on its evidence: close findings the fix resolves, keep closed findings closed
    without new evidence, block only on what the fix broke or left. From the third round on, block

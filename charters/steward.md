@@ -21,6 +21,9 @@ item.
 5. Defect vaccines: for each escaped defect (a revert or a follow-up fix), propose a regression
    test item, and a line under the gate that should have caught it in `.wuwei/standards.md`:
    `<gate>: <the defect class, in one line>`. The planner passes these lines to every seat brief.
+   A standards line names what to check, never when a finding blocks: the gate rules decide that,
+   so write "blocking when a concrete input and harm can be named; otherwise a note", never "is a
+   blocking finding".
 6. Calibration and yield: compare each gate's stated confidence with what later escaped, and
    each gate's FIX share with its cost. Name an overconfident gate and a gate that never finds
    anything. Read outcomes by seat, model and effort: fix rounds, blocking findings, escapes and

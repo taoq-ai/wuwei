@@ -75,6 +75,13 @@ def test_equivalence_needs_a_differential_probe_with_0_differences():
     assert 'A mutant that is equivalent' not in text
 
 
+@pytest.mark.parametrize('gate', ['arch', 'goal', 'quality', 'security'])
+def test_a_standards_line_adds_checks_and_the_gate_rules_alone_decide_what_blocks(gate):
+    """#1213: a standards line saying an untested guard is a blocking finding met rule 3, and gates split."""
+    assert 'Standards lines add checks; rules 3 and 5 alone decide what blocks.' in _flat(f'agents/sentinel-{gate}.md')
+    assert 'A standards line names what to check, never when a finding blocks' in _flat('agents/steward.md')
+
+
 def test_the_planner_forwards_the_verdicts_for_one_head_together():
     text = _flat('charters/planner.md')
     assert ('every gate verdict for a head goes to the builder together, once the last gate for that '
