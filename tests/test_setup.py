@@ -79,6 +79,7 @@ def test_equivalence_needs_a_differential_probe_with_0_differences():
 def test_a_standards_line_adds_checks_and_the_gate_rules_alone_decide_what_blocks(gate):
     """#1213: a standards line saying an untested guard is a blocking finding met rule 3, and gates split."""
     assert 'Standards lines add checks; rules 3 and 5 alone decide what blocks.' in _flat(f'agents/sentinel-{gate}.md')
+    assert 'Without one it is a note; a trust-boundary security finding still blocks.' in _flat(f'agents/sentinel-{gate}.md')
     assert 'A standards line names what to check, never when a finding blocks' in _flat('agents/steward.md')
 
 

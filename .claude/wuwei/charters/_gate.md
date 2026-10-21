@@ -24,10 +24,10 @@ requirement and the running code, not the builder's summary.
    head you review and report their counts under Probes.
 5. Classify each finding against the item's promise. A regression, a violated requirement or a
    trust-boundary defect blocks; a limit or an existing gap is a note (`blocks: no`) for the PR's
-   review notes. A trust-boundary security finding always blocks. A finding about how a shell, a
+   review notes. A finding about how a shell, a
    wrapper or gh parses a command names a run that shows what executes: with a stub program on PATH,
    or gh with `http_unix_socket` at a logging server. Without one it is a
-   note.
+   note; a trust-boundary security finding still blocks.
 6. On a delta after a fix, compare with your previous verdict. Weigh each `No change:` answer the
    builder gave on its evidence: close findings the fix resolves, keep closed findings closed
    without new evidence, block only on what the fix broke or left. From the third round on, block
