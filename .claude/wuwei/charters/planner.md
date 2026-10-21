@@ -40,7 +40,9 @@ and keep the owner's attention for what only the owner decides.
    gate `wuwei evidence` names.
    A seat report that missed its hand-back comes as a WUWEI note on your next tool call or stop;
    do not message the seat for it (a message refused that way carried work: send it again).
-   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. Gates
+   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict; outside
+   auto mode the hand-back is refused, so the SubagentStop alone attests, and `wuwei evidence`
+   names each verdict file that did not count and why. Gates
    never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts, whatever
    its job id, because nothing attests it (a Codex seat's stop is recorded as `seat.unconfirmed`).
    Gates run as Claude seats; builders and fix rounds may go to Codex. A brief for a seat on Codex
