@@ -855,6 +855,21 @@ def test_a_yes_to_a_goal_met_question_records_the_goal_as_met(root):
     assert 'Met goals: G-2.' in report.day(root)
 
 
+@pytest.mark.parametrize('said, met', [("No, move the date but let's try to finish today.", False),
+                                       ('Yes, and close the item too', True), ('Nope', False)])
+def test_a_free_text_goal_answer_counts_as_its_first_word_and_keeps_the_rest(root, said, met):
+    """#1211: the owner answered a goal question in the free-text field; the answer is recorded and not asked again."""
+    import datetime
+    from wuwei import view
+    dated = (ws.now() - datetime.timedelta(days=1)).date().isoformat()
+    (root / ws.DIR / 'goals.md').write_text(f'## G-1\nOutcome: ship\nDate: {dated}\n')
+    assert view.goal_status(root)[0] == [('G-1', dated)]
+    question = 'goal: G-1 met? 2 of 3 PRs merged.'
+    answer(root, question, said)
+    assert [(r['data']['approved'], r['data']['answer']) for r in ws.rows(root, 'ruling')] == [(met, said)]
+    assert view.goal_status(root)[0] == []
+
+
 def goal_met_probe(root, monkeypatch):
     """Generated: prefixes x ids x joins x tails x answers, each asked through guards.pre_tool and answered through
     the hook. A question the guard refuses, or a ruling other than the one asked (goal id, yes or no), is a hole.
