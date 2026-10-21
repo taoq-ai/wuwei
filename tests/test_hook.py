@@ -448,10 +448,29 @@ def write_verdict(root, text, rel=VERDICT_1067):
     return path
 
 
-def handback(root, message, agent_type='wuwei:sentinel-quality', agent='rev1'):
+def handback(root, message, agent_type='wuwei:sentinel-quality', agent='rev1', mode=None):
     return hook.handle(root, 'PreToolUse', {'session_id': 's1', 'agent_id': agent, 'agent_type': agent_type,
                                            'cwd': str(root), 'tool_name': 'SubagentHandback',
-                                           'tool_input': {'message': message}})
+                                           'tool_input': {'message': message}, **({'permission_mode': mode} if mode else {})})
+
+
+@pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
+def test_a_handback_outside_auto_mode_is_answered_with_the_plain_text_rule_once(root, mode):
+    """#1208: the harness refuses SubagentHandback outside auto mode; the seat is told to end with plain text, never to retry."""
+    out = handback(root, REPORT_1160, agent_type='wuwei:lead', mode=mode)['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'plain text' in out['permissionDecisionReason']
+    assert 'hand back again' not in out['permissionDecisionReason']
+
+
+@pytest.mark.parametrize('mode', ['auto', None, 'a mode WUWEI does not know'])
+def test_a_handback_in_auto_mode_or_an_unknown_mode_passes(root, mode):
+    assert handback(root, REPORT_1160, agent_type='wuwei:lead', mode=mode) is None
+
+
+def test_a_gate_whose_verdict_needs_fixing_outside_auto_mode_is_not_sent_back_to_the_handback(root):
+    write_verdict(root, verdict_text(verdict='FIX', findings='- [high] the retry loop never ends'))
+    reason = handback(root, f'Verdict file: {VERDICT_1067}', mode='bypassPermissions')['hookSpecificOutput']['permissionDecisionReason']
+    assert 'the retry loop never ends' in reason and 'plain text' in reason and 'hand back again' not in reason
 
 
 def test_a_malformed_verdict_denies_the_handback_with_its_shape_errors(root):
@@ -1158,6 +1177,16 @@ def test_a_guard_decision_passes_unchanged_and_the_report_waits_for_the_next_cal
     out = planner_call(root, 'Edit', {'file_path': str(root / ws.DIR / 'ledger' / 'x.jsonl')})['hookSpecificOutput']
     assert out['permissionDecision'] == 'deny' and REPORT_1160 not in out['permissionDecisionReason']
     assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_a_seat_that_stops_again_with_the_same_report_keeps_it_once(root, tmp_path):
+    """#1208: a seat looping on a refused hand-back repeats its report; the planner gets it once, its Stop is not blocked again."""
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    assert planner_call(root)['hookSpecificOutput']['additionalContext'].count(REPORT_1160) == 1
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    assert planner_call(root, event='Stop') is None
+    assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
 
 
 def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
