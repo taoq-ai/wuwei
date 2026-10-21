@@ -53,7 +53,8 @@ def pr(repo, number):
     base = f'repos/{repo}/pulls/{number}'
     data = run(['api', base])
     head = data['head']['sha']
-    checks = run(['api', f'repos/{repo}/commits/{head}/check-runs?per_page=100']).get('check_runs', [])
+    checks = {c['name']: c for c in sorted(run(['api', f'repos/{repo}/commits/{head}/check-runs?per_page=100']).get(
+        'check_runs', []), key=lambda c: c.get('id') or 0)}.values()  # the newest run of each check decides (#1210)
     statuses = run(['api', f'repos/{repo}/commits/{head}/status']).get('statuses', [])
     return {**_summary(data), 'mergeableState': data.get('mergeable_state'),
             'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0),
