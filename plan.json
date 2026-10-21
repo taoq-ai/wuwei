@@ -99,31 +99,6 @@
    "approved": true
   },
   {
-   "id": "1199",
-   "title": "fix(evidence): a review thread counts as unanswered only when its last comment is not the owner's",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 5,
-    "size": 1
-   },
-   "score": 21.0,
-   "why": "taoq-ai/wuwei#1199: ai-assemble#2141 showed 10 unanswered threads that all ended with the owner's reply; owes R-1 and R-2 stayed overdue all day and the Stop hook kept listing them.",
-   "promise": "`N review threads unanswered` counts threads that are unresolved and whose last comment is not by the owner (the PR's owner login WUWEI already reads); an unresolved thread the owner answered no longer counts and no longer holds a merge; an owe whose where is that thread closes when its last comment is the owner's. Files: cli/wuwei/gh.py and/or evidence.py and board.py with vendored copies, tests. A change to the gaps in evidence.py runs the route differential. Runtime budget: 3 lines.",
-   "acceptance": [
-    "Given an unresolved thread whose last comment is the owner's, when evidence is read, then it is not counted as unanswered",
-    "Given an unresolved thread whose last comment is a reviewer's, when evidence is read, then it is counted",
-    "Given an owe on a thread the owner last replied in, when the board is read, then the owe closes"
-   ],
-   "status": "open",
-   "added": "2026-10-20",
-   "approved": true
-  },
-  {
    "id": "status-curl",
    "title": "fix(guards): a curl or wget write to a commit status or check run meets the same door as gh api",
    "goal": "G-2",
@@ -218,35 +193,6 @@
    "status": "open",
    "added": "2026-10-18",
    "approved": true
-  },
-  {
-   "id": "push-refspecs",
-   "title": "fix(guards): the push door reads each refspec's destination the way git does, so feature:heads/main, :, --all and globs meet it",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 13.0,
-   "why": "Round 3 of PR #1155 (parked at aa63d3b after two fix rounds). The guard's own root ref reader misses forms git resolves to main (security gate: 136 holes in 200). Measured in a git archive copy under git 2.54: one batched rev-parse after for-each-ref leaves 0 holes in 348 generated commands that ran real git (157 moved main; main's door passes 152 of them, the head's 121), 0 in the 5,040 commands of the builder probe's ref classes, and reads 15,000 tag words in 0.2 to 1.2 s.",
-   "promise": "Round 3 of PR #1155. The push door reads each refspec the way git 2.43 does. (1) A destination after the last colon is expanded with git's ref rules: main, heads/main and refs/heads/main name the default branch; a leading + keeps its force refusal. (2) The matching refspec :, --all, --branches (and their prefixes) and a glob whose destination can match the default branch are refused. (3) A source alone goes where git itself sends it: every candidate git's ref rules find in one git for-each-ref, plus the ref one batched `git -c core.warnAmbiguousRefs=false rev-parse --symbolic-full-name --revs-only --end-of-options <words>` resolves each colon-less word to (root refs in any spelling, symlinks, nested names, another worktree's refs, any ref store). The tag keyword, negative refspecs (^x), globs and -- stay out of the batch; -- is asked last as main-worktree/--. Round 2's root ref file reader is removed. (4) When git cannot run or finish either read in 5 s, the door stays shut. (5) Existing refusals (--mirror, explicit main) keep their text. Files: cli/wuwei/guards.py and its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, SECURITY.md, the push door lines in docs/design.md and doors.md, specs/push-refspecs/. Runtime lines: +18 against main 3,208 (measured in a sketch), budget +27. Acceptance comes from real git through the push door's scratch exception. Rollback: revert the commit. Outside: config-steered pushes (git-globals), refs or HEAD the same command writes before its push, a relative git -C (push-moved-head), force digit clusters (push-force-clusters). Assumptions: git push sends nothing when one source does not resolve, so the words rev-parse skips after one it cannot resolve cannot be pushed; overturned if a probe under git 2.43 finds a word git push accepts that stops rev-parse, beyond tag, ^x, globs and --.",
-   "acceptance": [
-    "given a scratch bare remote and a clone with branches main and feature, when real git runs `git push origin feature:heads/main`, `git push origin :`, `git push --all origin` and `git push origin 'refs/heads/*:refs/heads/*'` through the push door's scratch exception, then each moved main, and given the same commands naming the real origin, when guards.bash reads them, then each is refused",
-    "given a generated probe of destination spellings (main, heads/main, refs/heads/main, +, globs, :, --all, --branches, --tags) x sources under real git against a scratch bare remote, when guards.bash reads each command naming a non-scratch remote, then every command that moved main is refused (holes 0) and pushes that cannot reach main pass",
-    "given a clone c, a linked worktree w and a ref git resolves to main written before the call in each form the security gate found (a ref: root file with no space, a tab or 300 spaces; a symlink root ref; a nested name under the git directory; another worktree's per-worktree ref named through main-worktree/ or worktrees/<id>/; a lowercase name git reads from the common directory over w's own), when real git runs `git push origin <name>` from c and from w and guards.bash reads each one, then every command that moved main is refused (the generated rootfile class reports generated, ran and 0 holes under git 2.43)",
-    "given a root ref to main and, before it, a word git push accepts but rev-parse cannot resolve (`tag v1`, a negative refspec `^nope`, a glob, a branch named --) or a root ref named -- or -x, when guards.bash reads the push, then it is refused, as real git moves main",
-    "given 15,000 tag words, when guards.bash reads the push, then it makes as many git calls as a push of one word, with no clock in the test; and given a rev-parse or for-each-ref that does not finish in 5 s, when guards.bash reads `git push origin feature`, then it is refused",
-    "given `git push origin feature`, `git push origin feature:feature`, `git push --tags origin`, `git push origin tag v1`, `git push origin 'refs/heads/f/*:refs/heads/f/*'` and `git push origin HEAD` from a linked worktree on feature, when guards.bash reads them, then they pass"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true,
-   "reason": "two fix rounds without a pass (security FIX at aa63d3b: root-ref reader misses forms git resolves to main, 136 of 200 holes; quality FIX: 1 s wall-clock test flaky under load); lead rethinks the ref resolution before round 3"
   },
   {
    "id": "push-moved-head",
@@ -344,31 +290,6 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": true
-  },
-  {
-   "id": "1198",
-   "title": "fix(hook): a seat report reaches the planner once outside auto mode",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 10.5,
-   "why": "taoq-ai/wuwei#1198: on 2026-10-20 in bypass mode every seat report reached the planner 2 to 6 times (task notification, PreToolUse context, Stop block), doubling planner context per seat. Owner ruled standard tier for today's batch.",
-   "promise": "Outside auto mode the hook delivers each kept seat report (.wuwei/reports/<file>) at most once: it records the report ids it has delivered and never repeats one in a PreToolUse note or a Stop block; the Stop hook names only reports not yet delivered and does not block on report text it already gave. Auto mode is unchanged. Files: cli/wuwei/hook.py and the vendored copy, tests/test_hook.py, docs/site/concepts/hooks.md. AGENTS.md Testing the guards applies to hook.py: route corpus at main and head with sha256. Runtime budget: 4 lines.",
-   "acceptance": [
-    "Given two seats stopped outside auto mode, when the planner's next PreToolUse and Stop run, then each report appears once across them",
-    "Given a report already delivered, when a later Stop runs, then it is not listed and the Stop does not block on it",
-    "Given auto mode, when a seat hands back, then nothing changes from main"
-   ],
-   "status": "open",
-   "added": "2026-10-20",
    "approved": true
   },
   {
@@ -1225,6 +1146,32 @@
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
   },
   {
+   "id": "1199",
+   "title": "fix(evidence): a review thread counts as unanswered only when its last comment is not the owner's",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "taoq-ai/wuwei#1199: ai-assemble#2141 showed 10 unanswered threads that all ended with the owner's reply; owes R-1 and R-2 stayed overdue all day and the Stop hook kept listing them.",
+   "promise": "`N review threads unanswered` counts threads that are unresolved and whose last comment is not by the owner (the PR's owner login WUWEI already reads); an unresolved thread the owner answered no longer counts and no longer holds a merge; an owe whose where is that thread closes when its last comment is the owner's. Files: cli/wuwei/gh.py and/or evidence.py and board.py with vendored copies, tests. A change to the gaps in evidence.py runs the route differential. Runtime budget: 3 lines.",
+   "acceptance": [
+    "Given an unresolved thread whose last comment is the owner's, when evidence is read, then it is not counted as unanswered",
+    "Given an unresolved thread whose last comment is a reviewer's, when evidence is read, then it is counted",
+    "Given an owe on a thread the owner last replied in, when the board is read, then the owe closes"
+   ],
+   "status": "done",
+   "added": "2026-10-20",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1207"
+  },
+  {
    "id": "mutants-both",
    "title": "docs(agents): a mutant changes both cli/wuwei and the vendored copy, and a kill counts only when a behavioural test fails",
    "goal": "G-1",
@@ -1715,6 +1662,35 @@
    "reason": "merged as taoq-ai/wuwei#1079"
   },
   {
+   "id": "push-refspecs",
+   "title": "fix(guards): the push door reads each refspec's destination the way git does, so feature:heads/main, :, --all and globs meet it",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 13.0,
+   "why": "Round 3 of PR #1155 (parked at aa63d3b after two fix rounds). The guard's own root ref reader misses forms git resolves to main (security gate: 136 holes in 200). Measured in a git archive copy under git 2.54: one batched rev-parse after for-each-ref leaves 0 holes in 348 generated commands that ran real git (157 moved main; main's door passes 152 of them, the head's 121), 0 in the 5,040 commands of the builder probe's ref classes, and reads 15,000 tag words in 0.2 to 1.2 s.",
+   "promise": "Round 3 of PR #1155. The push door reads each refspec the way git 2.43 does. (1) A destination after the last colon is expanded with git's ref rules: main, heads/main and refs/heads/main name the default branch; a leading + keeps its force refusal. (2) The matching refspec :, --all, --branches (and their prefixes) and a glob whose destination can match the default branch are refused. (3) A source alone goes where git itself sends it: every candidate git's ref rules find in one git for-each-ref, plus the ref one batched `git -c core.warnAmbiguousRefs=false rev-parse --symbolic-full-name --revs-only --end-of-options <words>` resolves each colon-less word to (root refs in any spelling, symlinks, nested names, another worktree's refs, any ref store). The tag keyword, negative refspecs (^x), globs and -- stay out of the batch; -- is asked last as main-worktree/--. Round 2's root ref file reader is removed. (4) When git cannot run or finish either read in 5 s, the door stays shut. (5) Existing refusals (--mirror, explicit main) keep their text. Files: cli/wuwei/guards.py and its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, SECURITY.md, the push door lines in docs/design.md and doors.md, specs/push-refspecs/. Runtime lines: +18 against main 3,208 (measured in a sketch), budget +27. Acceptance comes from real git through the push door's scratch exception. Rollback: revert the commit. Outside: config-steered pushes (git-globals), refs or HEAD the same command writes before its push, a relative git -C (push-moved-head), force digit clusters (push-force-clusters). Assumptions: git push sends nothing when one source does not resolve, so the words rev-parse skips after one it cannot resolve cannot be pushed; overturned if a probe under git 2.43 finds a word git push accepts that stops rev-parse, beyond tag, ^x, globs and --.",
+   "acceptance": [
+    "given a scratch bare remote and a clone with branches main and feature, when real git runs `git push origin feature:heads/main`, `git push origin :`, `git push --all origin` and `git push origin 'refs/heads/*:refs/heads/*'` through the push door's scratch exception, then each moved main, and given the same commands naming the real origin, when guards.bash reads them, then each is refused",
+    "given a generated probe of destination spellings (main, heads/main, refs/heads/main, +, globs, :, --all, --branches, --tags) x sources under real git against a scratch bare remote, when guards.bash reads each command naming a non-scratch remote, then every command that moved main is refused (holes 0) and pushes that cannot reach main pass",
+    "given a clone c, a linked worktree w and a ref git resolves to main written before the call in each form the security gate found (a ref: root file with no space, a tab or 300 spaces; a symlink root ref; a nested name under the git directory; another worktree's per-worktree ref named through main-worktree/ or worktrees/<id>/; a lowercase name git reads from the common directory over w's own), when real git runs `git push origin <name>` from c and from w and guards.bash reads each one, then every command that moved main is refused (the generated rootfile class reports generated, ran and 0 holes under git 2.43)",
+    "given a root ref to main and, before it, a word git push accepts but rev-parse cannot resolve (`tag v1`, a negative refspec `^nope`, a glob, a branch named --) or a root ref named -- or -x, when guards.bash reads the push, then it is refused, as real git moves main",
+    "given 15,000 tag words, when guards.bash reads the push, then it makes as many git calls as a push of one word, with no clock in the test; and given a rev-parse or for-each-ref that does not finish in 5 s, when guards.bash reads `git push origin feature`, then it is refused",
+    "given `git push origin feature`, `git push origin feature:feature`, `git push --tags origin`, `git push origin tag v1`, `git push origin 'refs/heads/f/*:refs/heads/f/*'` and `git push origin HEAD` from a linked worktree on feature, when guards.bash reads them, then they pass"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1155"
+  },
+  {
    "id": "1170",
    "title": "The planner records a Codex background builder on its item, so the board never reads 'no pull request yet' for it",
    "goal": "G-2",
@@ -2202,6 +2178,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1076"
+  },
+  {
+   "id": "1198",
+   "title": "fix(hook): a seat report reaches the planner once outside auto mode",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 10.5,
+   "why": "taoq-ai/wuwei#1198: on 2026-10-20 in bypass mode every seat report reached the planner 2 to 6 times (task notification, PreToolUse context, Stop block), doubling planner context per seat. Owner ruled standard tier for today's batch.",
+   "promise": "Outside auto mode the hook delivers each kept seat report (.wuwei/reports/<file>) at most once: it records the report ids it has delivered and never repeats one in a PreToolUse note or a Stop block; the Stop hook names only reports not yet delivered and does not block on report text it already gave. Auto mode is unchanged. Files: cli/wuwei/hook.py and the vendored copy, tests/test_hook.py, docs/site/concepts/hooks.md. AGENTS.md Testing the guards applies to hook.py: route corpus at main and head with sha256. Runtime budget: 4 lines.",
+   "acceptance": [
+    "Given two seats stopped outside auto mode, when the planner's next PreToolUse and Stop run, then each report appears once across them",
+    "Given a report already delivered, when a later Stop runs, then it is not listed and the Stop does not block on it",
+    "Given auto mode, when a seat hands back, then nothing changes from main"
+   ],
+   "status": "done",
+   "added": "2026-10-20",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1206"
   },
   {
    "id": "hooks-live",
