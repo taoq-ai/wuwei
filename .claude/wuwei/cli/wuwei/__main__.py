@@ -63,8 +63,8 @@ def cmd_plan(args):
             print(json.dumps(rows, indent=1))
             return 0
         for item in rows:
-            print(f'{item["score"]:>7}  {item["id"]:<10} {item.get("status", "open"):<8} {item.get("tier", ""):<9} '
-                  f'{item.get("goal", ""):<5} {item.get("repo", "")}  {item["title"]}')
+            print(f'{item["score"]:>7}  {item["id"]:<10} {item.get("status") or "open":<8} {item.get("tier") or "":<9} '
+                  f'{item.get("goal") or "":<5} {item.get("repo") or ""}  {item["title"]}')  # a null field prints blank (#1209)
         if not rows:
             print('the plan is empty: run /wuwei-run')
     return 0

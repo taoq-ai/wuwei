@@ -280,6 +280,17 @@ def test_an_unreadable_codex_job_file_never_reads_done(root, fake, monkeypatch, 
     assert plan.find(root, 'A')['job'] == str(job)
 
 
+def test_the_plan_list_shows_an_item_with_no_goal(root, monkeypatch, capsys):
+    """#1209: an owe-style item kept with "goal": null is listed with a blank goal, never a TypeError."""
+    from conftest import write_plan
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    write_plan(root, [{'id': 'R-10', 'title': 'reply owed', 'goal': None, 'tier': None, 'status': None, 'repo': None, 'score': 0}])
+    assert cli.main(['plan']) == 0
+    [row] = [line for line in capsys.readouterr().out.splitlines() if 'R-10' in line]
+    assert 'None' not in row and row.split() == ['0', 'R-10', 'open', 'reply', 'owed']  # a null status reads open, its default
+
+
 def test_a_job_file_read_while_the_companion_writes_it_is_read_again(root, fake, monkeypatch, tmp_path):
     """#1212: a read that meets the companion's half-written job file shows the job's state, never state unreadable."""
     from wuwei import __main__ as cli, board
