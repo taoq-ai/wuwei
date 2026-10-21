@@ -197,30 +197,6 @@
    "approved": true
   },
   {
-   "id": "1209",
-   "title": "fix(plan): wuwei plan lists an item whose goal, tier, status or repo is null",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 8,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 16.0,
-   "why": "taoq-ai/wuwei#1209: wuwei plan crashed with TypeError at __main__.py:66 on an owe item with goal null; a lead fell back to reading plan.json.",
-   "promise": "wuwei plan prints a blank for a null goal, tier, status or repo and lists every item. Files: cli/wuwei/__main__.py and vendored copy, tests/test_plan.py. Runtime budget: 0 lines.",
-   "acceptance": [
-    "Given an item with goal, tier, status and repo null, when wuwei plan runs, then it exits 0 and lists the item"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
-   "approved": true
-  },
-  {
    "id": "1213",
    "title": "docs(charters): a standards line adds checks, and the gate rules alone decide what blocks",
    "goal": "G-2",
@@ -1578,6 +1554,31 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "1209",
+   "title": "fix(plan): wuwei plan lists an item whose goal, tier, status or repo is null",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "taoq-ai/wuwei#1209: wuwei plan crashed with TypeError at __main__.py:66 on an owe item with goal null; a lead fell back to reading plan.json.",
+   "promise": "wuwei plan prints a blank for a null goal, tier, status or repo and lists every item. Files: cli/wuwei/__main__.py and vendored copy, tests/test_plan.py. Runtime budget: 0 lines.",
+   "acceptance": [
+    "Given an item with goal, tier, status and repo null, when wuwei plan runs, then it exits 0 and lists the item"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1214"
   },
   {
    "id": "1180-probe",
