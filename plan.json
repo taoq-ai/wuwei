@@ -99,32 +99,6 @@
    "approved": true
   },
   {
-   "id": "1210",
-   "title": "fix(evidence): the newest run of each check at the head decides, so a cancelled or failed run that ran again green is not CI failing",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 5,
-    "size": 1
-   },
-   "score": 21.0,
-   "why": "taoq-ai/wuwei#1210: infra-aws#472 read CI failing at 39036a1 although the latest Review Gate run passed; older cancelled runs at the same head held it.",
-   "promise": "Per check name at a head, the check run with the highest id is the one evidence reads; an older cancelled or failed run superseded by a later one is not CI failing, and a newer running one reads as CI running. Files: cli/wuwei/gh.py and vendored copy, tests/conftest.py, tests/test_evidence.py. Runtime budget: 1 line.",
-   "acceptance": [
-    "Given Review Gate runs success (newest), cancelled, success, cancelled at one head, when evidence reads the PR, then there is no CI gap",
-    "Given a newer failure after a success, when evidence reads the PR, then it is CI failing once",
-    "Given a newer in-progress run after a failure, when evidence reads the PR, then it is CI running"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
-   "approved": true
-  },
-  {
    "id": "status-curl",
    "title": "fix(guards): a curl or wget write to a commit status or check run meets the same door as gh api",
    "goal": "G-2",
@@ -1270,6 +1244,33 @@
    "approved": true,
    "kind": "run",
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
+  },
+  {
+   "id": "1210",
+   "title": "fix(evidence): the newest run of each check at the head decides, so a cancelled or failed run that ran again green is not CI failing",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "taoq-ai/wuwei#1210: infra-aws#472 read CI failing at 39036a1 although the latest Review Gate run passed; older cancelled runs at the same head held it.",
+   "promise": "Per check name at a head, the check run with the highest id is the one evidence reads; an older cancelled or failed run superseded by a later one is not CI failing, and a newer running one reads as CI running. Files: cli/wuwei/gh.py and vendored copy, tests/conftest.py, tests/test_evidence.py. Runtime budget: 1 line.",
+   "acceptance": [
+    "Given Review Gate runs success (newest), cancelled, success, cancelled at one head, when evidence reads the PR, then there is no CI gap",
+    "Given a newer failure after a success, when evidence reads the PR, then it is CI failing once",
+    "Given a newer in-progress run after a failure, when evidence reads the PR, then it is CI running"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1215"
   },
   {
    "id": "1199",
