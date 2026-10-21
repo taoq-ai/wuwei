@@ -141,7 +141,7 @@ class FakeGh:
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/commits/(\w+)/(check-runs|status)', path)):
             rollup = next((pr['statusCheckRollup'] for pr in self.prs.values() if pr['headRefOid'] == m[1]), [])
             if m[2] == 'check-runs':
-                return {'check_runs': [{'name': c['name'], 'status': c['status'].lower(),
+                return {'check_runs': [{'name': c['name'], 'status': c['status'].lower(), 'id': c.get('id', 1),
                                         'conclusion': (c.get('conclusion') or '').lower() or None}
                                        for c in rollup if 'name' in c]}
             return {'statuses': [{'context': c['context'], 'state': c['state'].lower(), 'target_url': c.get('url')}

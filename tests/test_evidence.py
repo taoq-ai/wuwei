@@ -122,6 +122,22 @@ def test_waiting_states_are_not_actionable(root, fake):
     assert gaps[1]['owner']
 
 
+
+@pytest.mark.parametrize('runs, shown', [
+    ([(4, 'SUCCESS'), (3, 'CANCELLED'), (2, 'SUCCESS'), (1, 'CANCELLED')], []),  # infra-aws#472 at 39036a1, newest first
+    ([(1, 'FAILURE'), (2, 'CANCELLED'), (3, 'SUCCESS')], []),
+    ([(2, 'FAILURE'), (1, 'SUCCESS')], ['CI failing: Review Gate']),
+    ([(3, ''), (2, 'FAILURE')], ['CI running'])])
+def test_the_newest_run_of_a_check_at_the_head_decides(root, fake, runs, shown):
+    """#1210: a run cancelled by a concurrency group, or failed, then run again green is not CI failing."""
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    attest(root, 'quality')
+    fake.prs['42'] = make_pr()
+    fake.prs['42']['statusCheckRollup'] = [{'name': 'Review Gate', 'id': i, 'conclusion': c, 'status': 'COMPLETED' if c else 'IN_PROGRESS'}
+                                           for i, c in runs]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == shown
+
+
 GATE = 'https://github.com/acme/app/actions/runs/'
 
 
