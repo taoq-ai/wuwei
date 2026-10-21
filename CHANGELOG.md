@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.1.1](https://github.com/taoq-ai/wuwei/compare/v5.1.0...v5.1.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **board:** a Codex job file read while the companion writes it is read again before it shows state unreadable ([#1216](https://github.com/taoq-ai/wuwei/issues/1216)) ([6b0cc44](https://github.com/taoq-ai/wuwei/commit/6b0cc44ebc2dd87145142b3994d45635df677515))
+* **evidence:** the newest run of each check at the head decides, so a cancelled or failed run that ran again green is not CI failing ([#1215](https://github.com/taoq-ai/wuwei/issues/1215)) ([7b3fa35](https://github.com/taoq-ai/wuwei/commit/7b3fa358e1f3f303ad635f56e3a7bbf85c5efb99))
+* **hook:** outside auto mode a hand-back is answered with the plain-text report rule, and a seat's repeated report is kept once ([#1217](https://github.com/taoq-ai/wuwei/issues/1217)) ([6035f42](https://github.com/taoq-ai/wuwei/commit/6035f423ad21c5975e03fb8a75e4cc4f2c921a34))
+* **plan:** wuwei plan lists an item whose goal, tier, status or repo is null ([#1214](https://github.com/taoq-ai/wuwei/issues/1214)) ([6ebe2a8](https://github.com/taoq-ai/wuwei/commit/6ebe2a8182f78f90e5e3d261dcbb94512832a811))
+
+
+### Documentation
+
+* **charters:** a standards line adds checks, and the gate rules alone decide what blocks ([#1218](https://github.com/taoq-ai/wuwei/issues/1218)) ([53ba184](https://github.com/taoq-ai/wuwei/commit/53ba184b07a9399156381dc91e40b15aeac5e781))
+
+
+### Tests
+
+* **hook:** a free-text goal answer counts as its first word, keeps its text and is not asked again ([#1219](https://github.com/taoq-ai/wuwei/issues/1219)) ([c0fea45](https://github.com/taoq-ai/wuwei/commit/c0fea453638b3cfca6dffa6197f4f067ce4ffc32))
+
 ## [5.1.0](https://github.com/taoq-ai/wuwei/compare/v5.0.0...v5.1.0) (2026-10-20)
 
 
