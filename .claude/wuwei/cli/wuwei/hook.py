@@ -178,8 +178,8 @@ def subagent_stop(root, payload):
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip() \
             and Path(str(payload.get('agent_transcript_path') or '')).is_file():  # a Claude seat ends: keep what the harness drops
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
-        if not any(p.read_text(encoding='utf-8') == payload['last_assistant_message'] for p in (Path(root) / ws.DIR / 'reports').rglob(
-                f'{name}--*.md')):  # a seat that stops again with the same report keeps it once (#1208)
+        if not any(p.is_file() and p.read_bytes() == payload['last_assistant_message'].encode() for p in (Path(root) / ws.DIR / 'reports').rglob(
+                f'{name}--*.md')):  # a seat that stops again with the same report keeps it once; only regular files are read (#1208)
             ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
                             payload['last_assistant_message'], Path(root))
     return out

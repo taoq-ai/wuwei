@@ -1189,6 +1189,30 @@ def test_a_seat_that_stops_again_with_the_same_report_keeps_it_once(root, tmp_pa
     assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
 
 
+def test_another_seats_identical_report_never_suppresses_this_one(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    lead2_stop(root, tmp_path)  # lead2 ends with the same text as lead1
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert '## lead lead1 (kept at' in note and '## lead lead2 (kept at' in note
+
+
+@pytest.mark.parametrize('planted', ['fifo', 'folder', 'binary'])
+def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(root, tmp_path, planted):
+    """The dedupe reads only regular files: a FIFO would block the stop, a folder or non-UTF-8 bytes would raise (#1208 gate)."""
+    import os
+    path = root / ws.DIR / 'reports' / 's1--lead1--lead--1.md'  # a kept report's place
+    path.parent.mkdir(parents=True)
+    {'fifo': os.mkfifo, 'folder': os.mkdir, 'binary': lambda p: Path(p).write_bytes(b'\xff\xfe')}[planted](path)
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+def test_a_repeated_report_with_carriage_returns_is_kept_once(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
+    assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
+
+
 def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
     lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
