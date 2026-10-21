@@ -287,4 +287,5 @@ def test_the_plan_list_shows_an_item_with_no_goal(root, monkeypatch, capsys):
     monkeypatch.chdir(root)
     write_plan(root, [{'id': 'R-10', 'title': 'reply owed', 'goal': None, 'tier': None, 'status': None, 'repo': None, 'score': 0}])
     assert cli.main(['plan']) == 0
-    assert 'R-10' in capsys.readouterr().out
+    [row] = [line for line in capsys.readouterr().out.splitlines() if 'R-10' in line]
+    assert 'None' not in row and row.split() == ['0', 'R-10', 'open', 'reply', 'owed']  # a null status reads open, its default
