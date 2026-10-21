@@ -195,31 +195,6 @@
    "approved": true
   },
   {
-   "id": "1212",
-   "title": "fix(board): a Codex job file read while the companion writes it is read again before it shows state unreadable",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 13.0,
-   "why": "taoq-ai/wuwei#1212: running Codex jobs showed 'job state unreadable' on 2026-10-21 while their job json held status running; the board cached the one failed read for its TTL.",
-   "promise": "The board reads a registered job file up to three times, 0.2 s apart, before it shows state unreadable; a file that never parses still never reads done. Files: cli/wuwei/board.py and vendored copy, tests/test_plan.py. Runtime budget: 2 lines.",
-   "acceptance": [
-    "Given a job file truncated mid-write and complete on the next read, when the board computes, then it shows job running",
-    "Given a job file that never parses, when the board computes, then it shows job state unreadable"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
-   "approved": true
-  },
-  {
    "id": "push-moved-head",
    "title": "fix(guards): a push after a command that moves HEAD or the working folder meets the push door",
    "goal": "G-2",
@@ -1763,6 +1738,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "1212",
+   "title": "fix(board): a Codex job file read while the companion writes it is read again before it shows state unreadable",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 13.0,
+   "why": "taoq-ai/wuwei#1212: running Codex jobs showed 'job state unreadable' on 2026-10-21 while their job json held status running; the board cached the one failed read for its TTL.",
+   "promise": "The board reads a registered job file up to three times, 0.2 s apart, before it shows state unreadable; a file that never parses still never reads done. Files: cli/wuwei/board.py and vendored copy, tests/test_plan.py. Runtime budget: 2 lines.",
+   "acceptance": [
+    "Given a job file truncated mid-write and complete on the next read, when the board computes, then it shows job running",
+    "Given a job file that never parses, when the board computes, then it shows job state unreadable"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1216"
   },
   {
    "id": "push-refspecs",
