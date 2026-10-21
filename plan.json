@@ -171,31 +171,6 @@
    "approved": true
   },
   {
-   "id": "1213",
-   "title": "docs(charters): a standards line adds checks, and the gate rules alone decide what blocks",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 5,
-    "risk": 5,
-    "size": 1
-   },
-   "score": 15.0,
-   "why": "taoq-ai/wuwei#1213: gates on 2026-10-21 split between a 'mutate every guard ... is a blocking finding' standards line and gate rule 3, giving different verdicts on the same diff class.",
-   "promise": "The gate charter says standards lines add checks and rules 3 and 5 alone decide what blocks; the steward charter says a standards line never sets when a finding blocks and gives the wording to use; every generated agent stays under its word ceiling. Files: charters/_gate.md, charters/steward.md, agents/, .claude copies, tests/test_setup.py. Runtime budget: 0 lines.",
-   "acceptance": [
-    "Given the four sentinel agents, when built, then each holds 'Standards lines add checks; rules 3 and 5 alone decide what blocks.' and stays under 2,250 words",
-    "Given the steward agent, when built, then it says a standards line names what to check, never when a finding blocks"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
-   "approved": true
-  },
-  {
    "id": "push-git-runs",
    "title": "fix(guards): a push to a scratch remote that makes git push elsewhere (submodule recursion, core.hooksPath) meets the push door",
    "goal": "G-2",
@@ -340,56 +315,6 @@
    ],
    "status": "open",
    "added": "2026-10-19",
-   "approved": true
-  },
-  {
-   "id": "1211",
-   "title": "test(hook): a free-text goal answer counts as its first word, keeps its text and is not asked again",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 11.0,
-   "why": "taoq-ai/wuwei#1211: a free-text 'No, ...' goal answer was reported not recorded. The parse already records it (reproduced through PostToolUse with Claude Code's rows); the not-recorded note comes from transcript confirmation, whose reason sits in that workspace's ledger. This item pins the parse; the issue stays open for the confirmation cause.",
-   "promise": "A regression test pins that a free-text goal answer starting with No or Yes records a goal.met ruling with that outcome and the full answer, and the plan pass does not ask the goal again. Files: tests/test_hook.py. Runtime budget: 0 lines.",
-   "acceptance": [
-    "Given a goal past its date, when the owner answers 'No, move the date but let's try to finish today.', then one goal.met ruling with approved false and the full text is recorded and the goal is not asked again"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
-   "approved": true
-  },
-  {
-   "id": "1208",
-   "title": "fix(hook): outside auto mode a hand-back is answered with the plain-text report rule, and a seat's repeated report is kept once",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 10.5,
-   "why": "taoq-ai/wuwei#1208: on 2026-10-21 in bypass mode seats looped on refused SubagentHandback and the planner's Stop re-blocked on kept reports. Owner ruled standard tier for this batch and wants a fix release.",
-   "promise": "Outside auto mode a SubagentHandback is denied at PreToolUse with the plain-text report rule (verdict problem named first, never 'hand back again'); a seat stopping again with the same report text keeps it once; the planner charter states SubagentStop alone attests outside auto mode. Files: cli/wuwei/hook.py and vendored copy, charters/planner.md, docs/design.md, tests/test_hook.py. Runtime budget: 6 lines.",
-   "acceptance": [
-    "Given a seat in bypassPermissions, default, plan, acceptEdits or dontAsk mode, when it calls SubagentHandback, then PreToolUse denies it with the plain-text rule and no 'hand back again'",
-    "Given auto mode or an unknown mode, when a seat calls SubagentHandback, then nothing changes from main",
-    "Given a seat that stops three times with the same report, when the planner's next call and Stop run, then the report appears once and the Stop does not block on it"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-21",
    "approved": true
   },
   {
@@ -1712,6 +1637,32 @@
    "reason": "merged as taoq-ai/wuwei#1115"
   },
   {
+   "id": "1213",
+   "title": "docs(charters): a standards line adds checks, and the gate rules alone decide what blocks",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 5,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 15.0,
+   "why": "taoq-ai/wuwei#1213: gates on 2026-10-21 split between a 'mutate every guard ... is a blocking finding' standards line and gate rule 3, giving different verdicts on the same diff class.",
+   "promise": "The gate charter says standards lines add checks and rules 3 and 5 alone decide what blocks; the steward charter says a standards line never sets when a finding blocks and gives the wording to use; every generated agent stays under its word ceiling. Files: charters/_gate.md, charters/steward.md, agents/, .claude copies, tests/test_setup.py. Runtime budget: 0 lines.",
+   "acceptance": [
+    "Given the four sentinel agents, when built, then each holds 'Standards lines add checks; rules 3 and 5 alone decide what blocks.' and stays under 2,250 words",
+    "Given the steward agent, when built, then it says a standards line names what to check, never when a finding blocks"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1218"
+  },
+  {
    "id": "close-1078",
    "title": "chore: close #1078 on its documented path; the Codex-native probe stays parked",
    "goal": "G-2",
@@ -2249,6 +2200,31 @@
    "reason": "merged as taoq-ai/wuwei#1095"
   },
   {
+   "id": "1211",
+   "title": "test(hook): a free-text goal answer counts as its first word, keeps its text and is not asked again",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "taoq-ai/wuwei#1211: a free-text 'No, ...' goal answer was reported not recorded. The parse already records it (reproduced through PostToolUse with Claude Code's rows); the not-recorded note comes from transcript confirmation, whose reason sits in that workspace's ledger. This item pins the parse; the issue stays open for the confirmation cause.",
+   "promise": "A regression test pins that a free-text goal answer starting with No or Yes records a goal.met ruling with that outcome and the full answer, and the plan pass does not ask the goal again. Files: tests/test_hook.py. Runtime budget: 0 lines.",
+   "acceptance": [
+    "Given a goal past its date, when the owner answers 'No, move the date but let's try to finish today.', then one goal.met ruling with approved false and the full text is recorded and the goal is not asked again"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1219"
+  },
+  {
    "id": "wide-specs",
    "title": "fix(evidence): the wide-change trigger counts code and spec lines, never prose, and a spec contract takes arch",
    "goal": "G-2",
@@ -2330,6 +2306,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1076"
+  },
+  {
+   "id": "1208",
+   "title": "fix(hook): outside auto mode a hand-back is answered with the plain-text report rule, and a seat's repeated report is kept once",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 10.5,
+   "why": "taoq-ai/wuwei#1208: on 2026-10-21 in bypass mode seats looped on refused SubagentHandback and the planner's Stop re-blocked on kept reports. Owner ruled standard tier for this batch and wants a fix release.",
+   "promise": "Outside auto mode a SubagentHandback is denied at PreToolUse with the plain-text report rule (verdict problem named first, never 'hand back again'); a seat stopping again with the same report text keeps it once; the planner charter states SubagentStop alone attests outside auto mode. Files: cli/wuwei/hook.py and vendored copy, charters/planner.md, docs/design.md, tests/test_hook.py. Runtime budget: 6 lines.",
+   "acceptance": [
+    "Given a seat in bypassPermissions, default, plan, acceptEdits or dontAsk mode, when it calls SubagentHandback, then PreToolUse denies it with the plain-text rule and no 'hand back again'",
+    "Given auto mode or an unknown mode, when a seat calls SubagentHandback, then nothing changes from main",
+    "Given a seat that stops three times with the same report, when the planner's next call and Stop run, then the report appears once and the Stop does not block on it"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-21",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1217"
   },
   {
    "id": "1198",
