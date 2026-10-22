@@ -174,7 +174,9 @@ when the environment name holds prod or production as a word not led by pre or n
 100 production deployments in the window are read, one status read each. When the deployments cannot
 be read, the reverts alone count. Time to restore runs from the first failed deployment of a run to
 the green one. Verdicts count only when attested at
-the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A gate's
+the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A seat
+attests a path once: a later version of a file it attested records `verdict.rewritten`, no
+attestation, and is sent back to write a new file. A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
@@ -233,7 +235,8 @@ sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, or `.claude` itself) in the
-same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call; an
+same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
+a literal `-m wuwei hook` through any interpreter; an
 owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
@@ -291,8 +294,8 @@ named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer
 `prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
 call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
 type and Agent tool_use and the session transcript holds that tool_use, and a gate's report, at its
-hand-back and its stop, counts only as that seat transcript holds it: the payload's text when the
-transcript holds it, else the transcript's last report (a PreToolUse payload names no seat transcript,
+hand-back and its stop, counts only as that seat transcript holds it: the payload's text when it is the
+transcript's last report (an earlier one is a replay), else the transcript's last report (a PreToolUse payload names no seat transcript,
 so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Codex answers and stops, a
 moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
 recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
@@ -344,5 +347,6 @@ Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 `wuwei init` upgrades a 0.34 workspace in place: it reads the old config shape and rewrites it
 (keeping `.wuwei/config.0x.toml`), names each retired key, carries the goals forward, imports the
 open items with their PR links and the latest proposal, and imports the gate verdicts as
-attestations so in-flight PRs need one delta gate, not a full set. DORA reads the code host, so
+attestations so in-flight PRs need one delta gate, not a full set. Verdicts import only into a
+workspace with no ledger yet, so a decision file written after the upgrade never counts. DORA reads the code host, so
 no history is lost. The 0.x line stays on its tag (v0.34.0).

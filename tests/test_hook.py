@@ -470,6 +470,65 @@ def test_a_seat_that_replaces_another_seats_verdict_is_sent_back(root):
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev0') is None
 
 
+@pytest.mark.parametrize('via', ['stop', 'handback'])
+def test_a_rewritten_verdict_replayed_by_its_own_seat_is_recorded_as_rewritten_and_not_attested(root, fake, via):
+    """Security gate on #1244: a FIX rewritten to PASS, then the seat's real stop or hand-back replayed, attested the PASS."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    message = 'Verdict file: .wuwei/verdicts/I-1/quality.md'
+    say = (lambda: reviewer_stop(root, message)) if via == 'stop' else (lambda: handback(root, message))
+    assert say() is None
+    path.write_text(verdict_text())
+    assert 'verdict.rewritten' in json.dumps(say())  # the seat is told, not dropped silently
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX']
+    assert [(r['data']['path'], r['data']['agent']) for r in ws.rows(root, 'verdict.rewritten')][:1] == [('.wuwei/verdicts/I-1/quality.md', 'rev1')]
+    assert any('quality' in g['text'] for g in evidence.gaps(root, 'acme/app', 42))
+
+
+@pytest.mark.parametrize('via', ['stop', 'handback'])
+def test_only_a_seats_latest_report_attests_and_a_resumed_seat_attests_its_new_verdict(root, fake, tmp_path, via):
+    """Security gate on #1249: the seat first named quality-ccccccc.md (refused for its shape), then attested a FIX elsewhere;
+    a PASS written to the first path and the earlier real report replayed was attested. Only the seat's last report counts,
+    so a resumed seat's new verdict at a new head attests and a replay of an earlier report does not."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    folder, reports, seat = root / ws.DIR / 'verdicts' / 'I-1', [], tmp_path / 'agent.jsonl'
+    folder.mkdir(parents=True)
+
+    def replay(message):  # the seat's transcript holds every report it wrote, the last one last
+        said = [json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': r}]}}) for r in reports]
+        seat.write_text(''.join(r + '\n' for r in (said if via == 'stop' else [handed(r, f'toolu_{i}') for i, r in enumerate(reports)])))
+        if via == 'stop':
+            return reviewer_stop(root, message, transcript=str(seat))
+        payload = launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root),
+                            'agent_transcript_path': str(seat)})
+        payload.pop('agent_transcript_path')
+        return hook.handle(root, 'PreToolUse', {**payload, 'tool_name': 'SubagentHandback', 'tool_use_id': f'toolu_{len(reports) - 1}',
+                                               'tool_input': {'message': message}})
+
+    def say(name, text):
+        (folder / name).write_text(text)
+        reports.append(f'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/{name}')
+        return replay(reports[-1])
+
+    say('quality-ccccccc.md', 'Verdict: FIX\n')  # refused for its shape: sent back, or verdict.missing
+    assert not ws.rows(root, 'attest')
+    assert say('quality-aaaaaaa.md', verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: a retry')) is None
+    (folder / 'quality-ccccccc.md').write_text(verdict_text())
+    replay(reports[0])
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX']
+    assert 'earlier report' in ws.rows(root, 'seat.unconfirmed')[-1]['data']['reason']
+    assert any('quality' in g['text'] for g in evidence.gaps(root, 'acme/app', 42))
+    resumed = verdict_text().replace('Confidence: high\n', 'Confidence: high\nSupersedes: I-1/quality-aaaaaaa.md\n')
+    assert say('quality-bbbbbbb.md', resumed) is None  # resumed to re-read the fix delta, it writes a new verdict file
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX', 'PASS'] and evidence.gaps(root, 'acme/app', 42) == []
+    replay(reports[1])
+    assert len(ws.rows(root, 'attest')) == 2
+
+
 VERDICT_1067 = '.wuwei/verdicts/1067/quality-3fb3f40.md'
 
 

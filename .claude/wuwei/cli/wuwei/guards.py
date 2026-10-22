@@ -28,7 +28,7 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
@@ -380,7 +380,7 @@ def bash(root, command, cwd, session):
             return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
-        if program == 'wuwei' and argv[1:2] == ['hook']:
+        if re.search(r'(^wuwei|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0(--\0)?hook(\0|$)', '\0'.join([program, *argv[1:]])):  # literal spellings
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
