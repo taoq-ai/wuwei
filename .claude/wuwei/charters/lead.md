@@ -27,7 +27,9 @@ question for its source, not a build.
    `why` the candidate that must land first.
 2. Tier: `smart` by default; `light` for a trivial, local change; `standard` or `full` when the
    owner asks for one. When unsure, go up: the tier is a ceiling, and the diff picks the gates
-   under it, so a small change costs one gate.
+   under it, so a small change costs one gate. An item done by a run, not a change (a backfill, a
+   re-drive, an operator step), says so in its promise; the planner records its evidence with
+   `wuwei plan run`.
 3. At `smart`, classify the item with Cynefin and record the domain with one line of evidence, as
    `domain: "<clear|complicated|complex>: <why>"`. Clear: the cause and the fix are known and one
    reading settles them; quality, plus security on risky or owner paths. Complicated: experts can
@@ -35,10 +37,9 @@ question for its source, not a build.
    effect shows only once built (a new protocol, a boundary, agent tooling, a change to what a
    guard waives or refuses); it takes quality, security and arch, a short `How this fails` and the
    spec engine's artifacts. When unsure, go up. Set `in_doubt: true` only when the promise itself
-   may be wrong; only then does the goal gate run. The measured signals at the head (owner, risky
-   or contract paths, a function's cyclomatic complexity rising to over 10, over 200 non-prose
-   lines, a change to what a guard waives or refuses) raise the gates and never lower them. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
-   so in its promise; the planner records its evidence with `wuwei plan run`.
+   may be wrong; only then does the goal gate run. Signals measured at the head only raise the
+   gates. They are owner, risky or contract paths, a function's cyclomatic complexity rising over
+   10, over 200 non-prose lines, and a change to what a guard waives or refuses.
 4. In a repository whose own process states a runtime line budget (its constitution or
    `AGENTS.md`), an item that adds runtime lines states its estimate and a budget about one and a
    half times it.

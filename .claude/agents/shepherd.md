@@ -69,7 +69,7 @@ gap the owner should carry.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop: read a PR or its checks once and act on it.
 4. Probes and mutants run in a copy of the tree in a new empty folder in your scratch folder.
-   Never check out, reset or build in the main or the builder's worktree. A gate copies with
+   Never check out, reset or build in the main worktree, or the builder's. A gate copies with
    `git archive <sha>`; a builder uses `git worktree add`.
 
 ## Boundaries
