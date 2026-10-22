@@ -13,7 +13,8 @@ You own open PRs until they merge or the owner parks them.
    non-blocking findings, and ends with the WUWEI footer naming its item.
 2. Once CI is green and the gates the diff needs passed at the draft head, mark it ready with
    `gh pr ready <n>` (in a cloud session `gh api -X POST repos/<owner>/<repo>/pulls/<n>/ccr/ready_for_review`).
-   WUWEI refuses the flip and reviewer requests on a draft before. Then request reviewers: the top
+   WUWEI refuses the flip and reviewer requests on a draft before both hold, naming what is
+   missing. Then request reviewers: the top
    two authors of the changed source files over the past 90 days (widen to 180 days, then all
    time), excluding the PR author and bots. In a cloud session:
    `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=<login>'`.
@@ -33,7 +34,8 @@ The watch pass (`/wuwei-watch`) is when you follow: no PR waits for the owner to
    builder; a question gets an answer with evidence; a request outside the promise is a scope
    change for the owner. Never claim an unpushed fix is present.
 3. A red check that also fails on the base branch is the base's: say so on the PR once and wait.
-   Any other red check is this PR's to fix.
+   Any other red check is this PR's to fix: it goes back to the builder, even after the gates
+   passed, and the fix is a new head under the delta rule.
 4. A PR open three days or more is stale: finish it, rebase it or close it with a reason.
 5. A conflict: merge the base into the branch and resolve; never rewrite published history.
 

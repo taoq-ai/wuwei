@@ -170,8 +170,10 @@ review for nothing, so a fix of a documented rule ships as a patch, with release
 
 ## Gates before the PR, chosen by the diff
 
-The gates run before review: the PR opens as a draft so CI runs, and `gh pr ready` and reviewer
-requests are refused until the gates pass at its head, so reviewers and the merge only ever see gated code.
+The gates run before review: the PR opens as a draft, the gates read its head while CI runs, and
+`gh pr ready` and reviewer requests are refused until the gates pass at its head, so reviewers and
+the merge only ever see gated code. They also wait for green CI at the head, naming what holds it
+(a review-triggered status is review evidence, not CI); a red check found after the gates pass goes back to the builder, and its fix is a new head.
 
 The tier is a ceiling and the diff decides what runs under it:
 
@@ -249,8 +251,9 @@ done: asking for review where the team asks (see [review requests](watch.md#revi
 when a check is red, re-requesting an approval given at an older commit (the approval is named with
 its commit, so nobody re-runs a review gate that wants an approval at the head).
 One `team` row, first on the board, names the seats nobody runs: `orchestration: open PRs with no shepherd seat running`
-when more than two PRs are open, and `orchestration: gates owed on green heads with no gate seat
-running` when a gate is missing at a head whose CI settled green with every required check run. A seat runs when this session
+when more than two PRs are open, and `orchestration: gates owed with no gate seat running` when a
+gate is missing at a head with no failing check: gates start at push, while CI runs or before it
+starts, and a red head goes to its builder first. A seat runs when this session
 started it today and no stop or unconfirmed row followed; a Codex job writes no seat row and never
 counts. The lines carry no count, so a Stop reminds once while the state holds.
 Duties show on the board and in the Stop reminder, like safety gaps.

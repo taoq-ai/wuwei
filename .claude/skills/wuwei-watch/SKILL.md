@@ -23,8 +23,9 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
    gaps; arm auto-merge where only CI is running.
 5. Keep the flow going, open work first. An approved item with no pull request and no running seat
    gets its builder, highest score first, only under the WIP limit and the seat ceiling (the
-   planner charter, Running the work 1). A pushed branch whose builder handed back gets its draft PR and its gates.
-   A draft whose gates passed turns ready with reviewers. An operations item (`run:` on the board)
+   planner charter, Running the work 1). A pushed branch whose builder handed back gets its draft PR and its gates, without waiting
+   for CI. A draft whose gates passed turns ready with reviewers once CI is green; a red check goes
+   back to its builder. An operations item (`run:` on the board)
    gets its run checked and its evidence recorded with `wuwei plan run <id> --reason "..."`. A run
    row that names a Codex job gets the job checked: if it completed or failed, record the outcome
    and its `HANDOFF.md` path the same way. When

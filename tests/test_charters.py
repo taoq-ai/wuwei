@@ -500,3 +500,17 @@ def test_the_planner_finishes_before_starting_under_a_wip_limit_and_a_seat_ceili
     steward = flat('charters', 'steward.md')
     assert 'peak live seats' in steward and "Little's law" in steward and 'duration_ms' in steward
     assert 'flow' in flat('docs', 'site', 'concepts', 'watch.md').lower() and 'WIP limit' in flat('docs', 'site', 'concepts', 'watch.md')
+
+
+def test_gates_start_at_push_in_parallel_with_ci_and_green_ci_still_holds_ready():
+    flat = lambda *parts: ' '.join((PLUGIN.joinpath(*parts)).read_text(encoding='utf-8').split())  # noqa: E731
+    builder, planner, shepherd = (flat('charters', f'{name}.md') for name in ('builder', 'planner', 'shepherd'))
+    assert 'Hand back as soon as the push lands, without waiting for CI' in builder and 'CI as unread' in builder
+    assert 'refuses `gh pr ready` until both hold' in builder and 'waits for green CI and the gates' in planner
+    assert 'once CI has run' not in planner and 'in parallel, while CI runs: do not wait for CI' in planner
+    assert 'A check red after the gates pass goes back to the builder' in planner
+    assert 'read the draft head while CI runs' in flat('charters', '_way.md')
+    assert 'read the draft head while CI runs' in flat('charters', '_pr.md')
+    assert 'once they pass and CI is green' in flat('charters', '_pr.md')
+    assert 'Once CI is green and the gates the diff needs passed' in shepherd
+    assert 'goes back to the builder, even after the gates passed' in shepherd

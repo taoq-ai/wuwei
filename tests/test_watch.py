@@ -223,7 +223,7 @@ def test_a_footerless_pr_links_through_the_plan_prs_list(root, fake):
 
 
 SHEPHERD = 'orchestration: open PRs with no shepherd seat running'
-GATES = 'orchestration: gates owed on green heads with no gate seat running'
+GATES = 'orchestration: gates owed with no gate seat running'
 
 
 def open_prs(root, fake, count=3, rollup=None):
@@ -285,23 +285,22 @@ def test_two_open_prs_need_no_shepherd_line(root, fake, monkeypatch):
     assert team(root) == [GATES]
 
 
-def test_owed_gates_on_a_head_whose_ci_runs_or_fails_owe_no_gate_seat(root, fake, monkeypatch):
-    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
+def test_owed_gates_on_a_head_whose_ci_runs_or_has_not_started_owe_a_gate_seat_and_a_red_head_none(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')  # gates start at push, in parallel with CI (#1221)
     seat(root, 'shepherd')
     open_prs(root, fake, rollup=[{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}])
-    assert team(root) == []
+    assert team(root) == [GATES]
     open_prs(root, fake, rollup=[{'name': 'test', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}])
-    assert team(root) == []
+    assert team(root) == []  # a red head goes to the builder first
 
 
-def test_owed_gates_on_a_green_head_missing_a_required_check_owe_no_gate_seat(root, fake, monkeypatch):
+def test_owed_gates_on_a_head_missing_a_required_check_owe_a_gate_seat(root, fake, monkeypatch):
     monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's1')
     seat(root, 'shepherd')
-    fake.protection['main'] = ['build']  # the base requires a check that never ran at the heads
+    fake.protection['main'] = ['build']  # the base requires a check that has not run at the heads
     open_prs(root, fake)
-    assert team(root) == []
-    fake.protection['main'] = []
-    ws.cache_prune(root, -1, 'required-*')  # the base's required checks are kept for PR_TTL
+    assert team(root) == [GATES]
+    open_prs(root, fake, rollup=[])  # no check started yet
     assert team(root) == [GATES]
 
 

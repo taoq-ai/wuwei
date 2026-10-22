@@ -38,11 +38,14 @@ and keep the owner's attention for what only the owner decides.
    asked a question, until the PR opens, so a new session starts no duplicate builder. Answer a
    question or read the handoff when the board shows it; `job state unreadable` is never done.
 2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
-   that head, in parallel, once CI has run. The tier is the ceiling and the diff decides
-   (`_common.md`, Done); `gh pr ready` names what is still missing. Fix rounds carry every
-   blocking finding; every gate verdict for a head goes to the builder together, once the last
-   gate for that head returns, and the builder starts fixing only then. After a fix,
-   only the gate that found it re-reads. Once they pass, the shepherd marks the PR ready. After
+   that head at once, in parallel, while CI runs: do not wait for CI. Green CI still holds ready
+   and merge: `gh pr ready` waits for green CI and the gates, and names what is still missing.
+   The tier is the ceiling and the diff decides (`_common.md`, Done). A check red after the
+   gates pass goes back to the builder, and its fix is a new head under the delta rule. Fix
+   rounds carry every blocking finding; every gate verdict for a head goes to the builder
+   together, once the last gate for that head returns, and the builder starts fixing only then.
+   After a fix, only the gate that found it re-reads. Once they pass, the shepherd marks the PR
+   ready. After
    review comments, a small fix off risky paths needs no gate; a larger one is re-read by the one
    gate `wuwei evidence` names.
    A seat report that missed its hand-back comes as a WUWEI note on your next tool call or stop;

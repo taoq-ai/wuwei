@@ -200,6 +200,9 @@ fix it here.
 
 Push the branch, then open it as a draft PR so CI runs (`gh pr create --draft`; in a cloud session
 the REST route in the shepherd charter with `-F draft=true`). Never mark it ready or request
-reviewers. The gates review the draft head, and the PR turns ready once they pass (WUWEI refuses
-`gh pr ready` and a non-draft `gh pr create` before). Hand back with: the branch, the draft PR and
-its head, commands and results, residual risk, your confidence, and the closing lines of `_common.md` Report.
+reviewers. The gates review the draft head while CI runs, and the PR turns ready once they pass
+and CI is green (WUWEI refuses `gh pr ready` until both hold, and a non-draft `gh pr create`
+before the gates pass). Hand back as
+soon as the push lands, without waiting for CI. Hand back with: the branch, the draft PR and its
+head, CI as unread, commands and results, residual risk, your confidence, and the closing lines of
+`_common.md` Report.
