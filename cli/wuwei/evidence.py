@@ -317,11 +317,12 @@ def gates_for(root, repo, pr, files, item):
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
 
-def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard'):
+def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard', base=''):
     """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR
     (its repository before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head
     a later finding replaces a FIX, and a pass clears it only by naming it in Supersedes (#1162). Code moved since the
-    last pass is re-read by the one gate the delta needs; docs or a small change off risky paths carries it."""
+    last pass is re-read by the one gate the delta needs; docs or a small change off risky paths carries it. Given a base
+    sha, the delta is what moved in the PR's own diff, bar the files a dated Generated line of the standards names (#1230)."""
     latest, last = {}, None
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
@@ -337,6 +338,13 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
     delta = compare(root, repo, last, head)['files']
+    if base:  # a file whose patch from the base, line numbers aside, is the same at both heads is out; one GitHub omits moves
+        was, now = ({f['path']: (re.sub(r'(?m)^@@.*', '@@', f['patch']) if isinstance(f.get('patch'), str) else object(), f)
+                     for f in compare(root, repo, base, sha)['files']} for sha in (last, head))
+        made = re.findall(r'[^\s`,]+', ' '.join(re.findall(rf'(?im)^[-*\s]*Generated \({re.escape(repo)}, [0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}\):(.*)$',
+            path.read_text(encoding='utf-8')))) if (path := Path(root) / ws.DIR / 'standards.md').is_file() else []
+        moved = [p for p in was.keys() | now.keys() if (was.get(p) or [0])[0] != (now.get(p) or [0])[0] and not any(fnmatch.fnmatch(p, g) for g in made)]
+        delta = [next((f for f in delta if f['path'] == p), (now.get(p) or was.get(p))[1]) for p in moved] if len(was) < 300 > len(now) else delta
     want = needed(root, 'light' if tier == 'light' else 'standard', delta)
     gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
     if not gate or lines(delta) <= TRIVIAL and gate == 'quality' or gate in passed and head.startswith(passed[gate]['head']):
@@ -448,7 +456,7 @@ def gaps(root, repo, number, listed=None):
         owners = owned(root, files)
         if (tier == 'full' or owners) and not re.search(r'^Rollback:\s*\S', body, re.M):
             found.append(gap('no Rollback: line (how to undo this change)'))
-        found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
+        found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised, pr.get('baseRefOid'))
         found += breaking_gaps(root, ref, pr, item_id)
         rollup = pr.get('statusCheckRollup')
         found += ci_gaps(rollup, review_contexts(root, repo, rollup))

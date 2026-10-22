@@ -52,7 +52,7 @@
 | `.wuwei/plan.json` | the running queue |
 | `.wuwei/goals.md` | the goals, the direction |
 | `.wuwei/plan.html` | the plan view you approve |
-| `.wuwei/standards.md` | rules the retro promoted, per role; a `Review requests: <where>` line names where reviews are asked |
+| `.wuwei/standards.md` | rules the retro promoted, per role; a `Review requests: <where>` line names where reviews are asked; a `Generated (<owner/repo>, <date>): <globs>` line names files whose change after a pass needs no delta review |
 | `.wuwei/verdicts/<item>/` | the sentinels' verdict files |
 | `.wuwei/ledger/<clone>.jsonl` | the hash-chained record, one file per clone |
 | `.wuwei/.gitignore` | keeps the state out of working branches; it travels on `wuwei/state` |

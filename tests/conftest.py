@@ -105,6 +105,7 @@ class FakeGh:
         self.paths = set()
         self.files = {}
         self.default = 'main'
+        self.merge_base = ''  # the merge_base_commit sha every compare answers
         self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
         self.deployments = []  # None plays a refused read, as for releases
         self.releases = []
@@ -116,7 +117,7 @@ class FakeGh:
     def rest(pr):
         return {'number': pr['number'], 'title': pr['title'], 'body': pr['body'],
                 'state': 'open' if pr['state'] == 'OPEN' else 'closed', 'draft': pr['isDraft'],
-                'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName']},
+                'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName'], 'sha': pr.get('baseRefOid')},
                 'user': {'login': pr['author']['login']}, 'html_url': pr['url'], 'merged_at': pr['mergedAt'],
                 'created_at': pr['createdAt'], 'updated_at': pr.get('updatedAt'), 'requested_reviewers': pr['reviewRequests'], 'requested_teams': [],
                 'mergeable_state': pr.get('mergeableState', 'unknown')}
@@ -191,7 +192,9 @@ class FakeGh:
             files = self.deltas.get((older, newer), pr['files'] if pr else [])
             return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged',
                     'commits': [{'sha': pr['headRefOid'] if pr else self.branches.get(newer, newer)}],
-                    'files': [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions']} for f in files]}
+                    'merge_base_commit': {'sha': self.merge_base},
+                    'files': [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions'],
+                               **{k: f[k] for k in ('patch',) if k in f}} for f in files]}
         if args[0] == 'api' and '/contents/' in path:
             path = path.split('/contents/')[1]
             children = sorted({key[len(path) + 1:].split('/')[0] for key in self.files if key.startswith(path + '/')})
