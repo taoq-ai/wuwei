@@ -25,10 +25,7 @@ except KeyError:  # a uid with no passwd entry: nothing lies under /dev/null, so
 def find(start=None):
     """The directory holding .wuwei/, searching upward from start, or None."""
     path = Path(start or os.getcwd()).resolve()
-    for candidate in (path, *path.parents):
-        if (candidate / DIR).is_dir():
-            return candidate
-    return None
+    return next((candidate for candidate in (path, *path.parents) if (candidate / DIR).is_dir()), None)
 
 
 def version():
@@ -218,11 +215,9 @@ def traces(root, day=None):
 
 def cache_get(root, name, max_age):
     path = Path(root) / DIR / 'cache' / f'{name}.json'
-    try:
+    with contextlib.suppress(OSError, ValueError):
         if now().timestamp() - path.stat().st_mtime <= max_age:
             return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        pass
     return None
 
 
@@ -235,11 +230,9 @@ def read_json(path):  # None for a file that is missing or not JSON, including o
 
 def cache_prune(root, max_age, *patterns):
     for path in (p for pattern in patterns for p in (Path(root) / DIR / 'cache').glob(f'{pattern}.json')):
-        try:
+        with contextlib.suppress(OSError):
             if now().timestamp() - path.stat().st_mtime > max_age:
                 path.unlink()
-        except OSError:
-            pass
 
 
 def cache_put(root, name, value):
