@@ -148,6 +148,21 @@ def test_a_wait_that_would_close_a_cycle_is_refused(root):
     assert plan.add(root, 'C', 'C', 'G-1', 'acme/app', 'light', ONE, after=['A'])['after'] == ['A']  # no cycle: A waits on nothing
 
 
+def test_a_wait_on_a_merged_cycle_with_forks_is_checked_in_linear_time(root):
+    """A sync merge or a hand edit can bring in X after Y and Z, each after X; a walk without a seen set forks 2^99 times."""
+    for item in 'XYZ':
+        plan.add(root, item, item, 'G-1', 'acme/app', 'light', ONE)
+    rows = plan.items(root)
+    for row in rows:
+        row['after'] = {'X': ['Y', 'Z'], 'Y': ['X'], 'Z': ['X']}[row['id']]
+    plan.save(root, rows)
+    started = datetime.datetime.now()
+    assert plan.add(root, 'W', 'W', 'G-1', 'acme/app', 'light', ONE, after=['X'])['after'] == ['X']
+    with pytest.raises(ValueError, match='is not in the plan, or is this item or waits on it'):
+        plan.add(root, 'X', 'X', 'G-1', 'acme/app', 'light', ONE, after=['Y', 'Z'])
+    assert (datetime.datetime.now() - started).total_seconds() < 5
+
+
 @pytest.mark.parametrize('closed', ['done', 'dropped', 'parked'])
 def test_a_closed_waiter_stops_adding_its_cost_of_delay(root, closed):
     plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 8, 'time': 5, 'risk': 3, 'size': 2})

@@ -95,9 +95,10 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
     (cls or (find(root, item_id) or {}).get('class')) == 'expedite' and expedite(items(root), item_id)
     after, waits = [after] if isinstance(after, str) else list(after), {r['id'].lower(): r.get('after') or () for r in items(root)}
 
-    def reaches(a, depth=0):  # a is this item or waits on it through the stored after lists; a merged cycle stops at 99
-        return str(a).lower() == str(item_id).lower() or depth < 99 and any(reaches(b, depth + 1) for b in waits.get(str(a).lower(), ()))
-    if missing := [a for a in after if find(root, a) is None or reaches(a)]:
+    def reaches(a, seen):  # a is this item or waits on it through the stored after lists; each id is walked once (a merged cycle)
+        key = str(a).lower()
+        return key == str(item_id).lower() or key not in seen and not seen.add(key) and any(reaches(b, seen) for b in waits.get(key, ()))
+    if missing := [a for a in after if find(root, a) is None or reaches(a, set())]:
         raise ValueError(f'{", ".join(missing)} is not in the plan, or is this item or waits on it: a wait never closes a cycle')
     framework = ws.config(root)['prioritisation']
     scores = {ALIASES.get(k, k): v for k, v in scores.items()}
