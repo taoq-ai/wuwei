@@ -24,3 +24,9 @@
 - [x] T014 Merge #1238 (multi-session `running`, `changed` stamp), #1240 (smart tier) and #1241; `flow` reads live seats of any session
 - [x] T015 `test_an_item_never_waits_on_itself` red, then the self-wait refusal in `plan.add`
 - [x] T016 Full suite green; runtime 3,528 lines (+80 over main); route differential at the merged head
+
+## Phase 4: Fix round at f834999 (quality and arch FIX)
+
+- [x] T017 Tests: a rescore never stamps (plan.merge, two clones), a restore or re-add of a second expedite, a done expedite frees the class, a wait cycle, closed waiters, the stage from the row's own gaps, days from the first PR; run red: 6 failed
+- [x] T018 `save` compares items without `score`; `expedite` checked in `add` and in `mark` when an item reopens; `add` refuses an `after` id that is the item or waits on it; the stage read before flow's gaps; `days` from the oldest PR
+- [x] T019 docs/design.md, the-day.md, reference.md; `setup.vendor('.')`; full suite green; runtime 3,535 (+87 over main)

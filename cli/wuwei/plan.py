@@ -62,7 +62,8 @@ def save(root, rows):
     for row in rows:
         row['score'] = cost(row, rows) if row.get('scores') else row.get('score', 0)
     old = {o.get('id'): o for o in items(root)}  # a changed item is stamped, unless it brings another clone's stamp (merge)
-    [r.update(changed=ws.now().isoformat()) for r in rows if r != (was := old.get(r.get('id'), {})) and r.get('changed') == was.get('changed')]
+    [r.update(changed=ws.now().isoformat()) for r in rows if {**r, 'score': 0} != {**(was := old.get(r.get('id'), {})), 'score': 0}
+     and r.get('changed') == was.get('changed')]  # a score is derived from the scores and the waiters: no edit
     rows.sort(key=lambda item: (item.get('status') != 'open', -item.get('score', 0)))
     ws.atomic_write(_path(root), json.dumps({'items': rows}, indent=1) + '\n')
 
@@ -70,6 +71,12 @@ def save(root, rows):
 def merge(root, data):  # another clone's plan.json merged into this one by item id: the newer change to each item wins, this clone's on a tie
     with contextlib.suppress(OSError, ValueError, TypeError, KeyError, AttributeError):  # None for a file that is not a plan: last writer wins, as before
         return save(root, list({r['id']: r for r in sorted(json.loads(data)['items'] + json.loads(_path(root).read_bytes())['items'], key=lambda r: r.get('changed') or '')}.values())) or True
+
+
+def expedite(rows, item_id):  # at most one expedite item is in progress (open)
+    if other := next((r['id'] for r in rows if r.get('class') == 'expedite' and r.get('status') == 'open'
+                      and r['id'].lower() != str(item_id).lower()), None):
+        raise ValueError(f'{other} is already expedite: at most one expedite item is in progress; finish it first')
 
 
 # The names a lead may give its scores, mapped to the framework's own.
@@ -85,12 +92,13 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
         raise ValueError(f'tier must be one of {", ".join(TIERS)}; a class of service one of {", ".join(CLASSES)}')
     if domain and not re.fullmatch(r'(clear|complicated|complex):[ \t]*\S.*', domain):  # the Cynefin domain and one line of why
         raise ValueError(f'domain must read "clear|complicated|complex: <one line of evidence>", not {domain!r}')
-    if cls == 'expedite' and (busy := next((r['id'] for r in items(root) if r.get('class') == 'expedite'
-                                            and r.get('status') == 'open' and r['id'].lower() != str(item_id).lower()), None)):
-        raise ValueError(f'{busy} is already expedite: at most one expedite item is in progress; finish it first')
-    after = [after] if isinstance(after, str) else list(after)
-    if missing := [a for a in after if find(root, a) is None or str(a).lower() == str(item_id).lower()]:
-        raise ValueError(f'{", ".join(missing)} is not in the plan or is this item: an item waits only on another planned item')
+    (cls or (find(root, item_id) or {}).get('class')) == 'expedite' and expedite(items(root), item_id)
+    after, waits = [after] if isinstance(after, str) else list(after), {r['id'].lower(): r.get('after') or () for r in items(root)}
+
+    def reaches(a, depth=0):  # a is this item or waits on it through the stored after lists; a merged cycle stops at 99
+        return str(a).lower() == str(item_id).lower() or depth < 99 and any(reaches(b, depth + 1) for b in waits.get(str(a).lower(), ()))
+    if missing := [a for a in after if find(root, a) is None or reaches(a)]:
+        raise ValueError(f'{", ".join(missing)} is not in the plan, or is this item or waits on it: a wait never closes a cycle')
     framework = ws.config(root)['prioritisation']
     scores = {ALIASES.get(k, k): v for k, v in scores.items()}
     fields = {'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'framework': framework, 'scores': scores,
@@ -132,6 +140,7 @@ def mark(root, item_id, status, reason='', **fields):
     rows = items(root)
     if (item := next((row for row in rows if row['id'].lower() == item_id.lower()), None)) is None:
         raise ValueError(f'{item_id} is not in the plan')
+    status == 'open' != item.get('status') and item.get('class') == 'expedite' and expedite(rows, item['id'])  # a restore starts it
     item.update(fields, status=status, reason=reason)
     save(root, rows)
     ws.record(root, f'item.{status}', {'id': item['id'], 'reason': reason})

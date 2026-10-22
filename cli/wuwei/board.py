@@ -135,12 +135,6 @@ def when(text):  # an ISO time or date as UTC; None when it is not one
     return found if found.tzinfo else found.replace(tzinfo=datetime.timezone.utc)
 
 
-def stage(row):  # right to left on the board: ready to merge 0, owner review 1, gates 2, fix round 3, building 4
-    found = [(g, evidence.GATES.search(g['text'])) for g in row['gaps'] if g['kind'] == 'safety']
-    return (4 if not row['pr'] else 3 if any(g['actionable'] and not gate for g, gate in found)
-            else 2 if any(gate for _, gate in found) else 1 if any(g['owner'] for g, _ in found) else 0)
-
-
 def flow(root, out):
     """Kanban flow policy: class of service, stale first in its class, then right to left, then age (oldest first).
     A row waiting on an open item says so and asks nothing; one idle STALE_HOURS with no live seat on its item says stale."""
@@ -150,8 +144,12 @@ def flow(root, out):
     for r in ws.ledger(root):
         for key in (d.get('id'), d.get('item'), d.get('pr')) if isinstance(d := r.get('data'), dict) else ():
             last.update({key.lower(): r.get('ts')} if isinstance(key, str) else {})
-    days = {row['item']: (ws.now() - start).days for row in out if (start := when(row.get('opened')))}
+    days = {row['item']: (ws.now() - start).days for row in sorted(out, key=lambda r: str(r.get('opened')), reverse=True)
+            if (start := when(row.get('opened')))}  # the first PR's age is the last written
     for row in out:
+        own = [(g, evidence.GATES.search(g['text'])) for g in row['gaps'] if g['kind'] == 'safety']  # before flow adds any gap
+        row['stage'] = (4 if not row['pr'] else 3 if any(g['actionable'] and not gate for g, gate in own)  # building 4, fix round 3,
+                        else 2 if any(gate for _, gate in own) else 1 if any(g['owner'] for g, _ in own) else 0)  # gates, owner, ready 0
         if (item := found.get(row['item'])) is None:
             continue
         dated = (goals.get(item.get('goal')) or ('', ''))[1]
@@ -166,7 +164,7 @@ def flow(root, out):
         elif row['pr'] and seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and row['item'].lower() not in live:
             row['stale'] = True
             row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, no live seat'), *row['gaps']]
-    return sorted(out, key=lambda r: (plan.CLASSES.index(r.get('class', 'standard')), not r.get('stale'), stage(r),
+    return sorted(out, key=lambda r: (plan.CLASSES.index(r.get('class', 'standard')), not r.get('stale'), r['stage'],
                                       r.get('opened') or (found.get(r['item']) or {}).get('added') or ''))
 
 

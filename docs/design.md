@@ -58,13 +58,15 @@ role's lines of `.wuwei/standards.md`.
 - Flow: work in progress follows Kanban flow policy, so an old draft never starves behind the last
   event. Each item has a class of service: `expedite`, `fixed-date`, `standard` or `intangible`
   (`wuwei plan add --class`; default `standard`, `fixed-date` when its goal has a date). At most one
-  expedite item is open; a second is refused. The board and the Stop reminder list work by class,
+  expedite item is open: a second is refused, whether added, re-added or restored. The board and the Stop reminder list work by class,
   then right to left (ready to merge, owner review, gates, fix round, building), then age, oldest
-  first. Each board row shows its class and the hours since its last event (a PR update, or a
+  first. The stage reads the row's own gaps, before any waiting or stale text. Each board row shows its class and the hours since its last event (a PR update, or a
   ledger row naming the item or its PR). A WSJF item's time criticality rises one Fibonacci step
-  per day its first PR is open. An item may wait on others (`--after <id>`): while one is open the
+  per day its first PR is open. An item may wait on others (`--after <id>`; a wait on itself, or on an item that already
+  waits on it, is refused, so waits never form a cycle): while one is open the
   board shows `waiting on <id>`, the Stop leaves it out, and the item it waits on adds its cost of
-  delay (value + time + risk, or reach x impact x confidence) to its own score. A PR idle 4 hours
+  delay (value + time + risk, or reach x impact x confidence) to its own score; a closed waiter adds
+  nothing. A score is derived, so a rescore never stamps an item `changed` for the sync merge. A PR idle 4 hours
   with no live seat on its item in any session shows `stale` with its last event, first in its class.
 - A close (`/wuwei-close`, `wuwei close`) is a checkpoint: the report and the retro for the day so
   far. A later pass reopens the day; a second checkpoint reports what changed since the first.

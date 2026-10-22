@@ -11,7 +11,9 @@ how it relates to the rest." Attention goes to the last event, so an old draft s
 
 1. Each plan item has a class of service: `expedite`, `fixed-date`, `standard` or `intangible`.
    Without one it is `standard`, or `fixed-date` when its goal in `goals.md` has a `Date:`.
-2. At most one open item is `expedite`: `plan add --class expedite` for a second item is refused.
+2. At most one open item is `expedite`: a second is refused at `plan add` and when a closed
+   expedite item reopens (`plan restore`, a re-add).
+   An `--after` id that is the item, or already waits on it, is refused: waits never form a cycle.
 3. The board, and so the Stop reminder that reads it, lists work by class, then right to left
    (ready to merge, owner review, gates, fix round, building), then age, oldest first. Each board
    row shows its class and the hours since its last event.

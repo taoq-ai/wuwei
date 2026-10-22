@@ -105,7 +105,7 @@ def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_t
 
 def test_an_item_never_waits_on_itself(root):
     plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1})
-    with pytest.raises(ValueError, match='i-1 is not in the plan or is this item'):
+    with pytest.raises(ValueError, match='i-1 is not in the plan, or is this item or waits on it'):
         plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1}, after=['i-1'])
     assert plan.find(root, 'I-1').get('after') == []
 
@@ -133,3 +133,73 @@ def test_a_hand_edited_class_date_or_score_never_breaks_the_board(root, fake):
     rows = {row['item']: row for row in board.compute(root)}
     assert (rows['I-1']['class'], rows['I-1']['last'], rows['I-1']['score']) == ('standard', None, 3)
     assert rows['I-2']['gaps'][0]['text'] == 'waiting on I-1' and 'I-1 change [standard]' in board.text(list(rows.values()))
+
+
+ONE = {'value': 1, 'time': 1, 'risk': 1, 'size': 1}
+
+
+def test_a_wait_that_would_close_a_cycle_is_refused(root):
+    for item, after in (('A', ()), ('B', ['A']), ('C', ['b'])):
+        plan.add(root, item, item, 'G-1', 'acme/app', 'light', ONE, after=after)
+    for item, after in (('A', 'B'), ('A', 'c'), ('B', 'C')):
+        with pytest.raises(ValueError, match=f'{after} is not in the plan, or is this item or waits on it'):
+            plan.add(root, item, item, 'G-1', 'acme/app', 'light', ONE, after=[after])
+    assert [plan.find(root, i).get('after') for i in 'ABC'] == [[], ['A'], ['B']]
+    assert plan.add(root, 'C', 'C', 'G-1', 'acme/app', 'light', ONE, after=['A'])['after'] == ['A']  # no cycle: A waits on nothing
+
+
+@pytest.mark.parametrize('closed', ['done', 'dropped', 'parked'])
+def test_a_closed_waiter_stops_adding_its_cost_of_delay(root, closed):
+    plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 8, 'time': 5, 'risk': 3, 'size': 2})
+    plan.add(root, 'I-2', 'on top', 'G-1', 'acme/app', 'light', {'value': 5, 'time': 3, 'risk': 2, 'size': 1}, after=['I-1'])
+    assert plan.find(root, 'I-1')['score'] == 13.0
+    plan.mark(root, 'I-2', closed, 'closed')
+    assert plan.find(root, 'I-1')['score'] == 8.0
+
+
+def test_a_done_expedite_item_frees_the_class_and_a_restore_is_held_to_one(root):
+    plan.add(root, 'E-1', 'urgent', 'G-1', 'acme/app', 'light', ONE, cls='expedite')
+    plan.mark(root, 'E-1', 'done', 'merged')
+    assert plan.add(root, 'E-2', 'next urgent', 'G-1', 'acme/app', 'light', ONE, cls='expedite')['class'] == 'expedite'
+    with pytest.raises(ValueError, match='E-2 is already expedite'):
+        plan.mark(root, 'E-1', 'open', 'restored')
+    with pytest.raises(ValueError, match='E-2 is already expedite'):
+        plan.add(root, 'E-1', 'urgent again', 'G-1', 'acme/app', 'light', ONE)  # a re-add reopens it as expedite
+    assert plan.find(root, 'E-1')['status'] == 'done'
+    plan.mark(root, 'E-2', 'parked', 'later')
+    assert plan.mark(root, 'E-1', 'open', 'restored')['status'] == 'open'
+    plan.mark(root, 'E-1', 'open', 'run evidence')  # an open item marked open again is no second start
+
+
+def test_a_rescore_never_stamps_an_item_so_another_clones_edit_wins_the_merge(root, tmp_path):
+    import shutil
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', ONE, promise='old promise')
+    plan.add(root, 'B', 'b', 'G-1', 'acme/app', 'light', ONE, after=['A'])
+    shutil.copytree(root, other := tmp_path / 'clone-y')
+    plan.add(other, 'A', 'a', 'G-1', 'acme/app', 'light', ONE, promise='new promise from Y')  # the owner edits A on Y
+    before = plan.find(root, 'A')['changed']
+    plan.mark(root, 'B', 'done', 'merged')  # later on X: A's score drops, nothing a person edits
+    assert (plan.find(root, 'A')['changed'], plan.find(root, 'A')['score']) == (before, 3.0)
+    assert plan.merge(other, (root / ws.DIR / 'plan.json').read_bytes())
+    assert (plan.find(other, 'A')['promise'], plan.find(other, 'A')['score'], plan.find(other, 'B')['status']) == (
+        'new promise from Y', 3.0, 'done')
+
+
+def test_the_stage_is_read_from_the_rows_own_gaps_before_waiting_or_stale_text(root, fake):
+    items(root, 'I-1', 'I-2', 'I-3', I_2={'after': ['I-1']})
+    fake.prs['42'] = pr(42, 'I-2', checks='FAILURE')  # waits on I-1, and its CI is red: a fix round, not ready to merge
+    fake.prs['43'] = pr(43, 'I-3')  # its gates are next
+    assert order(root) == ['I-3', 'I-2', 'I-1']
+    items(root, 'I-4', 'I-5')
+    fake.prs.clear()
+    fake.prs['44'] = pr(44, 'I-4', created=ago(hours=5))  # stale at gates
+    fake.prs['45'] = pr(45, 'I-5', created=ago(hours=6), files=('src/app.py',))  # stale in a fix round, older
+    ws.cache_put(root, 'board', None)
+    assert order(root) == ['I-4', 'I-5']
+
+
+def test_time_in_progress_counts_from_the_items_first_pr(root, fake):
+    items(root, 'I-1', I_1={'scores': {'value': 8, 'time': 5, 'risk': 3, 'size': 2}, 'framework': 'wsjf'})
+    fake.prs['41'] = pr(41, 'I-1', created=ago(days=2, hours=1))
+    fake.prs['42'] = pr(42, 'I-1')
+    assert {row['score'] for row in board.compute(root) if row['item'] == 'I-1'} == {12.0}
