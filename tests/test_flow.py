@@ -103,7 +103,6 @@ def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_t
     assert order(root) == ['I-2', 'I-1'] and 'last event 0h ago' in board.text(board.compute(root), root)
 
 
-
 def test_a_host_session_builder_keeps_its_idle_item_from_stale(root, fake):
     """builder-host: a session builder writes no seat.started row; its recorded session is the live seat flow reads."""
     items(root, 'I-1', I_1={'host': 'session', 'session': 'session_01ABC'})
@@ -112,6 +111,22 @@ def test_a_host_session_builder_keeps_its_idle_item_from_stale(root, fake):
     items(root, 'I-1', I_1={'host': 'agent', 'session': 'session_01ABC'})  # an agent item's session field is no seat
     ws.cache_put(root, 'board', None)
     assert [g['text'] for row in board.compute(root) if row['item'] == 'I-1' for g in row['gaps']][0] == f'stale: no event since {ago(hours=5)[:16]}, no live seat'
+
+
+def test_a_session_builder_with_no_pr_after_four_hours_shows_stale_so_a_dead_session_surfaces(root, fake):
+    """builder-host arch FIX: a recorded session never holds its item unseen; idle STALE_HOURS with no PR, the row says so."""
+    items(root, 'I-1', 'I-2', I_1={'host': 'session', 'session': 's-old', 'added': ago(hours=5)[:10]}, I_2={'host': 'session', 'session': 's-new'})
+    first = lambda: {row['item']: row['gaps'][0]['text'] for row in board.compute(root) if row['item'] != 'team'}  # noqa: E731
+    with pytest.MonkeyPatch.context() as patch:  # the record was made five hours ago, and nothing since
+        patch.setattr(ws, 'now', lambda: datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=5))
+        ws.record(root, 'item.open', {'id': 'I-1', 'reason': 'builder session s-old'})
+    ws.record(root, 'item.open', {'id': 'I-2', 'reason': 'builder session s-new'})
+    rows = first()
+    assert rows['I-1'].startswith('stale: no event since') and rows['I-1'].endswith(', no PR from builder session s-old')
+    assert rows['I-2'] == 'no pull request yet' and order(root)[0] == 'I-1'
+    items(root, 'I-1', I_1={'host': 'agent', 'session': 's-old'})  # an agent item with no PR is a start, never stale
+    ws.cache_put(root, 'board', None)
+    assert first()['I-1'] == 'no pull request yet'
 
 def test_an_item_never_waits_on_itself(root):
     plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1})

@@ -34,8 +34,8 @@ def cmd_plan(args):
                         args.domain or '', args.in_doubt, args.cls, args.after or (), args.host)
         print(f'{item["id"]} added with score {item["score"]}')
     elif args.action == 'session':  # a host-session builder has no seat.started row: the board counts it live from this record
-        if (host := (plan.find(root, args.id) or {'host': 'none: not in the plan'}).get('host', 'agent')) != 'session' or not args.title:
-            raise ValueError(f'plan session needs <id> <session id> for an item added with --host session ({args.id}: host {host}); nothing recorded')
+        if (item := plan.find(root, args.id)) and (item.get('host') != 'session' or item.get('status', 'open') != 'open' or not args.title):
+            raise ValueError(f'plan session needs <id> <session id> for an open item added with --host session ({item["id"]}: host {item.get("host", "agent")}, {item.get("status", "open")}); nothing recorded')
         print(f'{plan.mark(root, args.id, "open", "builder session " + args.title, session=args.title)["id"]} builder session {args.title} recorded')
     elif args.action in ('park', 'drop', 'done'):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]

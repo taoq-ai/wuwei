@@ -164,9 +164,10 @@ def flow(root, out):
         if waits := [a for a in item.get('after') or () if (found.get(a) or {}).get('status', 'open') == 'open']:
             row['gaps'] = [evidence.gap(f'waiting on {", ".join(waits)}', actionable=False),
                            *(dict(g, actionable=False) for g in row['gaps'])]
-        elif row['pr'] and seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and row['item'].lower() not in live:
-            row['stale'] = True
-            row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, no live seat'), *row['gaps']]
+        elif seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and (row['pr'] and row['item'].lower() not in live
+                                                                                   or not row['pr'] and item.get('host') == 'session' and item.get('session')):
+            row['stale'] = True  # a session builder with no PR: a dead session surfaces here (builder-host)
+            row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, ' + ('no live seat' if row['pr'] else f'no PR from builder session {item["session"]}')), *row['gaps']]
     return sorted(out, key=lambda r: (plan.CLASSES.index(r.get('class', 'standard')), not r.get('stale'), r['stage'],
                                       r.get('opened') or (found.get(r['item']) or {}).get('added') or ''))
 

@@ -331,6 +331,7 @@ def test_plan_add_stores_the_builder_host_and_refuses_any_other(root, monkeypatc
     with pytest.raises(ValueError, match='host must be one of agent, session'):
         plan.add(root, 'I-2', 't', 'G-1', 'acme/app', 'light', scores(), host='Session')
     assert plan.find(root, 'I-1')['host'] == 'session' and plan.find(root, 'I-2') is None
+    assert cli.main(add) == 0 and plan.find(root, 'I-1')['host'] == 'agent'  # a re-add without --host resets it, as it resets the tier
 
 
 def test_plan_session_records_a_host_session_builder_and_refuses_an_agent_item(root, monkeypatch, capsys):
@@ -342,5 +343,11 @@ def test_plan_session_records_a_host_session_builder_and_refuses_an_agent_item(r
     assert capsys.readouterr().out == 'I-1 builder session session_01ABC recorded\n'
     assert (plan.find(root, 'I-1')['session'], plan.find(root, 'I-1')['status']) == ('session_01ABC', 'open')
     assert cli.main(['plan', 'session', 'I-2', 'session_02']) == 2
-    assert '(I-2: host agent)' in capsys.readouterr().err and 'session' not in plan.find(root, 'I-2')
+    assert '(I-2: host agent, open)' in capsys.readouterr().err and 'session' not in plan.find(root, 'I-2')
     assert cli.main(['plan', 'session', 'I-1']) == 2 and plan.find(root, 'I-1')['session'] == 'session_01ABC'
+    capsys.readouterr()
+    for status in ('done', 'parked', 'dropped'):  # a closed item stays closed: a session record never reopens it
+        plan.mark(root, 'I-1', status, 'closed')
+        assert cli.main(['plan', 'session', 'I-1', 'session_09']) == 2 and f'(I-1: host session, {status})' in capsys.readouterr().err
+        assert (plan.find(root, 'I-1')['status'], plan.find(root, 'I-1')['session']) == (status, 'session_01ABC')
+    assert cli.main(['plan', 'session', 'I-9', 'session_09']) == 2 and capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'

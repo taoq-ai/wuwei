@@ -551,5 +551,9 @@ def test_a_host_session_builder_counts_as_a_live_seat_from_its_record_and_names_
     assert [(s['role'], s['item'], s['session']) for s in board.running(root, hosted=True)] == [('builder', 'I-2', 'session_01ABC')]
     assert board.running(root) == []  # the hook's held check: the planner's gate launches on I-2 stay free
     assert [g['text'] for r in board.compute(root) if r['item'] == 'I-2' for g in r['gaps'] if 'running' in g['text']] == ['builder running in session session_01ABC']
+    assert refused(launch(root, 'P', 'Item: I-2\nGate it.', agent='g1', role='sentinel-quality')) is None  # gates stay here
+    assert hook.handle(root, 'Stop', {'session_id': 'session_01ABC', 'cwd': str(root)})['decision'] == 'block'  # its record quiets no Stop
+    plan.mark(root, 'I-1', 'open', '', host='session')  # added with --host session, no session recorded yet: no seat, no crash
+    assert [s['item'] for s in board.running(root, hosted=True) if s['agent'] != 'g1'] == ['I-2'] and len(board.compute(root)) == 4
     plan.mark(root, 'I-2', 'done', 'merged')
-    assert board.running(root, hosted=True) == []
+    assert [s['agent'] for s in board.running(root, hosted=True)] == ['g1']
