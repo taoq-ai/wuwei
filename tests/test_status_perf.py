@@ -72,7 +72,8 @@ def test_a_cold_status_names_each_repository_on_stderr_and_keeps_stdout(root, fa
     assert cold.out.splitlines() == ['Board (what each open item still lacks):', (
         '- team seats: orchestration: open PRs with no shepherd seat running; '
         'orchestration: gates owed on green heads with no gate seat running')] + [
-        f'- I-{n} item {n} (acme/app#{100 + n}): gates missing at head aaaaaaa: quality' for n in range(1, 19)]
+        f'- I-{n} item {n} (acme/app#{100 + n}) [standard, last event 0h ago]: gates missing at head aaaaaaa: quality'
+        for n in range(1, 19)]
 
 
 def _pr_reads(calls):

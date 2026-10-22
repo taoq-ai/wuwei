@@ -484,7 +484,7 @@ def test_a_live_seat_in_another_session_shows_on_the_board_and_counts_for_the_te
     assert team(root) == [GATES]
     rows = [r for r in board.compute(root) if r['item'] == 'I-2']
     assert [g['text'] for r in rows for g in r['gaps'] if 'running' in g['text']] == ['builder running in session A']
-    assert '- I-2 c (acme/app#42): ' in (text := board.text(board.compute(root), root)) and 'builder running in session A [waiting]' in text
+    assert '- I-2 c (acme/app#42) [standard, last event 0h ago]: ' in (text := board.text(board.compute(root), root)) and 'builder running in session A [waiting]' in text
     assert not [g for r in board.compute(root) if r['item'] != 'I-2' for g in r['gaps'] if 'running in session' in g['text']]
 
 
