@@ -978,34 +978,6 @@
    "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
   },
   {
-   "id": "decisions-survive",
-   "title": "fix(hook): owner answers survive compaction and new sessions: every session start shows the recorded answers, and a question already answered is sent back with its answer",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "owner 2026-10-22: in a long session, compaction loses decisions and the owner is asked again; WUWEI state should hold regardless. hook.session_start (cli/wuwei/hook.py:418) re-injects charters and the board after compaction but no owner answers; scope:, trust:, one-way: answers live only as ledger prompt rows; the question guard does not check for an answer already given",
-   "promise": "every SessionStart (startup, resume, clear, compact) adds the owner answers recorded in the last 7 days as compact question-and-answer lines within the context cap; an AskUserQuestion whose question matches one answered in that window (same class, normalised text) is sent back with the recorded answer and its date, unless it names a new head or PR",
-   "acceptance": [
-    "given a scope: answer recorded today, when the session is compacted and restarts, then its session context lists that question and answer",
-    "given that answer, when the planner asks the same scope: question again, then the guard sends it back with the recorded answer",
-    "given a plan: question after new items were added, when it is asked, then it reaches the owner"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1239",
-   "changed": "2026-10-22T21:25:15.844115+00:00"
-  },
-  {
    "id": "1223",
    "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
    "goal": "G-2",
@@ -1217,6 +1189,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "decisions-survive",
+   "title": "fix(hook): owner answers survive compaction and new sessions: every session start shows the recorded answers, and a question already answered is sent back with its answer",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "owner 2026-10-22: in a long session, compaction loses decisions and the owner is asked again; WUWEI state should hold regardless. hook.session_start (cli/wuwei/hook.py:418) re-injects charters and the board after compaction but no owner answers; scope:, trust:, one-way: answers live only as ledger prompt rows; the question guard does not check for an answer already given",
+   "promise": "every SessionStart (startup, resume, clear, compact) adds the owner answers recorded in the last 7 days as compact question-and-answer lines within the context cap; an AskUserQuestion whose question matches one answered in that window (same class, normalised text) is sent back with the recorded answer and its date, unless it names a new head or PR",
+   "acceptance": [
+    "given a scope: answer recorded today, when the session is compacted and restarts, then its session context lists that question and answer",
+    "given that answer, when the planner asks the same scope: question again, then the guard sends it back with the recorded answer",
+    "given a plan: question after new items were added, when it is asked, then it reaches the owner"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1239",
+   "changed": "2026-10-22T21:25:15.844115+00:00"
   },
   {
    "id": "reply-thread-ts",
@@ -1986,34 +1986,6 @@
    "reason": "merged as taoq-ai/wuwei#1066"
   },
   {
-   "id": "multi-session",
-   "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 11.33,
-   "why": "owner 2026-10-22: run WUWEI across several sessions; today it is tangled. board.running (cli/wuwei/board.py:65) counts only this session's seats, so WIP, the seat ceiling and the team row are blind to other sessions and a second session can start a builder on the same item; sync.py makes plan.json last-writer-wins across cloud clones, so concurrent plan changes drop each other",
-   "promise": "the board counts live seats from every session today and names the session holding each item; the WIP limit and seat ceiling count all sessions; an Agent launch for an item another live session holds is sent back naming that session; a cloud state sync merges plan.json by item id, newest change per item wins, instead of last writer wins",
-   "acceptance": [
-    "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
-    "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
-    "given two clones that each add a different plan item, when both sync, then the plan holds both"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1238",
-   "changed": "2026-10-22T21:25:15.904266+00:00"
-  },
-  {
    "id": "push-moved-head",
    "title": "fix(guards): a push after a command that moves HEAD or the working folder meets the push door",
    "goal": "G-2",
@@ -2093,6 +2065,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1095"
+  },
+  {
+   "id": "multi-session",
+   "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "owner 2026-10-22: run WUWEI across several sessions; today it is tangled. board.running (cli/wuwei/board.py:65) counts only this session's seats, so WIP, the seat ceiling and the team row are blind to other sessions and a second session can start a builder on the same item; sync.py makes plan.json last-writer-wins across cloud clones, so concurrent plan changes drop each other",
+   "promise": "the board counts live seats from every session today and names the session holding each item; the WIP limit and seat ceiling count all sessions; an Agent launch for an item another live session holds is sent back naming that session; a cloud state sync merges plan.json by item id, newest change per item wins, instead of last writer wins",
+   "acceptance": [
+    "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
+    "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
+    "given two clones that each add a different plan item, when both sync, then the plan holds both"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1238",
+   "changed": "2026-10-22T21:25:15.904266+00:00"
   },
   {
    "id": "models-departure",
@@ -2465,34 +2465,6 @@
    "reason": "until 2026-10-24: WIP limit 4 and no runtime lines until free-lines-6 merges"
   },
   {
-   "id": "cache-paths",
-   "title": "fix(ws): a cache entry or name never reads, writes or deletes outside .wuwei/cache",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 9.5,
-   "why": "security gate on #1229 (2026-10-22, verdict .wuwei/verdicts/free-lines-6/security-17a9553.md), pre-existing on main: ws.cache_get follows an entry linked outside the cache; cache names built from payload fields (stop-<session_id> in hook.py, notes-<session> in guards.py) can hold ../ unchecked; when .wuwei/cache is itself a link, ws.cache_prune deletes files in the folder it points to",
-   "promise": "every cache read, write and prune resolves to a regular file inside the workspace's own .wuwei/cache: a linked entry or a linked cache folder is skipped, and a name built from payload fields cannot leave the cache folder",
-   "acceptance": [
-    "given .wuwei/cache linked to another folder, when the cache is pruned, then no file outside .wuwei/cache is deleted",
-    "given a session_id holding ../, when the Stop hook writes its stop- entry, then the entry stays inside .wuwei/cache",
-    "given a cache entry linked to a file outside the cache, when it is read, then it reads as absent"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1242",
-   "changed": "2026-10-22T21:25:15.965162+00:00"
-  },
-  {
    "id": "1222",
    "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
    "goal": "G-2",
@@ -2650,6 +2622,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1083"
+  },
+  {
+   "id": "cache-paths",
+   "title": "fix(ws): a cache entry or name never reads, writes or deletes outside .wuwei/cache",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "security gate on #1229 (2026-10-22, verdict .wuwei/verdicts/free-lines-6/security-17a9553.md), pre-existing on main: ws.cache_get follows an entry linked outside the cache; cache names built from payload fields (stop-<session_id> in hook.py, notes-<session> in guards.py) can hold ../ unchecked; when .wuwei/cache is itself a link, ws.cache_prune deletes files in the folder it points to",
+   "promise": "every cache read, write and prune resolves to a regular file inside the workspace's own .wuwei/cache: a linked entry or a linked cache folder is skipped, and a name built from payload fields cannot leave the cache folder",
+   "acceptance": [
+    "given .wuwei/cache linked to another folder, when the cache is pruned, then no file outside .wuwei/cache is deleted",
+    "given a session_id holding ../, when the Stop hook writes its stop- entry, then the entry stays inside .wuwei/cache",
+    "given a cache entry linked to a file outside the cache, when it is read, then it reads as absent"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1242",
+   "changed": "2026-10-22T21:25:15.965162+00:00"
   },
   {
    "id": "doors-by-rest",
