@@ -87,10 +87,10 @@ def test_time_criticality_rises_one_fibonacci_step_per_day_in_progress(root, fak
 
 def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_top_of_its_class(root, fake):
     items(root, 'I-1', 'I-2')
-    fake.prs['41'] = pr(41, 'I-1', created=ago(hours=5), files=('src/app.py',))  # a fix round, idle 5 hours
+    fake.prs['41'] = pr(41, 'I-1', created=(idle := ago(hours=5)), files=('src/app.py',))  # a fix round, idle 5 hours
     fake.prs['42'] = pr(42, 'I-2', created=ago(minutes=5))  # its gates are next
-    rows = {row['item']: row for row in board.compute(root)}
-    assert rows['I-1']['gaps'][0]['text'] == f'stale: no event since {ago(hours=5)[:16]}, no live seat'
+    rows = {row['item']: row for row in board.compute(root)}  # a slow runner may cross a minute: the expected time is the PR's own
+    assert rows['I-1']['gaps'][0]['text'] == f'stale: no event since {idle[:16]}, no live seat'
     assert order(root) == ['I-1', 'I-2']
     assert 'last event 5h ago' in board.text(board.compute(root), root)
     ws.cache_put(root, 'board', None)
