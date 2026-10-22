@@ -434,14 +434,15 @@ def session_start(root, payload):
              f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
              f'and the goals and standards in {Path(root) / ws.DIR}.']
     left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
-    try:
+    try:  # the owner's answers, the latest 12 (a bounded share: the board's items give way to them); then the board to the cap
+        parts += bool(said := ws.answers(root)[1]) * ['Owner answers, last 7 days (act on them; never ask again):\n' + '\n'.join(said[:12] + [f'{len(said) - 12} older left out.'] * (len(said) > 12))]
         found, cut = board.rows(root), 0
         lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
         while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
             lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
         parts.append('\n'.join(lines + left(cut)))
     except Exception as exc:  # the board is orientation; a session never waits on it
-        parts.append(f'Board unreadable: {exc}')
+        parts.append(f'Answers or board unreadable: {exc}')
     return context('SessionStart', '\n\n'.join(parts)[:SESSION_CAP])  # only a board with no item left to drop reaches the cut
 
 

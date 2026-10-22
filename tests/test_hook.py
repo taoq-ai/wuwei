@@ -2040,3 +2040,97 @@ def test_a_working_install_keeps_its_hook_exit_codes(root, tmp_path):
     assert run('hook', 'PreToolUse', payload={'tool_name': 'Read', 'tool_input': {'file_path': 'x'}}).returncode == 0
     assert run('hook', 'PreToolUse', payload={}).returncode == 0
     assert run('hook').returncode == 2 and run('nonesuch').returncode == 2  # argparse's own usage errors
+
+
+# decisions-survive: owner answers outlive compaction and new sessions
+
+SCOPE = 'scope: may I-1 also change the CLI help text?'
+
+
+def start(root, source='compact'):
+    return hook.handle(root, 'SessionStart', {'session_id': 's1', 'source': source, 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+
+
+def ask_again(root, question):
+    return guards.pre_tool(root, {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's2',
+                                  'tool_input': {'questions': [{'question': question, 'header': 'h', 'options': []}]}})
+
+
+def test_a_scope_answer_recorded_today_is_in_the_context_after_compaction_and_a_new_session(root):
+    hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'Yes, the help text only'}))
+    assert ws.rows(root, 'prompt')
+    for source in ('compact', 'startup', 'resume', 'clear'):
+        assert f'{ws.today()} {SCOPE} -> Yes, the help text only' in start(root, source) and 'left out' not in start(root, source)
+
+
+def test_the_latest_answer_to_a_question_is_the_one_given_back_and_an_empty_one_none(root):
+    hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'No'}))
+    hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'Yes, after all'}))
+    assert '"Yes, after all"' in ask_again(root, SCOPE)['reason'] and '-> No' not in start(root)
+    ws.record(root, 'prompt', {'id': 'blank', 'questions': ['trust: may I?'], 'answers': {'trust: may I?': ''}})
+    assert ask_again(root, 'trust: may I?') is None
+
+
+def test_a_scope_question_already_answered_is_sent_back_with_its_answer_and_date(root):
+    hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'Yes, the help text only'}))
+    for spelling in (SCOPE, '  Scope:  may I-1 ALSO change\nthe CLI help text?  '):
+        out = ask_again(root, spelling)
+        assert out['decision'] == 'deny' and 'Yes, the help text only' in out['reason'] and ws.today() in out['reason']
+
+
+@pytest.mark.parametrize('question', [f'scope: you answered "{SCOPE}"; may I-1 now change the README too?',
+                                      SCOPE + ' And the man page?', 'trust:' + SCOPE[6:], 'scope: may I-1 also change the CLI help?'])
+def test_a_question_that_quotes_or_extends_an_answered_one_reaches_the_owner(root, question):
+    hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'Yes'}))
+    assert ask_again(root, question) is None
+
+
+def test_a_plan_question_after_new_items_reaches_the_owner(root):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', 'score': 1},
+                      {'id': 'I-0', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'done', 'approved': False}])
+    hook.handle(root, 'PostToolUse', answered(root, ['plan: approve the plan as shown?'], {'plan: approve the plan as shown?': 'Yes'}))
+    assert ask_again(root, 'plan: approve the plan as shown?')['decision'] == 'deny'
+    plan.add(root, 'I-2', 'new', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1})
+    assert ask_again(root, 'plan: approve the plan as shown?') is None
+
+
+def test_an_answer_on_one_head_never_answers_a_new_head(root):
+    asked = f'owner review: acme/app#42 at {HEAD[:7]}. Approve?'
+    hook.handle(root, 'PostToolUse', answered(root, [asked], {asked: 'Yes'}))
+    assert ask_again(root, asked)['decision'] == 'deny'
+    assert ask_again(root, asked.replace(HEAD[:7], 'b' * 7)) is None and ask_again(root, asked.replace('#42', '#43')) is None
+
+
+def test_an_answer_older_than_seven_days_is_neither_shown_nor_sent_back(root, monkeypatch):
+    import datetime
+    real = ws.now
+    monkeypatch.setattr(ws, 'now', lambda: real() - datetime.timedelta(days=7, hours=1))
+    ws.record(root, 'prompt', {'id': 'old', 'questions': [SCOPE], 'answers': {SCOPE: 'Yes'}})
+    monkeypatch.setattr(ws, 'now', real)
+    assert ask_again(root, SCOPE) is None and SCOPE not in start(root)
+
+
+def test_session_start_lists_answers_pending_or_unconfirmed_with_their_reason(root):
+    ws.record(root, 'answer.unconfirmed', {'id': 't1', 'questions': ['trust: may seats read ~/.ssh?'], 'answers': {}, 'reason': 'the payload holds no answer'})
+    ws.record(root, 'answer.pending', {'id': 't2', 'questions': ['one-way: drop the v1 API?'], 'answers': {'one-way: drop the v1 API?': 'No'}})
+    ws.record(root, 'answer.pending', {'id': 't3', 'questions': ['goal: G-1 met?'], 'answers': {'goal: G-1 met?': 'Yes'}})
+    ws.record(root, 'prompt', {'id': 't3', 'questions': ['goal: G-1 met?'], 'answers': {'goal: G-1 met?': 'Yes'}})
+    text = start(root)
+    assert "trust: may seats read ~/.ssh?" in text and 'the payload holds no answer' in text
+    assert "one-way: drop the v1 API?" in text and 'pending' in text
+    assert f'{ws.today()} goal: G-1 met? -> Yes' in text and text.count('goal: G-1 met?') == 1
+
+
+def test_many_answers_take_a_bounded_share_of_the_cap_and_name_what_was_cut(root, fake, monkeypatch):
+    import datetime
+    real = ws.now
+    write_plan(root, [{'id': f'I-{n}', 'title': 'x' * 300, 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for n in range(1, 40)])
+    for n in range(60):
+        question = f'scope: question {n} ' + 'q' * 300
+        monkeypatch.setattr(ws, 'now', lambda: real() - datetime.timedelta(minutes=60 - n))  # question 59 is the latest
+        ws.record(root, 'prompt', {'id': f't{n}', 'questions': [question], 'answers': {question: f'answer {n} ' + 'a' * 300}})
+    monkeypatch.setattr(ws, 'now', real)
+    text = start(root)
+    assert len(text) < hook.SESSION_CAP and all(f'scope: question {n} ' in text for n in range(48, 60))
+    assert not any(f'scope: question {n} ' in text for n in range(48)) and '48 older left out' in text and '- I-1 ' in text

@@ -12,7 +12,7 @@ import subprocess
 from tempfile import gettempdir
 from urllib.parse import unquote
 
-from wuwei import evidence, gh, ws
+from wuwei import evidence, gh, plan, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
@@ -408,28 +408,27 @@ def bash(root, command, cwd, session):
 
 
 def pre_tool(root, payload):
-    tool = payload.get('tool_name', '')
-    data = payload.get('tool_input') or {}
-    cwd = payload.get('cwd') or '.'
+    tool, data, cwd = payload.get('tool_name', ''), payload.get('tool_input') or {}, payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
         return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(harness(p, keep=True) for p in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
-        process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
-            r"template's sections|changed lines|open [0-9]+ days", q)]  # a spec gap is safety at full tier (#1223)
-        if process:
+        if any(q.strip().lower().startswith('exception:') and re.search(r"template's sections|changed lines|open [0-9]+ days", q)
+               for q in questions):  # a spec gap is safety at full tier (#1223)
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
-        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:')) and not re.match(
+        if unparsed := [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:')) and not re.match(
                     r'(?i:exception:)[^#]*?(?<![\w.-])[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}\b(?: and (?:[\w.-]+/[\w.-]+)?#[0-9]+ at [0-9a-f]{7,40}\b)*'
-                    r' *: *+(?![\s\S]*#[0-9]+ at [0-9a-f]{7,40}\b)[^\W_]|\s*(?i:owner review:|breaking:)\s*[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}\b', q)]
-        if unparsed:
+                    r' *: *+(?![\s\S]*#[0-9]+ at [0-9a-f]{7,40}\b)[^\W_]|\s*(?i:owner review:|breaking:)\s*[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}\b', q)]:
             return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
                         'and plan: take any wording). Use the exact shape: "exception: '
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
+        known, shown = ws.answers(root)[0], all(i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')
+        if again := [known[k] for q in questions if (k := ' '.join(q.casefold().split())) in known and (shown or k[:5] != 'plan:')]:  # new items: asked
+            return deny('already answered: ' + '; '.join(f'on {ts:.10}, "{q:.200}" -> "{a:.300}"' for ts, q, a in again) + '. Act on that; a new head, PR or plan item is a new question.')
         if not (unclassed := [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]):
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)

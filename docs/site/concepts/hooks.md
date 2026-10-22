@@ -15,8 +15,8 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 
 | Hook | Role |
 | --- | --- |
-| SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, the board with how many items it left out |
-| PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
+| SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, your answers of the last 7 days (those not recorded first, with their reason), the board with how many items it left out; at every start, compaction included |
+| PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back, and a question you answered in the last 7 days sent back with your answer |
 | PostToolUse | a trace per call; what a new PR lacks; owner answers kept as `answer.pending`, then recorded as prompts, rulings, exceptions once the session transcript shows them (on the planner's next call, before its doors, since Claude Code writes the answer after the hook) |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested; only when the session transcript shows the seat's launch |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |

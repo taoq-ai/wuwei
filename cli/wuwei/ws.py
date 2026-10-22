@@ -196,8 +196,16 @@ def verify(root):
 
 
 def rows(root, kind, day=None):
-    return [row for row in ledger(root)
-            if row.get('kind') == kind and (day is None or row.get('ts', '').startswith(day))]
+    return [row for row in ledger(root) if row.get('kind') == kind and (day is None or row.get('ts', '').startswith(day))]
+
+
+def answers(root, days=7):  # ({question, case and spacing aside: (ts, question, answer)}, lines, the unrecorded first) of the last days
+    found, left, done, since = {}, [], set(), (now() - datetime.timedelta(days=days)).isoformat(timespec='seconds')
+    for kind, d, ts in reversed([(r.get('kind'), r.get('data') or {}, r.get('ts', '')) for r in ledger(root) if r.get('ts', '') >= since]):  # newest first
+        found = {' '.join(q.casefold().split()): (ts, q, str(a)) for q, a in (d['answers'] if kind == 'prompt' and isinstance(d.get('answers'), dict) else {}).items() if a} | found
+        left += [f'{ts[:10]} unrecorded, ask again: {d.get("questions")!s:.100} ({d.get("reason", "pending")!s:.100})'] * (kind == 'answer.unconfirmed' or kind == 'answer.pending' and d.get('id') not in done)
+        done.add(d.get('id'))  # a later row with its id settles a pending answer, which its session's next call records
+    return found, left + [f'{ts:.10} {q:.120} -> {a:.120}' for ts, q, a in sorted(found.values(), reverse=True)]  # a ruling repeats its prompt row
 
 
 def trace(root, row):
