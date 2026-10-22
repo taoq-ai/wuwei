@@ -311,3 +311,33 @@ def test_a_job_file_read_while_the_companion_writes_it_is_read_again(root, fake,
         path.write_text(whole)
     monkeypatch.setattr(board.time, 'sleep', written)
     assert [g['text'] for r in board.compute(root) if r['item'] == 'A' for g in r['gaps']] == ['run: job running']
+
+
+def test_plan_add_stores_the_builder_host_and_refuses_any_other(root, monkeypatch, capsys):
+    """builder-host: --host session|agent, agent by default; any other value is refused at the CLI and in add."""
+    import json
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    add = ['plan', 'add', 'I-1', 'long item', '--goal', 'G-1', '--repo', 'acme/app', '--value', '5', '--time', '3', '--risk', '2', '--size', '2']
+    assert cli.main(add) == 0 and plan.find(root, 'I-1')['host'] == 'agent'
+    assert cli.main(add + ['--host', 'session']) == 0
+    capsys.readouterr()
+    assert cli.main(['plan', 'show', 'I-1']) == 0 and json.loads(capsys.readouterr().out)['host'] == 'session'
+    with pytest.raises(SystemExit):
+        cli.main(add + ['--host', 'codex'])
+    with pytest.raises(ValueError, match='host must be one of agent, session'):
+        plan.add(root, 'I-2', 't', 'G-1', 'acme/app', 'light', scores(), host='Session')
+    assert plan.find(root, 'I-1')['host'] == 'session' and plan.find(root, 'I-2') is None
+
+
+def test_plan_session_records_a_host_session_builder_and_refuses_an_agent_item(root, monkeypatch, capsys):
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    plan.add(root, 'I-1', 'a', 'G-1', 'acme/app', 'standard', scores(), host='session')
+    plan.add(root, 'I-2', 'b', 'G-1', 'acme/app', 'standard', scores())
+    assert cli.main(['plan', 'session', 'i-1', 'session_01ABC']) == 0
+    assert capsys.readouterr().out == 'I-1 builder session session_01ABC recorded\n'
+    assert (plan.find(root, 'I-1')['session'], plan.find(root, 'I-1')['status']) == ('session_01ABC', 'open')
+    assert cli.main(['plan', 'session', 'I-2', 'session_02']) == 2
+    assert '(I-2: host agent)' in capsys.readouterr().err and 'session' not in plan.find(root, 'I-2')
+    assert cli.main(['plan', 'session', 'I-1']) == 2 and plan.find(root, 'I-1')['session'] == 'session_01ABC'
