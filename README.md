@@ -69,7 +69,7 @@ moving while you are away.
 
 ## For agents installing WUWEI
 
-1. Check `python3 --version` (3.11+), `gh auth status`, and a GitHub `origin`.
+1. Check for Python 3.11+ (`python3 --version`; `WUWEI_PYTHON` names another), `gh auth status`, and a GitHub `origin`.
 2. The plugin install is a slash command; if you cannot run it, ask the user to.
 3. Locate the CLI with `find ~/.claude/plugins -type f -path '*/bin/wuwei'`. Never assume it is on
    PATH. Once set up, each session prints it as `WUWEI CLI: <path>`.

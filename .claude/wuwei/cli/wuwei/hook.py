@@ -48,6 +48,7 @@ def context(event, text):
 def pre_tool(root, payload):
     try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
         ws.cache_put(root, 'hook-seen', ws.now().timestamp())
+        ws.cache_put(root, 'hook-python', f'{sys.executable} {sys.version.split()[0]}')  # the doctor names the launcher's choice
     except Exception as exc:
         print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
