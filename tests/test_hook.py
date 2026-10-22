@@ -257,7 +257,7 @@ def test_seat_tokens_are_counted_from_the_transcript(root, tmp_path):
         'content': [{'type': 'text', 'text': 'done'}], 'usage': {'input_tokens': n, 'output_tokens': 10}}})
         for n in (100, 200)))
     hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
-                                                'agent_transcript_path': str(transcript), 'last_assistant_message': 'ok',
+                                                'agent_transcript_path': str(transcript), 'last_assistant_message': 'done',
                                                 'cwd': str(root)}))
     assert ws.rows(root, 'seat.stopped')[0]['data']['tokens'] == 320
 
@@ -480,10 +480,95 @@ def write_verdict(root, text, rel=VERDICT_1067):
     return path
 
 
-def handback(root, message, agent_type='wuwei:sentinel-quality', agent='rev1', mode=None):
-    return hook.handle(root, 'PreToolUse', {'session_id': 's1', 'agent_id': agent, 'agent_type': agent_type,
-                                           'cwd': str(root), 'tool_name': 'SubagentHandback',
+def handed(message, tid='toolu_hb'):
+    return json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': tid, 'name': 'SubagentHandback',
+                                                                     'input': {'message': message}}]}})
+
+
+def handback(root, message, agent_type='wuwei:sentinel-quality', agent='rev1', mode=None, said=None):
+    """A seat's hand-back as Claude Code sends it: the harness launched the seat, and its transcript holds the call (said:
+    what it holds instead). The PreToolUse payload names the session transcript only; the seat's lies beside it."""
+    payload = launched({'session_id': 's1', 'agent_id': agent, 'agent_type': agent_type, 'cwd': str(root)})
+    write(Path(payload.pop('agent_transcript_path')), [handed(message if said is None else said)])
+    return hook.handle(root, 'PreToolUse', {**payload, 'tool_name': 'SubagentHandback', 'tool_use_id': 'toolu_hb',
                                            'tool_input': {'message': message}, **({'permission_mode': mode} if mode else {})})
+
+
+def test_a_forged_handback_naming_a_pass_verdict_attests_nothing_and_evidence_does_not_count_it(root, fake):
+    """#962, security gate at hook-transcript: PreToolUse attested from the payload, so a hand-made call counted as a PASS."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    write_verdict(root, verdict_text())
+    forged = {'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root),
+              'tool_name': 'SubagentHandback', 'tool_input': {'message': f'Reviewed.\nVerdict file: {VERDICT_1067}'}}
+    assert hook.handle(root, 'PreToolUse', forged) is None
+    assert ws.rows(root, 'attest') == [] and evidence.gaps(root, 'acme/app', 42) != []
+    [row] = ws.rows(root, 'seat.unconfirmed')
+    assert row['data']['agent'] == 'rev1' and 'launch' in row['data']['reason']
+
+
+HELD = {  # what the launched gate's transcript holds in place of the hand-back its payload carries
+    'another report': lambda tmp_path: [handed('Nothing to gate yet.\nBlocked: no PR')],
+    'no hand-back': lambda tmp_path: [json.dumps({'type': 'user', 'message': {'content': 'review it'}})],
+    'a link out of the projects folder': lambda tmp_path: write(tmp_path / 'agent.jsonl', [handed(f'Verdict file: {VERDICT_1067}')])}
+
+
+@pytest.mark.parametrize('how', HELD)
+def test_a_launched_gates_handback_its_transcript_does_not_hold_attests_nothing(root, tmp_path, how):
+    write_verdict(root, verdict_text())
+    payload = launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root)})
+    seat, held = Path(payload.pop('agent_transcript_path')), HELD[how](tmp_path)
+    seat.symlink_to(held) if isinstance(held, Path) else write(seat, held)
+    out = hook.handle(root, 'PreToolUse', {**payload, 'tool_name': 'SubagentHandback',
+                                           'tool_input': {'message': f'Verdict file: {VERDICT_1067}'}})
+    assert out is None and ws.rows(root, 'attest') == []
+    assert 'does not hold' in ws.rows(root, 'seat.unconfirmed')[0]['data']['reason']
+
+
+def test_a_gates_empty_handback_its_transcript_holds_is_sent_back_for_its_verdict_line(root):
+    out = handback(root, '')['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'Verdict file:' in out['permissionDecisionReason']
+    assert ws.rows(root, 'attest') == ws.rows(root, 'seat.unconfirmed') == []
+
+
+@pytest.mark.parametrize('rows', [[], ['{"type": "assistant"'], ['[1]'], ['', handed('x')], [handed(f'Verdict file: {VERDICT_1067}')] * 2])
+def test_an_unreadable_or_odd_seat_transcript_never_attests_a_payload_report_twice_or_errs(root, rows):
+    """VAL: an empty, cut, non-object, blank-line or repeated seat transcript; the payload names a PASS verdict."""
+    write_verdict(root, verdict_text())
+    payload = launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root)})
+    write(Path(payload.pop('agent_transcript_path')), rows)
+    for _ in range(2):
+        hook.handle(root, 'PreToolUse', {**payload, 'tool_name': 'SubagentHandback', 'tool_input': {'message': f'Verdict file: {VERDICT_1067}'}})
+    held = len(rows) == 2 and rows[0] == rows[1]
+    assert len(ws.rows(root, 'attest')) == held and len(ws.rows(root, 'seat.unconfirmed')) == 2 * (not held)
+    assert not ws.rows(root, 'hook.error')
+
+
+@pytest.mark.parametrize('text', ['', '  \n', None, 17])
+def test_a_stop_with_no_report_text_takes_the_transcripts_last(root, tmp_path, text):
+    write_verdict(root, verdict_text())
+    seat = write(tmp_path / 'agent.jsonl', [handed(f'Verdict file: {VERDICT_1067}')])
+    assert reviewer_stop(root, text, transcript=str(seat)) is None
+    assert [r['data']['path'] for r in ws.rows(root, 'attest')] == [VERDICT_1067] and not ws.rows(root, 'seat.unconfirmed')
+
+
+@pytest.mark.parametrize('link', [False, True])
+def test_a_replayed_gate_stop_with_a_forged_report_attests_nothing(root, fake, tmp_path, link):
+    """A real launch, its SubagentStop replayed with last_assistant_message naming a PASS verdict the seat never named."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    write_verdict(root, verdict_text())
+    payload = launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root),
+                        'agent_transcript_path': str(write(tmp_path / 'real.jsonl', [json.dumps({'type': 'assistant', 'message': {
+                            'content': [{'type': 'text', 'text': 'Nothing to gate yet.\nBlocked: no PR'}]}})]))})
+    if link:  # the seat transcript a link to a file the seat wrote, which holds the forged report
+        seat = Path(payload['agent_transcript_path'])
+        seat.unlink()
+        seat.symlink_to(write(tmp_path / 'forged.jsonl', [handed(f'Reviewed.\nVerdict file: {VERDICT_1067}')]))
+    forged = {**payload, 'last_assistant_message': f'Reviewed.\nVerdict file: {VERDICT_1067}'}
+    assert hook.handle(root, 'SubagentStop', forged) is None
+    assert ws.rows(root, 'attest') == ws.rows(root, 'seat.stopped') == [] and evidence.gaps(root, 'acme/app', 42) != []
+    assert 'does not hold' in ws.rows(root, 'seat.unconfirmed')[0]['data']['reason']
 
 
 @pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
@@ -698,12 +783,15 @@ def test_the_fail_closed_check_reads_the_doors_from_the_guards_table(monkeypatch
 PAYLOADS = Path(__file__).resolve().parent / 'fixtures' / 'payloads'
 STARTED = {'claude-agent-post-accepted.json': ['a3c1962f47bd20e43'], 'claude-agent-post-model-effort.json': ['a5d4687477f9bdfaa'],
            'codex-spawn-agent-post.json': ['019a7c3e-5b1d']}
-STOPPED = {'claude-seat-stop.json': ['a0130a2652c480942']}
+STOPPED = {'claude-seat-stop.json': ['a0130a2652c480942'], 'claude-sentinel-stop.json': ['a03dc7ca27072549b']}
+ATTESTED = {'claude-sentinel-handback-pre.json': ['a03dc7ca27072549b'], 'claude-sentinel-stop.json': ['a03dc7ca27072549b']}
+ARCH = '.wuwei/verdicts/I-1/arch-aaaaaaa.md'  # the verdict the sentinel fixture's hand-back names
 UNCONFIRMED = {'claude-subagent-stop.json': ['a0c989a635b251810']}  # its launch is in no transcript fixture
 RULED = {'claude-ask-post.json': ['acme/app#42']}
 NOTED = {'claude-ask-post-plan.json': 'plan approved', 'claude-ask-post-free-text.json': 'holds no AskUserQuestion tool_use'}
 QUIET = {'claude-agent-pre-accepted.json', 'claude-agent-pre-rejected.json', 'claude-agent-post-rejected.json',
-         'claude-subagent-pre-tool.json', 'claude-ask-post-plan.json', 'claude-ask-post-free-text.json', *UNCONFIRMED, *RULED}
+         'claude-subagent-pre-tool.json', 'claude-ask-post-plan.json', 'claude-ask-post-free-text.json', 'claude-sentinel-handback-pre.json',
+         *UNCONFIRMED, *RULED}
 TRANSCRIPTS = PAYLOADS.parent / 'transcripts'
 
 
@@ -712,11 +800,37 @@ def installed(payload, rows=None):
     fixture row), and the payload's ~/.claude/projects paths pointed there."""
     folder = ws.PROJECTS / '-repo' / payload['session_id'] / 'subagents'
     folder.mkdir(parents=True, exist_ok=True)
-    rows = [line for name in ('ask-flow.jsonl', 'agent-launch.jsonl', 'ask-late.jsonl') for line in (TRANSCRIPTS / name).read_text().splitlines()] \
-        if rows is None else rows
+    rows = [line for name in ('ask-flow.jsonl', 'agent-launch.jsonl', 'ask-late.jsonl', 'sentinel-launch.jsonl')
+            for line in (TRANSCRIPTS / name).read_text().splitlines()] if rows is None else rows
     folder.parent.with_suffix('.jsonl').write_text(''.join(line + '\n' for line in rows))
-    (folder / 'agent-a0130a2652c480942.meta.json').write_bytes((TRANSCRIPTS / 'agent-a0130a2652c480942.meta.json').read_bytes())
+    for seat in TRANSCRIPTS.glob('agent-*'):  # each seat's meta file and transcript
+        (folder / seat.name).write_bytes(seat.read_bytes())
     return {k: v.replace('~/.claude/projects', str(ws.PROJECTS)) if isinstance(v, str) else v for k, v in payload.items()}
+
+
+SENTINEL = [json.loads((PAYLOADS / f'claude-sentinel-{n}.json').read_text()) for n in ('handback-pre', 'stop')]
+
+
+def test_the_real_gate_flow_attests_at_its_handback_once_and_records_its_stop(root, fake):
+    """A sentinel's hand-back and stop as the fixture transcripts hold them (tests/fixtures/transcripts): attested as before."""
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open', 'score': 1}])
+    fake.prs['42'] = make_pr(files=('src/app.py', 'tests/test_app.py'))
+    write_verdict(root, verdict_text(gate='arch'), ARCH)
+    assert [hook.handle(root, p['hook_event_name'], installed(p)) for p in SENTINEL] == [None, None]
+    assert [(r['data']['gate'], r['data']['agent'], r['data']['path']) for r in ws.rows(root, 'attest')] == [('arch', 'a03dc7ca27072549b', ARCH)]
+    assert [r['data']['agent'] for r in ws.rows(root, 'seat.stopped')] == ['a03dc7ca27072549b'] and not ws.rows(root, 'seat.unconfirmed')
+    assert not ws.rows(root, 'verdict.missing') and not ws.rows(root, 'hook.error')
+
+
+@pytest.mark.parametrize('field', ['last_assistant_message', 'tool_input'])
+def test_the_real_gate_flow_with_a_forged_report_attests_nothing(root, field):
+    write_verdict(root, verdict_text(gate='arch', verdict='PASS'), '.wuwei/verdicts/I-1/arch-bbbbbbb.md')
+    payload = installed(SENTINEL[field == 'last_assistant_message'])
+    forged = 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/arch-bbbbbbb.md'
+    payload[field] = forged if field == 'last_assistant_message' else {'message': forged}
+    assert hook.handle(root, payload['hook_event_name'], payload) is None
+    assert ws.rows(root, 'attest') == [] and ws.rows(root, 'seat.stopped') == []
+    assert 'does not hold' in ws.rows(root, 'seat.unconfirmed')[0]['data']['reason']
 
 
 def test_the_payload_corpus_holds_every_listed_shape():
@@ -730,7 +844,7 @@ def test_every_fixture_payload_names_its_provenance():
     assert set(found) == {p.name for p in PAYLOADS.glob('*.json')}
     assert sorted(name for name, kind in found.items() if kind == 'transcript') == [
         'claude-agent-post-accepted.json', 'claude-agent-post-model-effort.json', 'claude-agent-pre-accepted.json', 'claude-ask-post-plan.json',
-        'claude-ask-post.json']
+        'claude-ask-post.json', 'claude-sentinel-handback-pre.json']
 
 
 @pytest.mark.parametrize('name', sorted(set(STARTED) | set(STOPPED) | QUIET))
@@ -738,6 +852,7 @@ def test_every_fixture_payload_replays_without_an_error(root, name):
     """The hook handles each fixture file; a real harness shape that differs is not covered (see the README).
     A hook change that moves what a payload records edits this table or the payload, so its diff shows it."""
     payload = installed(json.loads((PAYLOADS / name).read_text(encoding='utf-8')))
+    write_verdict(root, verdict_text(gate='arch'), ARCH)
     out = hook.handle(root, payload['hook_event_name'], payload)
     assert NOTED[name] in out['hookSpecificOutput']['additionalContext'] if name in NOTED else out is None
     assert ws.rows(root, 'hook.error') == []
@@ -745,6 +860,7 @@ def test_every_fixture_payload_replays_without_an_error(root, name):
     assert [row['data']['agent'] for row in ws.rows(root, 'seat.stopped')] == STOPPED.get(name, [])
     assert [row['data']['agent'] for row in ws.rows(root, 'seat.unconfirmed')] == UNCONFIRMED.get(name, [])
     assert [row['data']['pr'] for row in ws.rows(root, 'ruling')] == RULED.get(name, [])
+    assert [row['data']['agent'] for row in ws.rows(root, 'attest')] == ATTESTED.get(name, [])
 
 
 def test_a_changed_open_work_list_names_only_what_changed(root, fake):

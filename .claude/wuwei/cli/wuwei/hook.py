@@ -15,12 +15,11 @@ from wuwei import agents, board, evidence, guards, plan, sync, verdict, view, ws
 
 
 def transcript(payload):
-    """The seat's last report, its input plus output tokens, and whether a hand-back ended its run, read from its
-    transcript ('', None and False when unreadable)."""
-    found, total, ended = '', None, False
+    """The seat's last report, its input plus output tokens, whether a hand-back ended its run, and every report it wrote,
+    read from its transcript under ws.PROJECTS ('', None, False and [] when unreadable)."""
+    found, total, ended, said = '', None, False, []
     try:
-        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
-            row = json.loads(line)
+        for row in transcript_rows(payload.get('agent_transcript_path'), '') or ():
             if usage := row.get('message', {}).get('usage') or {}:
                 total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
             content = row.get('message', {}).get('content', [])
@@ -32,9 +31,10 @@ def transcript(payload):
                     found, ended = part['text'], False
                 elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
                     found, ended = part['input']['message'], part.get('name') == 'SubagentHandback' and (part.get('id') or True)
+                said.append(found)
     except (OSError, TypeError, ValueError, AttributeError):
         pass
-    return found, total, bool(ended)
+    return found, total, bool(ended), said
 
 
 def last_text(payload):
@@ -52,8 +52,9 @@ def pre_tool(root, payload):
     except Exception as exc:
         print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
-    problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
-        root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
+    report = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _report(
+        root, payload, str((payload.get('tool_input') or {}).get('message', '')))
+    problem = isinstance(report, str) and _verdict_problem(root, {**payload, 'last_assistant_message': report}, role)
     away = payload.get('tool_name') == 'SubagentHandback' and payload.get('permission_mode') in ('default', 'plan', 'acceptEdits', 'dontAsk', 'bypassPermissions')
     item = payload.get('tool_name') in ('Agent', 'Task') and asked(payload.get('tool_input') or {})[0]  # as seat.started records it: so here, not in guards
     held = next((guards.deny(f'item {item} is held by session {s["session"]} ({s.get("role")} seat {s.get("agent")} running): leave it to that session, or launch after its seat stops.')
@@ -141,17 +142,6 @@ def stop(root, payload):
         'one line why each waits, then stop.'}
 
 
-def _settled(payload):
-    """The seat's last message, rereading a transcript the harness may still be writing (about 2 s)."""
-    text, path = last_text(payload), payload.get('agent_transcript_path')
-    for _ in range(8):
-        if text.strip() or not path or not Path(path).is_file():
-            break
-        time.sleep(0.25)
-        text = last_text(payload)
-    return text
-
-
 def transcript_rows(path, key):  # the rows naming key in a regular file under ws.PROJECTS, links resolved (None: not one)
     try:
         real = Path(path).resolve(strict=True)
@@ -165,22 +155,39 @@ def parts(rows, kind):
     return [p for r in rows for p in (r.get('message') or {}).get('content') or () if isinstance(p, dict) and p.get('type') == kind]
 
 
-def subagent_stop(root, payload):
-    """A stop counts only when the harness shows the launch (#962): the meta file it keeps beside the seat's transcript names
-    the seat's type and Agent tool_use, which the session transcript holds. Else seat.unconfirmed, and nothing more."""
-    path, agent, role = str(payload.get('agent_transcript_path') or ''), payload.get('agent_id'), str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
+def _report(root, payload, text):
+    """The seat's report as its own transcript holds it (#962): the text the payload carries, else its last. The transcript is
+    read only when the harness shows the launch: the meta file beside it names the seat's type and an Agent tool_use the
+    session transcript holds. One the harness may still be writing is reread (about 2 s). Else seat.unconfirmed, and None."""
+    agent, role, text = payload.get('agent_id'), str(payload.get('agent_type', '')).rsplit(':', 1)[-1], text if text.strip() else ''
+    path = str(payload.get('agent_transcript_path') or  # a PreToolUse payload names the session's: the seat's lies beside it
+               Path(str(payload.get('transcript_path')).removesuffix('.jsonl'), 'subagents', f'agent-{agent}.jsonl'))
     meta = (transcript_rows(path.removesuffix('.jsonl') + '.meta.json', 'toolUseId') or [{}])[0] if Path(path).name == f'agent-{agent}.jsonl' else {}
     use = meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None
-    if not use or not any(p.get('id') == use and p.get('name') in ('Agent', 'Task')
-                          for p in parts(transcript_rows(payload.get('transcript_path'), use) or [], 'tool_use')):
-        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': agent, 'session': payload.get('session_id'),
-                                             'reason': f'the session transcript shows no {role} launch for agent {agent}'})
+    why = f'the session transcript shows no {role} launch for agent {agent}'
+    if use and any(p.get('id') == use and p.get('name') in ('Agent', 'Task')
+                   for p in parts(transcript_rows(payload.get('transcript_path'), use) or [], 'tool_use')):
+        for _ in range(9):
+            found, _, _, said = transcript({'agent_transcript_path': path})
+            if (text in said if text else found.strip()) or not Path(path).is_file():
+                break
+            time.sleep(0.25)
+        if not text or text in said:
+            return text or found
+        why = f'the transcript of {role} {agent} does not hold the report its payload carries'
+    ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': agent, 'session': payload.get('session_id'), 'reason': why})
+    return None
+
+
+def subagent_stop(root, payload):
+    """A stop counts only when the seat's own transcript holds its report (_report); else seat.unconfirmed, and nothing more."""
+    role, text = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], payload.get('last_assistant_message')
+    if (report := _report(root, payload, text if isinstance(text, str) else '')) is None:
         return None
-    payload = {**payload, 'last_assistant_message': _settled(payload)}
-    _, tokens, ended = transcript(payload)
+    payload = {**payload, 'last_assistant_message': report}
+    _, tokens, ended, _ = transcript(payload)
     out = _seat_stop(root, payload, role, tokens, ended)
-    if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip() \
-            and Path(str(payload.get('agent_transcript_path') or '')).is_file():  # a Claude seat ends: keep what the harness drops
+    if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
         if not any(p.is_file() and p.read_bytes() == payload['last_assistant_message'].encode() for p in (Path(root) / ws.DIR / 'reports').rglob(
                 f'{name}--*.md')):  # a seat that stops again with the same report keeps it once; only regular files are read (#1208)
