@@ -241,8 +241,8 @@ def _verdict_problem(root, payload, role):
         path.relative_to(verdicts)
         body = path.read_bytes()
     except (OSError, ValueError, RuntimeError):
-        return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
-    rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
+        return f'the verdict must be a readable file under {verdicts.as_posix()}/ (got {match[1]}).'
+    rel, sha = path.relative_to(Path(root).resolve()).as_posix(), hashlib.sha256(body).hexdigest()  # / on every OS
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
         return None
@@ -364,7 +364,7 @@ def _confirm(root, payload, final):
         if why and (final or shown is None and fresh):  # with no row a later call rereads it;
             continue  # a Stop leaves an unrecorded answer to the next call, so its note never blocks the stop (#1231)
         try:
-            path.unlink()
+            ws.take(root, path)  # of two racing hooks, one records the answer
         except OSError:
             continue
         notes += [_unconfirmed(root, kept, why, same)] if why else []
@@ -571,9 +571,9 @@ def door(payload):
     program (guards.DOOR_WORDS) or a network program, read with its quotes and backslashes removed."""
     tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
     command = re.sub(r'[\'"\\]', '', str(data.get('command', ''))) if isinstance(data, dict) else ''
-    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\s|$)'
+    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\.exe)?(\s|$)'  # in any case, as macOS and Windows run it
     return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(
-        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command))
+        all(re.search(w, command, re.I) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command, re.I))
 
 
 VENDORED = ws.PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud

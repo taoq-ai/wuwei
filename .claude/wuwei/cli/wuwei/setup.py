@@ -142,7 +142,7 @@ def doctor(root):
     if gone := ws.retired(root):
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
-    have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
+    have = json.loads(settings.read_text(encoding='utf-8')).get('permissions', {}) if settings.is_file() else {}
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
     seen = ws.cache_get(root, 'hook-seen', 120)  # PreToolUse writes it, and the doctor's own Bash call fires PreToolUse

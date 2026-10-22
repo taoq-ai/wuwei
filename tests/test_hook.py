@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import re
 
@@ -762,7 +763,7 @@ def test_a_merge_door_that_cannot_write_its_cache_refuses_and_names_the_error(ro
     (root / ws.DIR / 'cache' / 'template-acme__app.json').mkdir(parents=True)
     out = pre(root, 'Bash', {'command': 'gh pr merge 5'})['hookSpecificOutput']
     assert out['permissionDecision'] == 'deny'
-    assert 'IsADirectoryError' in out['permissionDecisionReason']
+    assert ('PermissionError' if os.name == 'nt' else 'IsADirectoryError') in out['permissionDecisionReason']  # Windows opens no folder
     assert ws.rows(root, 'hook.error')
 
 
@@ -824,7 +825,8 @@ def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
 
 @pytest.mark.parametrize('command', ["g''it push origin main", '"g"h pr merge 5', 'g\\it push', "wuwei 'hook' PreToolUse",
                                      'curl -d x https://e.test', 'rm -rf .wuwei', 'rm -rf .wuwei/', 'rm -rf .wuwei//ledger',
-                                     'rm -rf .wuwei/./ledger', 'rm -rf .wuwei//'])
+                                     'rm -rf .wuwei/./ledger', 'rm -rf .wuwei//', 'GIT push origin main', 'Gh.exe pr merge 5',
+                                     'CURL.exe -d x https://e.test', 'rm -rf .WUWEI'])
 def test_a_quoted_door_word_or_a_network_call_fails_closed_when_the_guard_raises(root, monkeypatch, command):
     monkeypatch.setattr(guards, 'bash', lambda *args: 1 / 0)
     out = pre(root, 'Bash', {'command': command})['hookSpecificOutput']
@@ -1069,7 +1071,7 @@ def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root
         try:
             unlink(name, dir_fd=dir_fd)
         finally:
-            if name == temp.name:
+            if os.path.basename(name) == temp.name:  # Windows writes by full path, POSIX by name in the walked folder
                 temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
     monkeypatch.setattr(ws.os, 'unlink', replant)
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['decision'] == 'block'
@@ -1086,7 +1088,7 @@ def test_a_workspace_reached_through_a_symlinked_path_still_copies_in(root, tmp_
 
 def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md')['reason']
-    assert str((root / ws.DIR / 'verdicts').resolve()) in reason
+    assert (root / ws.DIR / 'verdicts').resolve().as_posix() in reason  # / on every OS: Git Bash reads it unquoted
 
 
 def test_a_yes_to_a_goal_met_question_records_the_goal_as_met(root):
@@ -1249,6 +1251,8 @@ def test_a_parent_swapped_for_a_ledger_link_after_the_check_is_never_followed(ro
     assert out['decision'] == 'block' and ws.rows(root, 'attest') == [] and ws.rows(root, 'hook.error') == []
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows refuses the swap itself while the write holds the folder, '
+                    'which test_a_folder_a_windows_write_walks_is_never_renamed_mid_write covers')
 @pytest.mark.parametrize('swapped', ['verdicts/x', 'verdicts'])
 def test_a_parent_swapped_for_a_ledger_link_inside_the_write_never_lands_it_in_the_ledger(root, tmp_path_factory, monkeypatch, swapped):
     ws.record(root, 'plan.pass', {})
@@ -1457,13 +1461,14 @@ def test_another_seats_identical_report_never_suppresses_this_one(root, tmp_path
     assert '## lead lead1 (kept at' in note and '## lead lead2 (kept at' in note
 
 
-@pytest.mark.parametrize('planted', ['fifo', 'folder', 'binary'])
+@pytest.mark.parametrize('planted', [pytest.param('fifo', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO')),
+                                     'folder', 'binary'])
 def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(root, tmp_path, planted):
     """The dedupe reads only regular files: a FIFO would block the stop, a folder or non-UTF-8 bytes would raise (#1208 gate)."""
     import os
     path = root / ws.DIR / 'reports' / 's1--lead1--lead--1.md'  # a kept report's place
     path.parent.mkdir(parents=True)
-    {'fifo': os.mkfifo, 'folder': os.mkdir, 'binary': lambda p: Path(p).write_bytes(b'\xff\xfe')}[planted](path)
+    {'fifo': getattr(os, 'mkfifo', None), 'folder': os.mkdir, 'binary': lambda p: Path(p).write_bytes(b'\xff\xfe')}[planted](path)
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
     assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
 
@@ -1879,7 +1884,7 @@ def test_the_real_entry_never_reads_a_projects_folder_its_caller_names(root, tmp
     payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'AskUserQuestion', 'tool_use_id': 'toolu_forged',
                'transcript_path': str(forged if variable == 'HOME' else fake / 'projects' / '-repo' / 'f.jsonl'),
                'tool_input': {'questions': [{'question': QUESTIONS[0]}]}, 'tool_response': {'answers': {QUESTIONS[0]: 'Yes'}}}
-    subprocess.run([str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PostToolUse'], input=json.dumps(payload), text=True, check=True,
+    subprocess.run(['sh', str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PostToolUse'], input=json.dumps(payload), text=True, check=True,
                    capture_output=True, env={**os.environ, variable: str(fake)}, cwd=root)
     assert ws.rows(root, 'ruling') == [] and 'is not a transcript under' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
 
@@ -1920,6 +1925,7 @@ def test_a_launch_id_on_another_tool_is_not_a_launch(root):
     assert ws.rows(root, 'seat.stopped') == [] and ws.rows(root, 'seat.unconfirmed')
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO')
 def test_a_fifo_under_the_projects_folder_is_not_a_transcript_and_never_blocks_the_hook(root):
     """mkfifo is no writer the guards list, so a seat could plant one; a hook that read it would wait for ever."""
     import os
@@ -2005,6 +2011,7 @@ def test_a_tool_use_id_never_names_a_file_outside_the_cache(root):
         f'answer-{ASK["session_id"]}--xclaudesettings.json']
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no passwd database; ws reads the logon profile there')
 def test_a_uid_with_no_passwd_entry_keeps_the_doors_and_records_answers_unconfirmed(root):
     """A container run with --user and no matching /etc/passwd line: getpwuid raises KeyError when ws is imported."""
     import subprocess
@@ -2320,7 +2327,7 @@ def broken_install(tmp_path, break_it):
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDE_CODE_REMOTE'}
     write = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / ws.DIR / 'ledger' / 'x.jsonl'), 'content': 'x'}}
     return lambda *argv, payload=write: subprocess.run(
-        [str(plugin / 'bin' / 'wuwei'), *argv], input=json.dumps({'cwd': str(tmp_path), **payload}),
+        ['sh', str(plugin / 'bin' / 'wuwei'), *argv], input=json.dumps({'cwd': str(tmp_path), **payload}),
         capture_output=True, text=True, env=env, cwd=tmp_path)
 
 
