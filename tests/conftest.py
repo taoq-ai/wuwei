@@ -32,15 +32,17 @@ def stub(tmp_path_factory):
     stub = tmp_path_factory.mktemp('stub')
     (stub / 'gh').write_text('#!/bin/sh\n# wuwei-test-stub\necho "gh is offline in tests" >&2\nexit 1\n')
     (stub / 'gh').chmod(0o755)
+    (stub / 'gh.cmd').write_bytes(b'@echo off\r\nrem wuwei-test-stub\r\necho gh is offline in tests 1>&2\r\nexit /b 1\r\n')
     (stub / 'config').mkdir()
     return stub
 
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch, stub):
-    """The stub gh first on PATH for every test, and no gh credentials, so even a gh found past the stub (a login
+    """The stub gh first on PATH for every test (on Windows, no gh.exe at all), and no gh credentials, so even a gh found past the stub (a login
     shell that rewrites PATH) has no token: in-process gh.run and hook subprocesses reach no network."""
-    monkeypatch.setenv('PATH', os.pathsep.join([str(stub), os.environ.get('PATH', '')]))
+    rest = [p for p in os.environ.get('PATH', '').split(os.pathsep) if os.name != 'nt' or not os.path.isfile(os.path.join(p, 'gh.exe'))]
+    monkeypatch.setenv('PATH', os.pathsep.join([str(stub), *rest]))  # Windows runs gh.exe, never the stub: no gh.exe stays on PATH
     monkeypatch.delenv('GH_TOKEN', raising=False)
     monkeypatch.delenv('GITHUB_TOKEN', raising=False)
     monkeypatch.setenv('GH_CONFIG_DIR', str(stub / 'config'))

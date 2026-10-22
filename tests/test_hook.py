@@ -1784,7 +1784,7 @@ def test_the_real_entry_never_reads_a_projects_folder_its_caller_names(root, tmp
     payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'AskUserQuestion', 'tool_use_id': 'toolu_forged',
                'transcript_path': str(forged if variable == 'HOME' else fake / 'projects' / '-repo' / 'f.jsonl'),
                'tool_input': {'questions': [{'question': QUESTIONS[0]}]}, 'tool_response': {'answers': {QUESTIONS[0]: 'Yes'}}}
-    subprocess.run([str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PostToolUse'], input=json.dumps(payload), text=True, check=True,
+    subprocess.run(['sh', str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'PostToolUse'], input=json.dumps(payload), text=True, check=True,
                    capture_output=True, env={**os.environ, variable: str(fake)}, cwd=root)
     assert ws.rows(root, 'ruling') == [] and 'is not a transcript under' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
 
@@ -2226,7 +2226,7 @@ def broken_install(tmp_path, break_it):
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDE_CODE_REMOTE'}
     write = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / ws.DIR / 'ledger' / 'x.jsonl'), 'content': 'x'}}
     return lambda *argv, payload=write: subprocess.run(
-        [str(plugin / 'bin' / 'wuwei'), *argv], input=json.dumps({'cwd': str(tmp_path), **payload}),
+        ['sh', str(plugin / 'bin' / 'wuwei'), *argv], input=json.dumps({'cwd': str(tmp_path), **payload}),
         capture_output=True, text=True, env=env, cwd=tmp_path)
 
 
