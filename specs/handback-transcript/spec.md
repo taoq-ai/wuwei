@@ -73,6 +73,27 @@ already unconfirmed.
   resolved.
 - FR-004: A real flow records what it recorded before: the attest row at the hand-back, the stop
   with tokens and confidence, no second attest row.
+- FR-005 (follow-up, branch `leone/handback-timing`): a seat or session transcript is split into
+  rows on newlines only. A row whose JSON string holds a raw U+2028, U+2029, U+0085 or another
+  Unicode line break reads as one row.
+
+## Follow-up: a raw line separator in a seat transcript
+
+Promise in my words: after #1244, three real security gates on door-words-text handed back a PASS
+and none was counted. Each seat transcript held a raw U+2028 inside a JSON string (a probe class
+the gate quoted). `transcript_rows` split with `str.splitlines()`, which splits there, so the
+whole transcript read as unreadable. The hand-back then recorded `seat.unconfirmed`, and the
+stop read an empty report and blocked for a missing verdict line. Acceptance: the real seat's
+hand-back attests once, a stop alone attests from the transcript, and every forged shape still
+attests nothing.
+
+How this fails:
+
+1. A key that is not a string (a meta `toolUseId` number) raises at `.encode()`: caught, it reads
+   as no transcript, as before.
+2. The session transcript holds the separator: every launch check and owner answer read fails.
+   The same split fixes it; the corpus differential reads both paths.
+3. Bytes split on a lone CR: JSON escapes CR inside a string, so a real row never holds one raw.
 
 ## Rollback
 
