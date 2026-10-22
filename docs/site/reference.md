@@ -15,7 +15,7 @@
 | `wuwei plan park\|drop\|done <id> --reason "..."` | Change an item's status |
 | `wuwei plan run <id> --reason "<what ran, what it showed>"` | Record run evidence for an operations item; refused without `--reason` or `--job` |
 | `wuwei plan run <id> --job <job file>` | Register a Codex companion job file; the board shows its state (running, completed with the HANDOFF path, failed, asked a question, or `job state unreadable`) |
-| `wuwei plan session <id> <session id>` | Record the builder session of a `--host session` item; while the item is open the board counts it as a live builder seat and names the session; refused for an item with host `agent` |
+| `wuwei plan session <id> <session id>` | Record the builder session of an open `--host session` item; while the item is open the board counts it as a live builder seat and names the session, and with no PR and no event for four hours shows the row stale; refused for an item with host `agent` or a done, parked or dropped item |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
 | `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
 | `wuwei status [--json]` | The board: what each open item lacks |
