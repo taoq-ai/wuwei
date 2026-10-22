@@ -133,8 +133,9 @@ def _digest(row):
 def clone(root):
     """This clone's id. Each clone appends only to its own ledger file, so two sessions syncing
     through git never edit the same rows."""
-    path = Path(root) / DIR / 'cache' / 'clone'
-    if not path.is_file():
+    if (path := _cached(root, 'clone', '')) is None:  # the id names the ledger file: never read through a link
+        raise OSError(f'{Path(root) / DIR / "cache"} or its clone entry is a link; remove the link so WUWEI can record')
+    if not path.is_file() or not path.read_text(encoding='utf-8').strip().isalnum():  # a planted ../ is replaced, never followed
         atomic_write(path, os.urandom(4).hex() + '\n')
     return path.read_text(encoding='utf-8').strip()
 
@@ -213,10 +214,10 @@ def traces(root, day=None):
             if day is None or row.get('ts', '').startswith(day)]
 
 
-def _cached(root, name):
+def _cached(root, name, suffix='.json'):
     """The entry for name, or None when the name or a link would leave the workspace's own .wuwei/cache."""
     folder = Path(root) / DIR / 'cache'
-    path = folder / f'{name}.json'
+    path = folder / f'{name}{suffix}'
     with contextlib.suppress(OSError, RuntimeError):  # a link loop: RuntimeError before Python 3.13, unresolved after
         same = folder.resolve() == Path(root).resolve() / DIR / 'cache' and not folder.is_symlink()  # resolve sees a junction
         if same and path.parent == folder and not path.is_symlink():

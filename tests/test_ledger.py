@@ -133,3 +133,36 @@ def test_a_cache_folder_linked_to_itself_reads_as_empty(root):
     (root / ws.DIR / 'cache').symlink_to('cache')
     assert ws.cache_put(root, 'board', 1) == 1 and ws.cache_get(root, 'board', float('inf')) is None
     ws.cache_prune(root, -1, '*')
+
+
+@pytest.mark.parametrize('op', ['get', 'put', 'prune'])
+def test_a_linked_workspace_folder_is_never_read_written_or_pruned(tmp_path, op):
+    root, outside = tmp_path / 'ws', tmp_path / 'outside'
+    (outside / 'cache').mkdir(parents=True)
+    (outside / 'cache' / 'pr-x.json').write_text('"secret"')
+    root.mkdir()
+    (root / ws.DIR).symlink_to(outside, target_is_directory=True)
+    got = {'get': lambda: ws.cache_get(root, 'pr-x', float('inf')), 'put': lambda: ws.cache_put(root, 'pr-x', 'planted'),
+           'prune': lambda: ws.cache_prune(root, -1, 'pr-*')}[op]()
+    assert got != 'secret' and (outside / 'cache' / 'pr-x.json').read_text() == '"secret"'
+
+
+@pytest.mark.parametrize('link', ['entry', 'folder'])
+def test_a_linked_clone_id_never_steers_the_ledger(root, tmp_path_factory, link):
+    outside = tmp_path_factory.mktemp('outside')
+    (outside / 'clone').write_text('../../escape\n')
+    if link == 'folder':
+        (root / ws.DIR / 'cache').symlink_to(outside, target_is_directory=True)
+    else:
+        (root / ws.DIR / 'cache').mkdir()
+        (root / ws.DIR / 'cache' / 'clone').symlink_to(outside / 'clone')
+    with pytest.raises(OSError, match='link'):
+        ws.record(root, 'probe', {})
+    assert not list(root.rglob('*.jsonl')) and not list(outside.rglob('*.jsonl')) and (outside / 'clone').read_text() == '../../escape\n'
+
+
+def test_a_clone_id_that_is_no_plain_token_is_replaced_and_the_ledger_stays_in_its_folder(root):
+    (root / ws.DIR / 'cache').mkdir()
+    (root / ws.DIR / 'cache' / 'clone').write_text('../../escape\n')
+    ws.record(root, 'probe', {})
+    assert [p.parent for p in root.rglob('*.jsonl')] == [root / ws.DIR / 'ledger'] and ws.clone(root).isalnum()

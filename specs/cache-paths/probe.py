@@ -59,6 +59,27 @@ for (label, kind), op in itertools.product([(k, 'name') for k in NAMES] + [(k, '
         holes.append(f'{kind}:{label}:{op} leaked={leaked} changed={changed} added={added}')
     print(f'{kind:5} {label:6} {op:6} -> {got!r:24} changed={changed} added={added}')
     shutil.rmtree(case)
+for label in ('entry', 'folder'):  # the clone id names the ledger file: a linked clone entry or folder serving ../../esc
+    case = base / f'clone-{label}-record'
+    root, outside = case / 'ws', case / 'outside'
+    outside.mkdir(parents=True)
+    (outside / 'clone').write_text('../../esc\n')
+    (root / ws.DIR).mkdir(parents=True)
+    if label == 'folder':
+        (root / ws.DIR / 'cache').symlink_to(outside, target_is_directory=True)
+    else:
+        (root / ws.DIR / 'cache').mkdir()
+        (root / ws.DIR / 'cache' / 'clone').symlink_to(outside / 'clone')
+    ran += 1
+    try:
+        got = ws.record(root, 'probe', {})['kind']
+    except Exception as error:
+        got = f'raised {type(error).__name__}'
+    stray = [str(p.relative_to(case)) for p in case.rglob('*.jsonl') if p.parent != root / ws.DIR / 'ledger']
+    if stray:
+        holes.append(f'clone:{label}:record stray={stray}')
+    print(f'clone {label:6} record -> {got!r:24} stray={stray}')
+    shutil.rmtree(case)
 print(f'generated {ran}, ran {ran}, holes {len(holes)}')
 for hole in holes:
     print('HOLE', hole)
