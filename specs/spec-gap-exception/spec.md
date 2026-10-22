@@ -137,8 +137,8 @@ Acceptance 4: `test_an_exception_for_a_process_gap_goes_back_to_the_model` in te
   gaps waivable, so it must print each one. Overturned if the owner wants the merge door, not the
   printer, to refuse an exception for a file that holds more than one open row.
 - (round 1) A row cut at a cell edge shows the owner its first cells, not the cut part of its last
-  cell. Measured on this repository's 717 `specs/*/analysis.md` rows: all 717 read whole at the
-  head (665 with main's cut and hook, 715 with b6d0635's). Overturned if owners need the summary
+  cell. Measured on this repository's 718 `specs/*/analysis.md` rows: all 718 read whole at the
+  head (666 with main's cut and hook, 716 with b6d0635's). Overturned if owners need the summary
   cell in the question; then print rows whole.
 
 ## Rollback

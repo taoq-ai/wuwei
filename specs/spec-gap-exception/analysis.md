@@ -7,7 +7,7 @@ and acceptance and the constitution.
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 |----|----------|----------|-------------|---------|----------------|
-| A1 | Coverage | MEDIUM | spec.md How this fails 1 | A row cut at 100 characters with a break after its last cell edge is recorded short | Resolved in round 1: evidence cuts a row at its last cell edge within 100 characters; 717 of 717 real rows read whole |
+| A1 | Coverage | MEDIUM | spec.md How this fails 1 | A row cut at 100 characters with a break after its last cell edge is recorded short | Resolved in round 1: evidence cuts a row at its last cell edge within 100 characters; 718 of 718 real rows read whole |
 | A2 | Coverage | MEDIUM | spec.md How this fails 2 | A question with its own pipe is recorded long | Resolved in round 1: it broke gaps with no row, which read right on main (quality gate); only a gap that holds a row reads to the row's end now |
 | A3 | Ambiguity | LOW | spec.md Clarifications | Which process fit lines the guard still sends back | Resolved: the three the item names; the others were never sent back |
 | A4 | Coverage | LOW | tasks.md | The probe outputs are not committed | Accepted: the probes regenerate them; the PR body carries the counts and the corpus sha256 |
