@@ -237,7 +237,8 @@ same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads
 owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
-one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
+one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
+counts, a heredoc body or quoted prose included, and says to write such text to a file with the Write tool (#1117); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
 makes a command unreadable, and so does a shell with no `-c` body (fed by a pipe, a here-string, `-s` or
 `< file`, or given a script path), while its segments still meet the other doors; a run of punctuation such
 as `<(` or `;>` is split into the operators sh reads, and every redirect (`<x`, `>&2`, `2>&1`, `{fd}>x`, `<<x`) is

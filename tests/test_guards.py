@@ -499,6 +499,27 @@ def test_a_multi_line_command_naming_a_door_is_refused_with_the_hint(root, fake,
     assert '--body-file' in decision['reason']
 
 
+@pytest.mark.parametrize('command, found', [
+    ("cat > brief.md <<'EOF'\nrun gh pr view 5 first\nEOF", 'found: gh pr'),
+    ('echo "push it" > n.md\ngit status', 'found: git push'),
+    ('ls\nwuwei \\\n hook Stop', 'found: wuwei hook'),
+    ("echo it's && gh pr merge 5", 'found: gh pr'),
+])
+def test_the_multi_line_refusal_names_the_door_words_it_found_and_the_write_tool(root, fake, repo, command, found):
+    """#1117: the refusal says which words tripped it, that heredoc bodies and quoted prose count, and to use Write."""
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert found in reason and 'heredoc body or quoted prose' in reason and 'the Write tool' in reason, command
+
+
+@pytest.mark.parametrize('command', ['node codex-companion.mjs task --write "$(cat brief.md)"',
+                                     'echo "never git push to main" > brief.md',
+                                     'gh pr create --draft --title t --body-file b.md'])
+def test_one_line_commands_naming_a_door_in_text_are_not_refused_by_the_multi_line_rule(root, fake, repo, command):
+    """#1117: the shapes the issue feared already pass the multi-line rule; they stay so."""
+    decision = guards.pre_tool(root, bash(command))
+    assert decision is None or HINT not in decision['reason'], command
+
+
 @pytest.mark.parametrize('command', ["echo it's && gh pr merge 5", 'gh pr merge 5 --body "unclosed',
                                      'gh repo delete "acme/app --yes', 'wuwei hook "PreToolUse',
                                      'echo "x" > .wuwei/ledger.jsonl "', "git push origin 'x"])

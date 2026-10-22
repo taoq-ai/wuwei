@@ -363,10 +363,11 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
-        return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
-                    '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
-                    'by --body-file, -F or a file written with Write.')
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
+            w, command)[0]).strip() for w in d) for d in DOOR_WORDS if all(re.search(w, command) for w in d)]):  # #1117
+        return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
+                    'anywhere in the text counts, a heredoc body or quoted prose included: run the door command in its own one-line '
+                    'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.')
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
