@@ -56,6 +56,11 @@ def test_a_generated_agent_stays_under_the_word_ceiling(path):
     assert len(path.read_text(encoding='utf-8').split()) <= AGENT_WORDS
 
 
+@pytest.mark.parametrize('path', sorted((PLUGIN / 'agents').glob('*.md')), ids=lambda p: p.stem)
+def test_a_generated_agent_leaves_100_words_of_room_under_the_ceiling(path):
+    assert len(path.read_text(encoding='utf-8').split()) <= AGENT_WORDS - 100
+
+
 @pytest.mark.parametrize('path', CHARTERS + SKILLS, ids=lambda p: p.relative_to(PLUGIN).as_posix())
 def test_a_charter_names_no_issue_number_and_no_file_of_this_repository(path):
     text = path.read_text(encoding='utf-8')
@@ -68,7 +73,7 @@ def test_decisions_and_done_are_stated_once_in_common():
     common = (PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8')
     assert '## Done' in common and '| Hard to undo | act, with a `Rollback:` line | ask the owner |' in common
     days = {3: 'three'}[evidence.STALE_DAYS]
-    for threshold in (f'at most {evidence.TRIVIAL} lines off risky paths', f'28-day change failure rate is over {evidence.BUDGET:.0%}'.replace('%', ' percent'),
+    for threshold in (f'a delta of docs, or of generated files or at most {evidence.TRIVIAL} lines off risky paths, carries', f'28-day change failure rate is over {evidence.BUDGET:.0%}'.replace('%', ' percent'),
                       f'about {evidence.MAX_LINES} changed lines', f'{days} days or more', f'at `standard`, risky or owner paths add security and a wide change (over {evidence.WIDE} lines that are not prose, or 10 code files) adds arch',
                       "a spec contract (a file under a spec's `contracts/` folder) takes arch at any tier"):
         assert threshold in ' '.join(common.split()), threshold
@@ -167,7 +172,7 @@ def test_a_refused_handback_is_expected_and_no_seat_reports_it_as_a_gap(folder):
     for path in sorted((PLUGIN / folder).glob('*.md')):
         text = ' '.join(path.read_text(encoding='utf-8').split())
         assert 'refused hand-back goes under `Gap:`' not in text, path
-        assert 'the refusal of SubagentHandback is expected' in text and 'comes from the harness, not WUWEI: ignore it' in text, path
+        assert 'the harness refuses SubagentHandback, as expected' in text and "its retry reminder is not WUWEI's: ignore it" in text, path
 
 
 def test_the_steward_may_propose_charter_deletions():

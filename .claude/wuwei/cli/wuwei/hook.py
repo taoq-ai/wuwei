@@ -415,7 +415,8 @@ def exception_refs(question):
         if repo:
             refs.append((repo, match[2], match[3]))
     tail = question[matches[-1].end():].lstrip(' :') if matches else ''
-    cut = max((m.end() for m in re.finditer(r'\|(?=\s*(?:[.?]|$))', tail)), default=0) if ': |' in tail else 0
+    first = re.split(r'\.\s|\?', tail, maxsplit=1)[0]  # a row's ": |" is before its first break
+    cut = max((m.end() for m in re.finditer(r'\|(?=\s*(?:[.?]|$))', tail)), default=0) if ': |' in first else 0
     return refs, (tail[:cut] + re.split(r'\.\s|\?', tail[cut:], maxsplit=1)[0]).strip().rstrip('.')
 
 

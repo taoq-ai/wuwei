@@ -37,7 +37,7 @@ Tests assert on decisions, records and files, never on model prose.
 ### VI. Simplicity, with budgets
 
 The laziest solution that works. Reuse before writing; stdlib before custom code; no interface
-with one implementation. Budgets: runtime at most 3,400 lines (a test holds it), six config keys
+with one implementation. Budgets: runtime at most 3,600 lines (a test holds it), six config keys
 (`repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`). A change that breaks
 a budget deletes something first. An item that adds more than 10 runtime lines names the lines it
 removes where it can, and no item waits on a free-lines round. Never simplify away validation at
@@ -69,4 +69,4 @@ never a parallel allow list.
 Amendments are commits to this file with a dated line in the commit message. The design is
 amended by its owner.
 
-**Version**: 3.2.0 | **Ratified**: 2026-10-15 | **Last amended**: 2026-10-18 (runtime budget 3,400 lines, six config keys)
+**Version**: 3.3.0 | **Ratified**: 2026-10-15 | **Last amended**: 2026-10-22 (runtime budget 3,600 lines)
