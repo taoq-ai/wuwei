@@ -323,6 +323,37 @@
    "approved": true
   },
   {
+   "id": "builder-host",
+   "title": "feat(plan): a long item's builder can run as its own session (--host session), gates stay subagents here, and every builder pushes after each green step",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "owner 2026-10-22: 'Sounds good, let's go for that' to the recommendation: default stays subagents for every seat; opt in per plan item with --host session, only for builders on long items; a plan field, not a config key (six-key budget); the builder subsession pushes to its branch and opens the draft; gates still run as subagents on that head so attestation stays as strict (#1244); and builders push after every green step so a restart loses at most one step. Today a session restart dropped eight seats and one builder's commits sat unpushed.",
+   "promise": "plan add takes --host session|agent (default agent) and stores it on the item; for an item with host session the planner charter starts its builder with create_session (same environment, the item's branch, the builder charter as the brief) instead of the Agent tool, records the session id on the item, reads its progress from the branch and the draft PR, and never launches a gate in that session; the board counts a session builder as a live seat from its record and shows its session; builder.md says to commit and push after every green step, and every builder (agent or session) hands back the pushed head. Gates for every item stay Agent-tool subagents in the planner's session, so attestation is unchanged. Runtime estimate +12. Files: cli/wuwei/plan.py, __main__.py, board.py, charters/planner.md, builder.md, agents rebuilt, docs, tests, the vendored copy.",
+   "acceptance": [
+    "given plan add <id> --host session, when the item is shown, then host is session; without --host it is agent; any other value is refused",
+    "given an item with host session and a recorded session id, when the board is read, then its builder counts as a live seat against the seat ceiling and its row names the session",
+    "given the charters, when the planner starts a host-session item, then it uses a session for the builder and Agent-tool sentinels for every gate, and builder.md tells every builder to push after each green step"
+   ],
+   "prs": [],
+   "domain": "complicated: a new seat host across the plan, the planner charter and the board, with a known trust line (gates stay in-session)",
+   "in_doubt": false,
+   "class": null,
+   "after": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true,
+   "changed": "2026-10-22T17:52:50.824532+00:00"
+  },
+  {
    "id": "1223-followup",
    "title": "fix(evidence): finding rows that differ only in case or spacing print apart, and a spec-gap result cached before #1228 is never read",
    "goal": "G-2",
