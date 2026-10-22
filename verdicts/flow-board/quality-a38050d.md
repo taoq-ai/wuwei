@@ -1,0 +1,28 @@
+Verdict: FIX
+Gate: quality
+Item: flow-board
+PR: taoq-ai/wuwei#1252
+Head: a38050da6d9b79ec593a4c9e0ddafa63d0401d00
+Confidence: medium
+Breaking: no
+
+## Findings
+- [medium] cli/wuwei/board.py:135 blocks: yes. Failure: limit() matches `<name>: <n>` anywhere on a line, unanchored, so owner prose in standards.md such as "We do not set a WIP limit: 0 here." sets the WIP limit to 0 (probed: limit() returned 0), every approved item with no PR then queues as waiting and the Stop hook goes silent about all new starts; "Raise the seat ceiling: 99999999999999999999999" parses as a 23-digit ceiling. The repository's own readers of this file anchor the line (`^[-*\s]*Review requests:` in evidence.py:91, `^[-*\s]*Generated (` at evidence.py:378) and the test pins a dated line "- 2026-10-22 WIP limit: 6", so the anchor must allow a leading date (requirement: the last `WIP limit: <n>` line).
+- [medium] cli/wuwei/board.py:135 blocks: yes. Failure: `open(path, encoding='utf-8').read()` has no handler, so a standards.md that is not valid UTF-8 (an editor saving a cp1252 accent) raises UnicodeDecodeError out of board.compute (probed: `BOARDFAIL UnicodeDecodeError`), which breaks `wuwei status`, `wuwei report`, the SessionStart board and the Stop reminder; in hook.crowded the same error is swallowed by hook.handle as fail-open, so an Agent launch also loses its existing model-table note (probed: `HOOKBIN None`). Before this change the board did not read the file. limit() should read with errors='replace' (or return the default) and close the file (CWE-755).
+- [low] tests/test_hook.py:2502 blocks: no. Untested: the ceiling note on a launch whose subagent is not in agents.TABLE or carries no prompt (a Codex spawn); mutant M14 (return None at hook.py:94 instead of the note) survives all 94 selected tests.
+- [low] cli/wuwei/board.py:143 blocks: no. Untested: mutant M6 (drop `s.get('role') == 'builder'`) survives, so no test shows a non-builder seat naming an item does not count in progress.
+- [low] cli/wuwei/board.py:128 blocks: no. The team row's seat count is the largest per-session count (board.compute has no session), while the promise says "this session's live seats"; and queue() counts builders of every session, as docs/design.md says ("in any session") but the promise wording "a builder seat this session started" does not. Consistent with the acceptance tests (s2 builder counts); say so in the PR notes.
+- [low] blocks: no. Runtime lines: cli/wuwei/*.py is 3727 at head against 3697 at main (+30, builder estimate +8, budget 12 in the promise); AGENTS.md caps runtime at 3600, which main already exceeds.
+
+## Probes
+- Acceptance: criterion 1 test_at_the_wip_limit_each_approved_item_with_no_pr_queues_and_the_stop_leaves_it_out; 2 test_under_the_limit_the_highest_score_fills_the_free_slot; 3 test_a_builder_seat_counts_only_while_live_and_under_four_hours (5h seat, then live s2 seat, then stopped); 4 test_a_launch_over_the_seat_ceiling_passes_with_a_note_and_one_under_it_has_none (7 and 8 seats no note, 9 note, other session none, note beside the table note, no permissionDecision, ceiling raised by a standards line); 5 test_the_owners_last_wip_limit_line_holds. Codex job and team row have their own tests. All behavioural; none depends on time or network beyond monkeypatched ws.now.
+- Old-contract tests: test_stop_lists_at_most_ten_lines (14 items, now `WIP limit: 14` in standards.md so the ten-line cap still tests what it did) and test_a_cold_status_names_each_repository_on_stderr_and_keeps_stdout (stderr naming and stdout shape kept; one expected team-row line added for 18 open PRs over 4). Original intent kept in both.
+- Mutants, one at a time on both trees (cli/ and .claude/wuwei/cli/), against tests/test_watch.py, the new and the ten-line hook test and tests/test_status_perf.py: 16 run, 14 killed by a behavioural test: order ascending (test_under_the_limit_the_highest_score_fills_the_free_slot), limit first-line (test_the_owners_last_wip_limit_line_holds), busy>=cap, free off by one, stale 6h, job clause removed, queued gap actionable, ceiling >=, crowd over all sessions, hook >, hook all sessions, hook note turned into deny, WIP default 5, ceiling default 9. Survivors: M6 and M14 above.
+- Route corpus: tests/fixtures/routes.json sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 at main (1b8ef2b8) and head, identical. 288 routes read through guards.bash and hook.handle(PreToolUse) at main and head, with 0 and 9 builder seats in the session: 0 verdict or reason moves, 0 differences in hook output (the seat count alone changes no Bash route). tests/test_guards.py -k route at head: 388 passed. No guards.py change in the diff, so no parser probe applies.
+- Vendored copies: board.py and hook.py identical to cli/wuwei at head. The full suite was not run (builder: 3752 passed).
+- limit() probes in a git archive copy under the scratch folder: "WIP limit: 3 per person" gives 3, prose "WIP limit: 0" gives 0, non-UTF-8 file raises; a directory or missing file gives the default.
+- Counting: queue() takes builders from every session within 4 hours (STALE_HOURS); crowded() counts only payload session_id. A seat with a blank or missing session is excluded by running().
+Simplicity: none to delete; limit() and queue() are the shortest form. limit() could reuse the anchored-line regex shape evidence.py already uses rather than a bare `\b`.
+
+## Residual risk
+Both blocking findings are one-line fixes in limit(); the queue order, counting and note logic are well covered. Medium confidence because the full suite and a generated parser probe were not run (no parser change).
