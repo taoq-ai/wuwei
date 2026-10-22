@@ -1,33 +1,6 @@
 {
  "items": [
   {
-   "id": "tests-offline",
-   "title": "test: the suite never calls the real GitHub API, so a test run spends none of the owner's REST quota",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "light",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 13,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 29.0,
-   "why": "taoq-ai/wuwei#1191 (labelled bug), parked 2026-10-20 as 'build later'; the owner's 2026-10-22 words 'check the recent bugs and fix them' restore it, and every seat in this batch spends the quota until it lands.",
-   "promise": "An autouse fixture in tests/conftest.py puts a stub gh that exits 1 first on PATH for every test, so in-process gh.run and every hook subprocess reach no network; tests that use the fake fixture still replace gh.run. A test asserts a full hook subprocess run makes no real gh call. Files: tests/conftest.py, one test, AGENTS.md note on the test command. Runtime budget: 0 lines.",
-   "acceptance": [
-    "Given the full suite run with a counting gh shim after the stub's folder on PATH, when it finishes, then the shim logs 0 calls",
-    "Given a test that runs the hook as a subprocess, when it reads the board, then gh resolves to the stub and the test still passes",
-    "Given a test using the fake fixture, when it calls gh.run, then the fake answers as before"
-   ],
-   "status": "open",
-   "added": "2026-10-20",
-   "approved": true,
-   "reason": "owner 2026-10-20: file the issue, build later (taoq-ai/wuwei#1191)",
-   "prs": []
-  },
-  {
    "id": "1223",
    "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
    "goal": "G-2",
@@ -100,32 +73,6 @@
     "Given a batch of a one-way: question answered in free text and a plan: question answered Approve, where the transcript's free-text value differs from the payload's, when confirmed, then the plan approval is recorded and the note names only the one-way question as differing",
     "Given no tool_result row ever, when the bound passes, then answer.unconfirmed records 'no tool_result row' once and the answer is not recorded",
     "Given a payload whose answers the transcript does not hold, when any hook call runs, then nothing is recorded, as on main"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
-   "id": "free-lines-6",
-   "title": "refactor: free at least 16 runtime lines outside the guard, hook, board and evidence modules, with no behaviour change",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 13,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 10.33,
-   "why": "Constitution VI: a change that breaks the budget deletes something first. Kept out of guards.py, hook.py, board.py and evidence.py so it runs beside this batch without conflicts and needs no owner review; must merge before the second of 1222, 1211-confirm and flow-board.",
-   "promise": "Free at least 16 runtime lines (aim for 20) in modules other than guards.py, hook.py, board.py and evidence.py (report, view, sync, upgrade, setup, ws, plan, gh, verdict, agents, replay, __main__), with no behaviour change: CLI flags, messages, exit codes, ledger rows and output stay identical (wuwei evidence --record stays: docs/site/reference.md and README.md document it), and no complexity change (no line golf that makes a loop quadratic, the git-globals lesson in free-lines-5). Each rewritten function is checked by a differential probe over the suite's inputs on both trees. If fewer than 16 lines can go without golf, stop at what is clean and say so: the owner then decides a budget change. Files: those modules and the vendored copy under .claude/wuwei/cli/wuwei/. Runtime: -16 or more. Rollback: revert.",
-   "acceptance": [
-    "Given main and the head, when the suite and a differential probe over each rewritten function's inputs run on both trees, then outputs, ledger rows and exit codes are identical",
-    "Given wc -l cli/wuwei/*.py, when measured at the head, then it is at least 16 lines below main",
-    "Given the diff, when listed, then it touches none of guards.py, hook.py, board.py and evidence.py"
    ],
    "prs": [],
    "status": "open",
@@ -392,6 +339,33 @@
    "added": "2026-10-18",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1134"
+  },
+  {
+   "id": "tests-offline",
+   "title": "test: the suite never calls the real GitHub API, so a test run spends none of the owner's REST quota",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 13,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 29.0,
+   "why": "taoq-ai/wuwei#1191 (labelled bug), parked 2026-10-20 as 'build later'; the owner's 2026-10-22 words 'check the recent bugs and fix them' restore it, and every seat in this batch spends the quota until it lands.",
+   "promise": "An autouse fixture in tests/conftest.py puts a stub gh that exits 1 first on PATH for every test, so in-process gh.run and every hook subprocess reach no network; tests that use the fake fixture still replace gh.run. A test asserts a full hook subprocess run makes no real gh call. Files: tests/conftest.py, one test, AGENTS.md note on the test command. Runtime budget: 0 lines.",
+   "acceptance": [
+    "Given the full suite run with a counting gh shim after the stub's folder on PATH, when it finishes, then the shim logs 0 calls",
+    "Given a test that runs the hook as a subprocess, when it reads the board, then gh resolves to the stub and the test still passes",
+    "Given a test using the fake fixture, when it calls gh.run, then the fake answers as before"
+   ],
+   "status": "done",
+   "added": "2026-10-20",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1226",
+   "prs": []
   },
   {
    "id": "codex-attest-probe",
@@ -2183,6 +2157,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1091"
+  },
+  {
+   "id": "free-lines-6",
+   "title": "refactor: free at least 16 runtime lines outside the guard, hook, board and evidence modules, with no behaviour change",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 13,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 10.33,
+   "why": "Constitution VI: a change that breaks the budget deletes something first. Kept out of guards.py, hook.py, board.py and evidence.py so it runs beside this batch without conflicts and needs no owner review; must merge before the second of 1222, 1211-confirm and flow-board.",
+   "promise": "Free at least 16 runtime lines (aim for 20) in modules other than guards.py, hook.py, board.py and evidence.py (report, view, sync, upgrade, setup, ws, plan, gh, verdict, agents, replay, __main__), with no behaviour change: CLI flags, messages, exit codes, ledger rows and output stay identical (wuwei evidence --record stays: docs/site/reference.md and README.md document it), and no complexity change (no line golf that makes a loop quadratic, the git-globals lesson in free-lines-5). Each rewritten function is checked by a differential probe over the suite's inputs on both trees. If fewer than 16 lines can go without golf, stop at what is clean and say so: the owner then decides a budget change. Files: those modules and the vendored copy under .claude/wuwei/cli/wuwei/. Runtime: -16 or more. Rollback: revert.",
+   "acceptance": [
+    "Given main and the head, when the suite and a differential probe over each rewritten function's inputs run on both trees, then outputs, ledger rows and exit codes are identical",
+    "Given wc -l cli/wuwei/*.py, when measured at the head, then it is at least 16 lines below main",
+    "Given the diff, when listed, then it touches none of guards.py, hook.py, board.py and evidence.py"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1229"
   },
   {
    "id": "handback-transcript",
