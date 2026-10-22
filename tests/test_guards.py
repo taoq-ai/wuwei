@@ -100,6 +100,7 @@ def test_a_windows_spelling_that_resolves_into_the_ledger_or_cache_is_refused(ro
 @pytest.mark.parametrize('path', ['.wuwei/ledger/x' + B + '..' + B + '..' + B + '..' + B + 'evil.jsonl',
                                   '.wuwei/ledger/x' + B + '..' + B + '..' + B + 'evil.jsonl',
                                   '.wuwei/cache/x' + B + '..' + B + '..' + B + '..' + B + 'evil.json'])
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: on Windows the backslash is a separator, so the write lands outside .wuwei')
 def test_a_name_holding_backslash_dots_inside_the_ledger_is_refused_where_backslash_is_a_name_character(root, path):
     """On Linux and macOS a backslash is part of a name: x\\..\\.. is one folder, and the write lands in .wuwei (security gate)."""
     assert guards.pre_tool(root, {'tool_name': 'Write', 'tool_input': {'file_path': str(root / path), 'content': 'x'}, 'cwd': str(root)})['decision'] == 'deny'
@@ -2186,6 +2187,7 @@ def test_an_edit_of_a_memory_file_passes(root, memory, tool, name):
     assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': {'file_path': str(memory / 'memory' / name)}, 'cwd': '/repo'}) is None
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: on Windows the backslash is a separator, so the path is the memory file')
 def test_a_memory_path_with_backslash_dots_that_lands_on_a_transcript_is_refused(root, memory):
     """On POSIX Q/..\\A\\memory\\w is one folder name inside Q, so ../S.jsonl from it is Q's transcript (security gate)."""
     staged = str(memory.parent / 'Q') + '/..\\-repo\\memory\\w'
