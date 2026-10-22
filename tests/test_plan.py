@@ -70,6 +70,9 @@ def test_candidates_are_added_from_the_lead_file_with_its_own_field_names(root, 
     [item] = plan.add_from(root, lead)
     assert (item['repo'], item['score'], item['promise']) == ('acme/app', 8.0, 'calls route to their client')
     assert item['acceptance'] == ['given a Gong call, when it arrives, then it lands with its client']
+    assert item['host'] == 'agent'
+    lead.write_text(json.dumps([{'id': 'TIN-2', 'title': 'long', 'scores': scores(), 'host': 'session'}]))
+    assert plan.add_from(root, lead)[0]['host'] == 'session'
 
 
 def test_a_seat_reads_its_item_promise_from_the_plan(root, monkeypatch, capsys):
