@@ -18,7 +18,8 @@ queue; this pass adds, drops or re-ranks.
    since the last one.
 3. Start what is already approved before you launch the lead. An approved item with no pull
    request and no running seat shows on the board as `no pull request yet`. Start it now, as the
-   last step says; it never waits on the lead or on this pass's plan question. On a resumed day
+   last step says, while items in progress are under the WIP limit; it never waits on the lead or
+   on this pass's plan question. On a resumed day
    with open PRs, start the shepherd and the owed gate wave first (the board's `team` row names
    them), before any resume list or finished Codex round.
 4. If `goals.md` has no filled goal, propose up to three goal blocks from the repositories and the
@@ -46,6 +47,6 @@ queue; this pass adds, drops or re-ranks.
    Approve, WUWEI marks the items approved. On Change, apply what the owner said, show the view
    again and re-ask. The answer is recorded only from that question tool. Work outside the goals
    sits in the view under unplanned; the same question covers it.
-10. Start the approved work as the planner charter says: builders in parallel, highest score first,
-   none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
+10. Start the approved work as the planner charter says: highest score first, under the WIP limit
+   and the seat ceiling, none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
    until the next view is approved.

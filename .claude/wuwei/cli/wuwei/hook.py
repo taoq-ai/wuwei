@@ -295,15 +295,15 @@ def post_tool(root, payload):
 
 
 def _replied(root, tool, sent):
-    """Close every owed reply whose place this send landed in: a Slack thread link names its channel
-    and thread ts; any other place must appear as given."""
+    """Close every owed reply whose place this send landed in: a Slack link closes when the send names its channel and
+    its message ts, or the thread_ts it sits in, each as a whole JSON value, never text; any other place must appear as given."""
     closed = []
     for item in plan.items(root):
         if item.get('kind') != 'reply' or item.get('status') != 'open':
             continue
-        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})', item['where'])
-        keys = [thread[1], f'{thread[2]}.{thread[3]}'] if thread else [item['where']]
-        if all(key in sent for key in keys):
+        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})(?:\?\S*?\bthread_ts=([0-9]{10}\.[0-9]{6}))?', item['where'])
+        keys = [[f'"{thread[1]}"', f'"{ts}"'] for ts in (f'{thread[2]}.{thread[3]}', thread[4]) if ts] if thread else [[item['where']]]
+        if any(all(key in sent for key in place) for place in keys):
             plan.mark(root, item['id'], 'done', f'replied via {tool}')
             ws.record(root, 'reply.sent', {'id': item['id'], 'tool': tool})
             closed.append(item['id'])
@@ -403,7 +403,8 @@ AWAY = ('This session is not in auto mode, so the harness refuses SubagentHandba
 
 
 def exception_refs(question):
-    """([(repo, number, head)], gap) from "exception: owner/repo#n at <sha> [and #m at <sha>]: <gap>. ..."."""
+    """([(repo, number, head)], gap) from "exception: owner/repo#n at <sha> [and #m at <sha>]: <gap>. ..."; a gap that holds a
+    finding row (": |") runs to the row's end, its last | before a ". ", "?" or the end, so a | in the question is not the row's."""
     if not question.lower().startswith('exception:'):
         return [], ''
     refs, repo = [], ''
@@ -413,7 +414,8 @@ def exception_refs(question):
         if repo:
             refs.append((repo, match[2], match[3]))
     tail = question[matches[-1].end():].lstrip(' :') if matches else ''
-    return refs, re.split(r'\.\s|\?', tail, maxsplit=1)[0].strip().rstrip('.')
+    cut = max((m.end() for m in re.finditer(r'\|(?=\s*(?:[.?]|$))', tail)), default=0) if ': |' in tail else 0
+    return refs, (tail[:cut] + re.split(r'\.\s|\?', tail[cut:], maxsplit=1)[0]).strip().rstrip('.')
 
 
 def _goal(root, ref, repo):

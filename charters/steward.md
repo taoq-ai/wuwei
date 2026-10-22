@@ -8,7 +8,13 @@ item.
 2. Measure: fix rounds per item; refusals and their reasons; notes; owner prompts and how many the
    owner answered with the recommendation; gate findings that led to a change; escaped defects
    (reverts and follow-up fixes) traced to the gates that passed them; unplanned work; ranking
-   calibration (predicted size against cycle time). An absent measurement is unmeasured.
+   calibration (predicted size against cycle time). Measure flow too: peak live seats per
+   session, peak items in progress, items started against items merged per day, and median
+   tool-call duration (`duration_ms` in the traces) by live seat count. An absent measurement is
+   unmeasured. The planner's WIP limit and seat ceiling are a starting point. Re-derive both: WIP
+   by Little's law (merges per day times median PR lead time in days), the ceiling as the seat
+   count past which tool-call duration climbs. Propose a change as a dated standards line with
+   those numbers.
 3. Sample the assumptions seats recorded and surface reversals or growing risk.
 4. Write the retro to `.wuwei/retro/<date>.md`: recurring blockers and gaps with evidence, and at
    most three proposals, each the smallest rule change that would have prevented a recorded

@@ -47,7 +47,7 @@ def cmd_plan(args):
             raise ValueError('plan run needs --reason "<what ran and what it showed>" or --job <job file>; nothing recorded')
         print(f'{plan.mark(root, args.id, "open", args.reason or "", kind="run", **{"job": args.job} if args.job else {})["id"]} run evidence recorded')
     elif args.action == 'restore':
-        print(f'{plan.restore(root, args.id)["id"]} open again')
+        print(f'{plan.mark(root, args.id, "open", "restored")["id"]} open again')
     elif args.action == 'show' and args.id:
         if (item := plan.find(root, args.id)) is None:
             raise ValueError(f'{args.id} is not in the plan')
@@ -67,20 +67,17 @@ def cmd_plan(args):
                   f'{item.get("goal") or "":<5} {item.get("repo") or ""}  {item["title"]}')  # a null field prints blank (#1209)
         if not rows:
             print('the plan is empty: run /wuwei-run')
-    return 0
 
 
 def cmd_status(args):
     root = _root()
     rows = board.compute(root, everything=args.all)
     print(json.dumps(rows, indent=1) if args.json else board.text(rows, root))
-    return 0
 
 
 def cmd_owe(args):
     item = plan.owe(_root(), args.where, args.what, args.who, within=args.within, due=args.due)
     print(f'{item["id"]} reply owed to {item["who"]} in {item["where"]}, due {item["due"]}')
-    return 0
 
 
 def cmd_watch(args):
@@ -91,7 +88,6 @@ def cmd_watch(args):
     open_replies = [r for r in board.replies(root)]
     print(f'last pass: {passes[-1]["ts"] if passes else "never"}; replies owed: {len(open_replies)} '
           f'({sum(1 for r in open_replies if "overdue" in r["gaps"][0]["text"])} overdue)')
-    return 0
 
 
 def cmd_andon(args):
@@ -100,7 +96,6 @@ def cmd_andon(args):
         raise SystemExit('wuwei: say why: wuwei andon owner/repo --reason "<what is broken for everyone>"')
     board.andon(root, args.repo, args.reason or '', clear=args.clear)
     print(f'andon {"cleared" if args.clear else "raised"} on {args.repo}')
-    return 0
 
 
 def cmd_evidence(args):
@@ -120,25 +115,21 @@ def cmd_sent(args):
     ws.record(root, 'sent', {'tool': 'outside the session', 'refs': [args.pr.lower()], 'link': args.link})
     ws.cache_put(root, 'board', None)
     print(f'recorded: {args.pr} was posted at {args.link}')
-    return 0
 
 
 def cmd_report(args):
     root = _root()
     print(json.dumps(report.dora(root, args.window), indent=1) if args.dora else report.day(root, args.day))
-    return 0
 
 
 def cmd_close(args):
     path = report.close(_root())
     print(f'checkpoint written: {path}\nlaunch the steward for the retro; plan again any time to reopen the day')
-    return 0
 
 
 def cmd_init(args):
     for line in setup.init(args.directory, cloud=args.cloud, codex=args.codex):
         print(line)
-    return 0
 
 
 def cmd_sync(args):
@@ -150,7 +141,6 @@ def cmd_sync(args):
     except (RuntimeError, OSError) as exc:  # a pull stopped at a planted link is one more sync failure
         print(f'wuwei sync: {exc}', file=sys.stderr)
         return 1
-    return 0
 
 
 def cmd_doctor(args):
@@ -164,7 +154,6 @@ def cmd_config(args):
     root = _root()
     data = ws.set_config(root, args.key, args.value) if args.key else ws.config(root)
     print('\n'.join(f'{k} = {json.dumps(v)}' for k, v in data.items()))
-    return 0
 
 
 def cmd_verify(args):
@@ -259,7 +248,7 @@ def main(argv=None):
     p.set_defaults(func=lambda args: hook.main(args.event))
     args = parser.parse_args(argv)
     try:
-        return args.func(args)
+        return args.func(args) or 0  # a command that returns nothing succeeded
     except ValueError as exc:
         print(f'wuwei: {exc}', file=sys.stderr)
         return 2

@@ -46,12 +46,17 @@ def test_adding_an_id_again_rescores_it_and_reopens_a_dropped_item(root):
     assert len(plan.items(root)) == 1 and ws.rows(root, 'item.updated')
 
 
-def test_restore_reopens_a_parked_or_dropped_item(root):
+def test_restore_reopens_a_parked_or_dropped_item(root, monkeypatch, capsys):
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
     plan.add(root, 'I-1', 'a', 'G-1', 'acme/app', 'light', scores())
     plan.mark(root, 'I-1', 'parked', 'later')
-    assert plan.restore(root, 'I-1')['status'] == 'open'
-    with pytest.raises(ValueError):
-        plan.restore(root, 'I-9')
+    assert cli.main(['plan', 'restore', 'i-1']) == 0
+    assert capsys.readouterr().out == 'I-1 open again\n'
+    assert (plan.find(root, 'I-1')['status'], plan.find(root, 'I-1')['reason']) == ('open', 'restored')
+    assert ws.rows(root, 'item.open')[-1]['data'] == {'id': 'I-1', 'reason': 'restored'}
+    assert cli.main(['plan', 'restore', 'I-9']) == 2
+    assert capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'
 
 
 def test_candidates_are_added_from_the_lead_file_with_its_own_field_names(root, tmp_path):
