@@ -42,6 +42,11 @@ A question reaches you only when it starts with its class:
 Any other question is sent back to the model: decide it, record the assumption, go on. The model
 never asks whether to continue planned work. Each question comes once, with a recommendation.
 
+Your answers outlive compaction and new sessions. Every session start lists the answers of the last
+7 days, and a question you answered in that window (same class and text, case and spacing aside)
+is sent back with your answer and its date. A question on a new head or PR differs in its text, so
+it reaches you; a `plan:` question reaches you again once the plan has an item you have not approved.
+
 **Why:** your attention is the scarcest resource on the team. The report counts your prompts and
 how often you chose the recommendation; a kind of question you always answer the same way becomes a
 rule at the next retro.

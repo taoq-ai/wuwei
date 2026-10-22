@@ -197,8 +197,23 @@ def verify(root):
 
 
 def rows(root, kind, day=None):
-    return [row for row in ledger(root)
-            if row.get('kind') == kind and (day is None or row.get('ts', '').startswith(day))]
+    return [row for row in ledger(root) if row.get('kind') == kind and (day is None or row.get('ts', '').startswith(day))]
+
+
+def answers(root, days=7):
+    """({question, case and spacing aside: (ts, question, answer)}, context lines) for the owner's answers of the last days.
+    The lines put the unrecorded first (pending, or unconfirmed with its reason), then the answers newest first."""
+    found, left, done = {}, [], set()
+    since = (now() - datetime.timedelta(days=days)).isoformat(timespec='seconds')
+    recent = [(r.get('kind'), r.get('data') or {}, r.get('ts', '')) for r in ledger(root) if r.get('ts', '') >= since]
+    for kind, d, ts in reversed(recent):  # newest first: a later row with its id settles a pending answer
+        given = d['answers'] if kind == 'prompt' and isinstance(d.get('answers'), dict) else {}  # a ruling repeats its prompt row
+        found = {' '.join(q.casefold().split()): (ts, q, str(a)) for q, a in given.items() if a} | found
+        if kind == 'answer.unconfirmed' or kind == 'answer.pending' and d.get('id') not in done:
+            left.append(f'{ts[:10]} unrecorded, ask again: {d.get("questions")!s:.100} ({d.get("reason", "pending")!s:.100})')
+        done.add(d.get('id'))
+    said = left + [f'{ts:.10} {q:.120} -> {a:.120}' for ts, q, a in sorted(found.values(), reverse=True)]
+    return found, [' '.join(n.split()) for n in said]  # a line break in a question or answer adds no line
 
 
 def trace(root, row):
