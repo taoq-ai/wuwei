@@ -73,9 +73,9 @@ def pre_tool(root, payload):
 
 
 def asked(data):
-    """The item the brief names (its first Item: line, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
+    """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\A(?:[\s\S]*?^[ \t]*|[\s\S]*?\b)Item:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 

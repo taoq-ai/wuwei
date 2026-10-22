@@ -523,7 +523,9 @@ def test_a_launch_for_an_item_another_live_session_holds_is_sent_back_naming_it(
     ('> Item: I-1\nItem: I-2', False),  # a quoted line
     ('Item: I-2\nItem: I-1', False),  # two lines: the first names the item, as the seat records it
     ('Item: I-1\nItem: I-2', True), ('  Item: I-1', True), ('Build Item: `I-1`, then stop.', True),
-    ('Item:I-1.', True), ('Item: I-1 in acme/app.', True), ('Model: x\nItem: I-1', True)])
+    ('Item:I-1.', True), ('Item: I-1 in acme/app.', True), ('Model: x\nItem: I-1', True),
+    ('The brief in session A said `Item: I-1`.\n- Item: I-2', False), ('Done: `Item: I-1`.\n**Item:** I-2', False),  # list and bold lines
+    ('- Item: I-1', True), ('* Item: I-1', True), ('**Item:** I-1', True), ('**Item: I-1**', True)])
 def test_a_brief_that_quotes_or_wraps_another_items_line_is_judged_by_its_own_item(root, fake, prompt, sent_back):
     open_prs(root, fake, count=3)
     write_plan(root, [{'id': i, 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
