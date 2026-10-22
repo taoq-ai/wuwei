@@ -325,7 +325,7 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 ## 11. Configuration and budgets
 
 Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
-most 3,600 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+most 3,800 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
 first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
