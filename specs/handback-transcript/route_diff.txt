@@ -1,0 +1,14 @@
+routes: 288 read at both trees through guards.bash, the planner's PreToolUse and a sentinel seat's PreToolUse, 0 moved (corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1; main read the same corpus: True)
+handbacks: 12 cases, 7 moved
+  MOVED PreToolUse agent transcript outside the projects folder: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED PreToolUse another seat type: main {'out': 'deny', 'recorded': []} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED PreToolUse forged report: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED PreToolUse no launch (agent id): main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED PreToolUse no session transcript: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse real: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md']}
+  MOVED SubagentStop agent transcript outside the projects folder: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md', 'seat.stopped']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop another seat type: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED SubagentStop forged report: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-bbbbbbb.md', 'seat.stopped']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop no launch (agent id): main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop no session transcript: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop real: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md', 'seat.stopped']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md', 'seat.stopped']}

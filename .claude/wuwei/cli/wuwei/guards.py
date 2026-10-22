@@ -12,7 +12,7 @@ import subprocess
 from tempfile import gettempdir
 from urllib.parse import unquote
 
-from wuwei import evidence, gh, ws
+from wuwei import evidence, gh, plan, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
@@ -431,6 +431,11 @@ def pre_tool(root, payload):
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
+        known = ws.answers(root)[0]
+        shown = all(i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')  # else plan: is asked again
+        if again := [known[k] for q in questions if (k := ' '.join(q.casefold().split())) in known and (shown or k[:5] != 'plan:')]:
+            return deny('already answered: ' + '; '.join(f'on {ts:.10}, "{q:.200}" -> "{a:.300}"' for ts, q, a in again)
+                        + '. Act on that; a new head, PR or plan item is a new question.')
         if not (unclassed := [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]):
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)

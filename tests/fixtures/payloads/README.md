@@ -4,7 +4,9 @@ Hook payloads that tests/test_hook.py replays through `hook.handle`. None is cap
 Their `~/.claude/projects` paths point at tests/fixtures/transcripts, which the replay lays out under
 the test's projects folder: rows of a real session transcript with the question, answer, brief and
 local paths replaced (specs/hook-transcript/fixtures.py builds ask-flow.jsonl and agent-launch.jsonl,
-specs/1211-confirm/fixtures.py builds ask-late.jsonl).
+specs/1211-confirm/fixtures.py builds ask-late.jsonl, specs/handback-transcript/fixtures.py builds sentinel-launch.jsonl
+and the sentinel's agent-a03dc7ca27072549b files). agent-a0130a2652c480942.jsonl is reconstructed: one assistant row
+holding the builder report claude-seat-stop.json carries, since that seat's real transcript was not kept.
 A green replay shows the hook handles these files; it proves nothing about a real harness shape
 that differs from them. Replace a file with a captured payload when one exists, and change its
 provenance line.
@@ -31,3 +33,5 @@ Each file has one provenance line, `- <file>: transcript | reconstructed: <sourc
 - claude-seat-stop.json: reconstructed: the documented SubagentStop fields with the agent id, type and transcript layout of a builder launch on 2026-10-19 (tests/fixtures/transcripts/agent-launch.jsonl and its meta file); the message is written by hand
 - claude-ask-post-plan.json: transcript: the AskUserQuestion `tool_use` input and `toolUseResult` of a plan question answered with its label (Approve) in a Claude Code 2.1.308 session on 2026-10-22, with the question replaced; that session's `answer.pending` row shows the real PostToolUse payload carried the same answers as the transcript. tests/fixtures/transcripts/ask-late.jsonl holds its rows (answer row 3 s after the question) and a trust question's (answer row 7 min after), as the harness wrote them
 - claude-ask-post-free-text.json: reconstructed: a batch of a one-way question answered in the free-text Other field and a plan question answered Approve, in the shape of claude-ask-post-plan.json; no real free-text answer was recorded, so where the harness puts the typed text (the payload, the transcript, or both, with or without notes) is assumed
+- claude-sentinel-handback-pre.json: transcript: the SubagentHandback `tool_use` of a sentinel-arch seat in a Claude Code session on 2026-10-22 (tests/fixtures/transcripts/agent-a03dc7ca27072549b.jsonl, its meta file and sentinel-launch.jsonl), with the report replaced by one naming an arch verdict for I-1; the PreToolUse envelope names no agent transcript, as the documented fields hold none
+- claude-sentinel-stop.json: reconstructed: the documented SubagentStop fields for that seat; last_assistant_message is empty, as no payload after a hand-back was recorded (the ledger's 464 attest rows and no verdict.missing row show it was empty or named the verdict)

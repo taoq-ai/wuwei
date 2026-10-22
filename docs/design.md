@@ -268,8 +268,8 @@ flow.
 
 | Hook | Role |
 |---|---|
-| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the board with how many items it left out |
-| PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying |
+| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the owner's answers of the last 7 days (the latest 12, those not recorded first, with their reason), the board with how many items it left out; at every source, compaction included |
+| PreToolUse | the doors; an owner question answered in the last 7 days (same class and text, case and spacing aside) sent back with its answer and date, unless it is `plan:` and the plan has an unapproved item; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed, in board order (an item waiting on another is left out); once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
@@ -291,7 +291,10 @@ transcript path outside the projects folder, no AskUserQuestion tool_use with th
 named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer.pending` row that no
 `prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
 call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
-type and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops, a
+type and Agent tool_use and the session transcript holds that tool_use, and a gate's report, at its
+hand-back and its stop, counts only as that seat transcript holds it: the payload's text when the
+transcript holds it, else the transcript's last report (a PreToolUse payload names no seat transcript,
+so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Codex answers and stops, a
 moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
 recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
 transcript itself stays open (SECURITY.md).
@@ -323,7 +326,7 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 ## 11. Configuration and budgets
 
 Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
-most 3,600 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+most 3,800 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
 first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
@@ -335,9 +338,6 @@ Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
-- Attestations read from the seat's own transcript (#962): a sentinel's SubagentHandback at
-  PreToolUse still attests from its payload, and a SubagentStop that replays a real launch attests
-  and keeps the report text its payload carries.
 - A shared standards repository for teams; auditing human PRs as first-class items.
 
 ## 13. From 0.x
