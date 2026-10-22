@@ -5,6 +5,18 @@
 Claude Code, Python 3.11 or newer, Git and the GitHub CLI (`gh`), authenticated. WUWEI installs
 no packages: its runtime is the Python standard library.
 
+WUWEI runs on macOS, Linux and Windows. Its hooks look for Python 3.11 or newer in this order:
+`WUWEI_PYTHON`, then `python3.15` down to `python3.11`, `python3`, `py -3` (the Windows launcher)
+and `python`. The first one at 3.11 or later runs WUWEI. A harness can give hooks a shorter PATH
+than your shell, so an older `python3` may come first there, for example macOS's
+`/usr/bin/python3` 3.9. When no interpreter fits, every tool call is refused with one line that
+names each interpreter tried and its version. Set `WUWEI_PYTHON` to the full path of a 3.11 or
+later interpreter to choose one. `wuwei doctor` names the interpreter it runs under and the one
+the hooks last used.
+
+On Windows, Claude Code runs hooks through Git Bash, so install
+[Git for Windows](https://git-scm.com/downloads/win) and Python from python.org (it brings `py`).
+
 ## Install
 
 In Claude Code:

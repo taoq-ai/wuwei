@@ -117,7 +117,7 @@ def _levels(rule_types):
 
 
 def doctor(root):
-    rows = [('python', 'ok' if sys.version_info >= (3, 11) else 'fail', sys.version.split()[0])]
+    rows = [('python', 'ok' if sys.version_info >= (3, 11) else 'fail', f'{sys.version.split()[0]} at {sys.executable}')]
     repos = (config := ws.config(root) if root else ws.DEFAULTS)['repos']
     try:  # a REST read, as WUWEI reads: in a cloud session the proxy's token fails auth status (#1062)
         gh.default_branch(repos[0]) if repos else gh.run(['auth', 'status'])
@@ -146,7 +146,8 @@ def doctor(root):
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
     seen = ws.cache_get(root, 'hook-seen', 120)  # PreToolUse writes it, and the doctor's own Bash call fires PreToolUse
-    rows.append(('hooks', 'ok', f'fired {max(0, round(ws.now().timestamp() - seen))}s ago') if isinstance(seen, (int, float))
+    under = f' under {python}' if (python := ws.cache_get(root, 'hook-python', 120)) else ''
+    rows.append(('hooks', 'ok', f'fired {max(0, round(ws.now().timestamp() - seen))}s ago{under}') if isinstance(seen, (int, float))
                 else ('hooks', 'warn', 'no hook fired in the last 2 minutes: inside a session, the doors and attestations are off'))
     for repo in config['repos']:
         try:

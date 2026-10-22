@@ -239,6 +239,9 @@ or a network program in `guards.NETWORK`, read with its quotes and backslashes r
 it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`.
 The launcher is the one exception: when the PreToolUse hook fails before it can judge (an import, its
 arguments, the version read), `bin/wuwei` exits 2 and refuses every PreToolUse call, not only door calls.
+`bin/wuwei` (sh) and `bin/wuwei.cmd` (cmd.exe, Codex on Windows) run the first Python 3.11 or later among
+`WUWEI_PYTHON`, python3.15 down to python3.11, python3, `py -3` and python (the `.cmd`: `WUWEI_PYTHON`,
+`py -3`, python). With none, they exit 2 with one line naming each interpreter tried and its version.
 An account with no password-database entry is not such a failure: the hook loads, its doors judge, and
 answers and seat stops record as unconfirmed (section 8).
 `wuwei doctor` reports each door's strength per repository: wall (code host or credentials), refused

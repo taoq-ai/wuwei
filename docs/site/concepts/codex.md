@@ -25,7 +25,12 @@ That writes what a Codex plugin cannot carry:
   repository deletion forbidden; infrastructure applies and destroys prompted).
 
 Codex asks you to trust a new or changed hook before it runs: trust WUWEI's five hooks once, and again
-after an upgrade changes them. Run `wuwei init --codex` again after an upgrade too; `wuwei doctor`
+after an upgrade changes them. Codex runs hooks through your login shell (`$SHELL -lc`) on macOS and
+Linux, and through `cmd.exe` on Windows, where it reads each hook's `commandWindows` entry:
+`bin/wuwei.cmd`. That entry tries `WUWEI_PYTHON`, then `py -3`, then `python`, and needs Python
+3.11 or newer, as `bin/wuwei` does. The login shell may put an older `python3` first, so if every
+call is refused with "WUWEI needs Python 3.11 or later", set `WUWEI_PYTHON` to a 3.11 or later
+interpreter where Codex starts, or install one as `python3.12` or `python3.13`. Run `wuwei init --codex` again after an upgrade too; `wuwei doctor`
 warns while the role files differ from the charters.
 
 ## What maps to what
