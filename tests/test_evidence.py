@@ -864,14 +864,16 @@ def test_a_later_pass_at_the_same_head_does_not_outvote_a_finding(root, fake):
     assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
 
 
-def test_a_pass_at_the_same_head_that_names_the_fix_it_closes_clears_it(root, fake):
-    """A finding closed outside the diff (the PR body) no longer needs a no-op commit to move the head (#1162)."""
+@pytest.mark.parametrize('sep', ['/', '\\'])
+def test_a_pass_at_the_same_head_that_names_the_fix_it_closes_clears_it(root, fake, sep):
+    """A finding closed outside the diff (the PR body) no longer needs a no-op commit to move the head (#1162). A seat on
+    Windows may name the fix with backslashes."""
     light(root)
     fake.prs['42'] = make_pr()
     fix = attest(root, 'quality', verdict='FIX')
     attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-2.md', extra='Supersedes: some-other.md\n')
     assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
-    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-3.md', extra=f'Supersedes: {fix.relative_to(root)}\n')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-3.md', extra=f'Supersedes: {fix.relative_to(root).as_posix().replace("/", sep)}\n')
     assert not any(t.startswith('gates missing') for t in texts(evidence.gaps(root, 'acme/app', 42)))
 
 

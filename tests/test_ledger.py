@@ -1,5 +1,8 @@
 import contextlib
 import json
+import os
+from pathlib import Path
+import threading
 
 import pytest
 
@@ -27,6 +30,13 @@ def test_config_set_parses_lists_and_switches(root):
     ws.set_config(root, 'telemetry', 'off')
     data = ws.config(root)
     assert data['owner_paths'] == ['infra/**', '.github/**'] and data['telemetry'] is False
+
+
+def test_ledger_rows_end_with_lf_on_every_platform(root):
+    ws.record(root, 'note', {})
+    ws.record(root, 'note', {})
+    assert (root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl').read_bytes().count(b'\n') == 2 and ws.verify(root) == []
+    assert b'\r' not in (root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl').read_bytes()
 
 
 def test_ledger_rows_carry_their_format_version(root):
@@ -57,13 +67,116 @@ def _append(root, n):
 def test_seats_starting_at_once_keep_one_chain(root):
     import multiprocessing
     ws.clone(root)
-    procs = [multiprocessing.get_context('fork').Process(target=_append, args=(root, 25)) for _ in range(8)]
+    procs = [multiprocessing.get_context('spawn').Process(target=_append, args=(root, 25)) for _ in range(8)]
     for proc in procs:
         proc.start()
     for proc in procs:
         proc.join()
     assert len(ws.ledger(root)) == 200
     assert ws.verify(root) == []
+
+
+def test_the_projects_folder_follows_the_account_never_the_home_variables(tmp_path):
+    import subprocess
+    import sys
+    env = {**os.environ, 'HOME': str(tmp_path), 'USERPROFILE': str(tmp_path), 'PYTHONPATH': str(Path(ws.__file__).parents[1])}
+    said = subprocess.run([sys.executable, '-c', 'from wuwei import ws; print(ws.PROJECTS)'], env=env, capture_output=True, text=True, timeout=60)
+    assert said.returncode == 0, said.stderr
+    assert said.stdout.strip().endswith(os.path.join('.claude', 'projects')) and str(tmp_path) not in said.stdout
+
+
+@pytest.fixture(params=['descriptors', 'names'])
+def writes(request, monkeypatch):
+    """atomic_write as each platform runs it: by folder descriptor (POSIX) or by checked name (Windows has no dir_fd)."""
+    if request.param == 'names':
+        monkeypatch.setattr(os, 'supports_dir_fd', set())
+    elif os.mkdir not in os.supports_dir_fd:
+        pytest.skip('this platform has no dir_fd: Windows writes by name')
+    return request.param
+
+
+def test_atomic_write_makes_its_folders_and_replaces_the_file(tmp_path, writes):
+    ws.atomic_write(tmp_path / 'a' / 'b' / 'f.txt', 'one')
+    ws.atomic_write(tmp_path / 'a' / 'b' / 'f.txt', b'two', tmp_path)
+    ws.atomic_write(tmp_path / 'c' / 'd' / 'g.txt', 'three', tmp_path)
+    assert (tmp_path / 'a' / 'b' / 'f.txt').read_bytes() == b'two' and (tmp_path / 'c' / 'd' / 'g.txt').read_text() == 'three'
+    assert sorted(p.name for p in tmp_path.rglob('*') if p.is_file()) == ['f.txt', 'g.txt']
+
+
+def test_atomic_write_never_writes_through_a_linked_folder_or_temporary_name(tmp_path, writes):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (tmp_path / 'root').mkdir()
+    (tmp_path / 'root' / 'linked').symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError):
+        ws.atomic_write(tmp_path / 'root' / 'linked' / 'f.txt', 'x', tmp_path / 'root')
+    (tmp_path / 'root' / '.f.txt.{}.{}.tmp'.format(os.getpid(), threading.get_ident())).symlink_to(outside / 'kept')
+    (outside / 'kept').write_text('kept')
+    ws.atomic_write(tmp_path / 'root' / 'f.txt', 'x', tmp_path / 'root')
+    assert sorted(p.name for p in outside.iterdir()) == ['kept'] and (outside / 'kept').read_text() == 'kept'
+    assert (tmp_path / 'root' / 'f.txt').read_text() == 'x'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows only: a held folder refuses a rename there; POSIX walks by descriptor instead')
+def test_a_folder_a_windows_write_walks_is_never_renamed_mid_write(tmp_path, monkeypatch):
+    folder, refused, real_open = tmp_path / 'a', [], os.open
+    folder.mkdir()
+
+    def at_temp(name, *args, **kwargs):  # the folder would be swapped for a link here
+        try:
+            folder.rename(tmp_path / 'moved')
+        except OSError as exc:
+            refused.append(exc)
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(ws.os, 'open', at_temp)
+    ws.atomic_write(folder / 'f.txt', 'x', tmp_path)
+    monkeypatch.undo()
+    assert refused and (folder / 'f.txt').read_text() == 'x' and not (tmp_path / 'moved').exists()
+
+
+def test_a_write_by_name_retries_a_replace_another_writer_holds_then_gives_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, 'supports_dir_fd', set())
+    monkeypatch.setattr(ws.time, 'sleep', lambda seconds: None)
+    real, calls = os.replace, []
+
+    def busy(*args):  # Windows answers Access is denied while another thread replaces the same name
+        calls.append(args)
+        if len(calls) < 3 or (tmp_path / 'never').exists():
+            raise PermissionError(13, 'Access is denied')
+        return real(*args)
+    monkeypatch.setattr(ws.os, 'replace', busy)
+    ws.atomic_write(tmp_path / 'f.txt', 'x', tmp_path)
+    assert len(calls) == 3 and (tmp_path / 'f.txt').read_text() == 'x'
+    (tmp_path / 'never').mkdir()
+    with pytest.raises(PermissionError):
+        ws.atomic_write(tmp_path / 'f.txt', 'y', tmp_path)
+    assert len(calls) == 8 and (tmp_path / 'f.txt').read_text() == 'x'
+
+
+def test_of_two_racing_takes_one_wins_even_where_both_unlinks_succeed(root, monkeypatch):
+    """Windows lets two racing unlinks of one file both succeed (each opens it sharing delete), so a claim takes the ledger lock."""
+    import time
+    entry, real, won = root / ws.DIR / 'cache' / 'answer-s1--x.json', Path.unlink, []
+    ws.clone(root)  # one clone id, so one ledger file and one lock
+    entry.write_text('{}')
+
+    def windows_unlink(self, missing_ok=False):  # it checks, then removes: a racing caller between the two also succeeds
+        there = self.exists()
+        time.sleep(0.2)
+        if not there:
+            raise FileNotFoundError(self)
+        real(self, missing_ok=True)
+    monkeypatch.setattr(Path, 'unlink', windows_unlink)
+
+    def take():
+        with contextlib.suppress(OSError):
+            won.append(ws.take(root, entry))
+    calls = [threading.Thread(target=take) for _ in range(2)]
+    for call in calls:
+        call.start()
+    for call in calls:
+        call.join()
+    assert len(won) == 1 and not entry.exists()
 
 
 def _mine(root):

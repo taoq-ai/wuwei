@@ -11,6 +11,11 @@ def test_a_clean_pass_parses():
         'PASS', 'quality', HEAD, 'acme/app', 42)
 
 
+def test_a_verdict_saved_with_windows_line_endings_parses_as_with_unix_ones():
+    text = verdict_text(verdict='FIX', findings='- [high] src/app.py:12 blocks: yes. Failure: an empty list returns None.')
+    assert verdict.parse(text.replace('\n', '\r\n')) == verdict.parse(text) and verdict.parse(text)['errors'] == []
+
+
 def test_findings_parse_with_their_block_flag():
     text = verdict_text(verdict='FIX', findings=(
         '- [high] src/app.py:12 blocks: yes. Failure: an empty list returns None and the caller crashes.\n'
