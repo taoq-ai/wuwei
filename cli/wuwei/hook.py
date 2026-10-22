@@ -398,6 +398,7 @@ def _answers(root, kept):
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
 WAIT, BOUND = 1.5, 600  # seconds a Stop rereads a transcript the harness may still be writing, and an answer waits for its row
+HANDED = 'This agent\'s report was delivered to you as a message from "{}" (its SubagentHandback call)'  # the harness's words
 AWAY = ('This session is not in auto mode, so the harness refuses SubagentHandback: do not call it again. End now with your '
         'report as plain text; WUWEI keeps it and passes it on, and your stop attests a verdict file it names.')
 
@@ -476,30 +477,32 @@ def codex(payload):
 
 
 def deliver(root, event, payload, out, said):
-    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode) unless its task notification
-    gave them, and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
+    """Seat reports the harness kept from the planner and owner answers' notes (said), once on its next call or stop (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
     if said and 'permissionDecisionReason' in spec:  # a refused call still carries the notes of the answers recorded on it
         spec['permissionDecisionReason'] += '\n\n' + '\n'.join(said)
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found = Path(root) / ws.DIR / 'reports' / 'pending', []
-    session = re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
+    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
         try:
-            os.replace(path, kept := pending.parent / path.name)  # one hook wins a race; the other skips it
+            (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
+            rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
+                    and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
+            gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
+            at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
+            told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
+                       if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
+            if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
+                continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
             continue
-        (_, agent, role, _), text = kept.stem.split('--', 3), kept.read_text(encoding='utf-8')
-        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # a queued notification
-        told = any(html.unescape(body) == text for r in rows if isinstance(r, dict)  # may be dropped, so
-                   for body in re.findall(r'<result>(.*?)</result>', str(r.get('content')), re.S))
         found.append((agent, f'## {role} {agent}: report already notified; kept at {kept}' if told else f'## {role} {agent} (kept at {kept})\n{text}'))
     if not said and not found:  # a notified report is a pointer, never lost (#1198)
         return out
-    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so the hook kept these seats' last messages (a "
-                             'report a task notification carried, by its path):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
+    note = '\n'.join(said + ["WUWEI: the hook kept these seats' last messages, which no task notification gave you (one it gave, "
+                             'by its path only):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
     if event == 'Stop':
         return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
     if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):
