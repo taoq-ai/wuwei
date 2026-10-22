@@ -82,6 +82,31 @@
    "approved": true
   },
   {
+   "id": "reply-thread-ts",
+   "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "owner 2026-10-22: R-12 to Omer was answered in his thread, but stays owed. hook._replied (cli/wuwei/hook.py:304) keys a Slack link on its p<ts>, the linked message's own ts; a link copied from a reply inside a thread carries ?thread_ts=<root ts>, and a send into the thread names the root ts, so the keys never match",
+   "promise": "an owed reply recorded with a Slack link to a message inside a thread (p<ts>?thread_ts=<root>) closes when a send names that channel and either the root thread ts or the linked message ts; a link with no thread_ts closes as today",
+   "acceptance": [
+    "given an owe on https://x.slack.com/archives/C1/p1729590000123456?thread_ts=1729580000.000100&cid=C1, when a send to channel C1 names thread_ts 1729580000.000100, then the reply is marked done",
+    "given an owe on a top-level message link with no thread_ts, when a send names its channel and ts, then it closes as today"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
+  },
+  {
    "id": "1211-confirm",
    "title": "fix(hook): an owner answer the transcript shows late, or beside a differing answer in a batch, is still recorded, and an unrecorded one says why",
    "goal": "G-2",
