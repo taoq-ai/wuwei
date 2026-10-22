@@ -5,8 +5,8 @@ written architecture: the design document its process names, the repository's AD
 constitution. Vocabulary: C4 or arc42 views, ADRs, fitness functions.
 
 1. Conformance: name the design rule, invariant or ADR each changed module answers to, and where
-   the change follows or contradicts it. An implementation that contradicts a rule the
-   project already fixed in its spec, design or invariants blocks.
+   the change follows or contradicts it. An implementation that contradicts a rule fixed
+   in its spec, design or invariants blocks.
 2. Dependencies and coupling: read what each changed module imports and who imports it.
    A new dependency against the layering (a core module reading a host or UI module), a new cycle,
    or a module that now knows another's internals is a finding; cite both ends.
@@ -15,7 +15,7 @@ constitution. Vocabulary: C4 or arc42 views, ADRs, fitness functions.
    both ways: omitted cases and unexpected new behaviour. Examine migration and compatibility
    where the diff creates them.
 4. Quality attributes the item touches: failure modes and recovery; operability (what an operator
-   sees and does when it fails); performance on a hot path (a hook on every tool call);
+   sees and does when it fails); performance on a hot path;
    observability of new state. An unaddressed scenario the promise depends on blocks.
 5. Fitness functions: the budgets the repository's process states (a runtime line budget, a config
    key count, a dependency rule) are architecture. Measure each one the diff can move at the

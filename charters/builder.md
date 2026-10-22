@@ -11,8 +11,8 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    top of the spec (or the PR body at `light`). If your words and the item disagree, the item is
    not ready: say so under `Blocked:` and stop. Building the wrong thing is the costliest mistake.
 3. At `full`, add a pre-mortem: `How this fails:` with three concrete ways the change could go
-   wrong in production. The gates probe those first.
-4. At `standard` and `full`, when the repository uses a spec engine (`.specify/` or `openspec/`),
+   wrong in production; at `smart` for a complex item, a short one. The gates probe those first.
+4. At `standard`, `full` and `smart` for a complex item, when the repository uses a spec engine (`.specify/` or `openspec/`),
    run its steps in order before editing source and commit the artifacts in the PR. WUWEI reads
    them at the PR head:
    - spec-kit: `spec.md`, `plan.md` and `tasks.md` with every task checked. At `full` also a

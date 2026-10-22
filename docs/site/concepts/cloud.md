@@ -40,8 +40,9 @@ ignores everything, so a PR never carries it by accident).
 
 Each clone appends only to its own ledger file, `.wuwei/ledger/<clone>.jsonl`, with its own hash
 chain, and pushes only that file. Two sessions working at once never drop each other's records.
-Other files follow the last writer; a file changed both here and on the branch keeps the local copy
-and says so. Telemetry traces, caches and the canary stay on the machine.
+The plan merges by item: each plan change stamps the items it changed, and for each item the newest
+stamp wins, so two clones that each add an item both keep both. Other files follow the last writer;
+a file changed both here and on the branch keeps the local copy and says so. Telemetry traces, caches and the canary stay on the machine.
 
 **Why:** a fresh clone that forgot the plan, the rulings and the attestations would ask you again
 for everything you already decided. Keeping state beside the code, on a branch no PR touches, lets

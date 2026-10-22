@@ -1,0 +1,72 @@
+generated 70; ran through evidence.gaps 70; holes 0
+'clear: a known fix'         plain     quality
+'clear: a known fix'         owner     quality, security
+'clear: a known fix'         risky     quality, security
+'clear: a known fix'         trust     quality, security
+'clear: a known fix'         guard     arch, quality
+'clear: a known fix'         rise      quality, security
+'clear: a known fix'         nopatch   arch, quality
+'clear: a known fix'         contract  arch, quality
+'clear: a known fix'         wide      arch, quality
+'clear: a known fix'         doubt     goal, quality
+'complicated: two modules'   plain     quality
+'complicated: two modules'   owner     quality, security
+'complicated: two modules'   risky     arch, quality, security
+'complicated: two modules'   trust     arch, quality, security
+'complicated: two modules'   guard     arch, quality
+'complicated: two modules'   rise      quality, security
+'complicated: two modules'   nopatch   arch, quality
+'complicated: two modules'   contract  arch, quality
+'complicated: two modules'   wide      arch, quality
+'complicated: two modules'   doubt     goal, quality
+'complex: a new protocol'    plain     arch, quality, security
+'complex: a new protocol'    owner     arch, quality, security
+'complex: a new protocol'    risky     arch, quality, security
+'complex: a new protocol'    trust     arch, quality, security
+'complex: a new protocol'    guard     arch, quality, security
+'complex: a new protocol'    rise      arch, quality, security
+'complex: a new protocol'    nopatch   arch, quality, security
+'complex: a new protocol'    contract  arch, quality, security
+'complex: a new protocol'    wide      arch, quality, security
+'complex: a new protocol'    doubt     arch, goal, quality, security
+''                           plain     arch, quality, security
+''                           owner     arch, quality, security
+''                           risky     arch, quality, security
+''                           trust     arch, quality, security
+''                           guard     arch, quality, security
+''                           rise      arch, quality, security
+''                           nopatch   arch, quality, security
+''                           contract  arch, quality, security
+''                           wide      arch, quality, security
+''                           doubt     arch, goal, quality, security
+'Clear: shouted'             plain     arch, quality, security
+'Clear: shouted'             owner     arch, quality, security
+'Clear: shouted'             risky     arch, quality, security
+'Clear: shouted'             trust     arch, quality, security
+'Clear: shouted'             guard     arch, quality, security
+'Clear: shouted'             rise      arch, quality, security
+'Clear: shouted'             nopatch   arch, quality, security
+'Clear: shouted'             contract  arch, quality, security
+'Clear: shouted'             wide      arch, quality, security
+'Clear: shouted'             doubt     arch, goal, quality, security
+'clear'                      plain     arch, quality, security
+'clear'                      owner     arch, quality, security
+'clear'                      risky     arch, quality, security
+'clear'                      trust     arch, quality, security
+'clear'                      guard     arch, quality, security
+'clear'                      rise      arch, quality, security
+'clear'                      nopatch   arch, quality, security
+'clear'                      contract  arch, quality, security
+'clear'                      wide      arch, quality, security
+'clear'                      doubt     arch, goal, quality, security
+None                         plain     arch, quality, security
+None                         owner     arch, quality, security
+None                         risky     arch, quality, security
+None                         trust     arch, quality, security
+None                         guard     arch, quality, security
+None                         rise      arch, quality, security
+None                         nopatch   arch, quality, security
+None                         contract  arch, quality, security
+None                         wide      arch, quality, security
+None                         doubt     arch, goal, quality, security
+

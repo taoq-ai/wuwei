@@ -63,11 +63,10 @@ def adopted(root, repo, prs, keep):
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 
-def running(root, session, key='role'):
-    """Roles of the seats the session started today with no stop or unconfirmed row: a dead session's never count (1180-probe)."""
-    gone = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k, ws.today()) if isinstance(a := r['data'].get('agent'), str)}
-    return {r['data'].get(key) for r in ws.rows(root, 'seat.started', ws.today()) if session and r['data'].get('session') == session
-            and isinstance(a := r['data'].get('agent'), str) and a not in gone}
+def running(root, hours=6):
+    """The live seats of every session: started within hours under a named session, with no stop or unconfirmed row. Past that bound a seat is dead: a session that ended without a stop row holds nothing (1180-probe)."""
+    gone, since = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k) if isinstance(a := r['data'].get('agent'), str)}, (ws.now() - datetime.timedelta(hours=hours)).isoformat(timespec='seconds')
+    return [d for r in ws.rows(root, 'seat.started') if r.get('ts', '') >= since and isinstance((d := r['data']).get('session'), str) and d['session'] and isinstance(a := d.get('agent'), str) and a not in gone]
 
 
 def names(root, pr, repo, item_id):
@@ -120,11 +119,12 @@ def compute(root, everything=False):
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
     out = answers + flow(root, out)  # owed replies stay first
-    seats, prs = running(root, os.environ.get('CLAUDE_CODE_SESSION_ID')), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
+    live, prs = running(root), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
     owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
-    duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
-        evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
-    return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
+    duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in [s.get('role') for s in live]) + [
+        evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s.get('role')).startswith('sentinel-') for s in live))
+    return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + [{**r, 'gaps': r['gaps'] + [  # first: the Stop and session start cut from the end
+        evidence.gap(f'{s.get("role")} running in session {s["session"]}', actionable=False) for s in live if str(s.get('item') or '').lower() == str(r['item']).lower()]} for r in out]  # the holder of each item
 
 
 def when(text):  # an ISO time or date as UTC; None when it is not one
@@ -145,7 +145,7 @@ def flow(root, out):
     """Kanban flow policy: class of service, stale first in its class, then right to left, then age (oldest first).
     A row waiting on an open item says so and asks nothing; one idle STALE_HOURS with no live seat on its item says stale."""
     rows, goals, last = plan.items(root), view.goals(root), {}
-    live = {str(i).lower() for i in running(root, os.environ.get('CLAUDE_CODE_SESSION_ID'), 'item')}
+    live = {str(s.get('item') or '').lower() for s in running(root)}  # a live seat in any session
     found = {i['id']: i for i in rows}
     for r in ws.ledger(root):
         for key in (d.get('id'), d.get('item'), d.get('pr')) if isinstance(d := r.get('data'), dict) else ():

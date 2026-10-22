@@ -37,7 +37,7 @@ The acceptance scenarios, restated:
   ledger row whose `id`, `item` or `pr` names the item or its PR (seat starts, verdicts, rulings).
 - Days in progress: whole days since the item's PR was created.
 - Cost of delay: the score's numerator (WSJF value + time + risk; RICE reach x impact x confidence).
-- Live seat: a seat started today in this session, with no stop row, whose brief names the item.
+- Live seat: a seat `board.running` counts live in any session (started within its bound, no stop row) whose brief names the item.
 - Stage: from the row's safety gaps. No PR is building; an actionable safety gap that is not a gate
   gap is a fix round; a gate gap is gates; an owner gap is owner review; else ready to merge.
 

@@ -31,7 +31,7 @@ def cmd_plan(args):
                   for k, v in scores.items() if v is not None}
         item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '',
                         args.promise or '', args.accept or (), [f'{args.repo if r.lower() == str(args.repo).lower() else r}#{n}' for r, n in [_ref(args.pr)]] if args.pr else (),
-                        args.cls, args.after or ())
+                        args.domain or '', args.in_doubt, args.cls, args.after or ())
         print(f'{item["id"]} added with score {item["score"]}')
     elif args.action in ('park', 'drop', 'done'):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
@@ -185,11 +185,12 @@ def main(argv=None):
     p.add_argument('action', nargs='?', default='show', choices=tuple(actions))
     for name in ('id', 'title'):
         p.add_argument(name, nargs='?')
-    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'pr', 'job'):
+    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'pr', 'job', 'domain'):
         p.add_argument(f'--{name}')
     p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
     p.add_argument('--from', dest='source', help="with add: the lead's candidates file")
-    p.add_argument('--tier', default='standard')
+    p.add_argument('--tier', default='smart')
+    p.add_argument('--in-doubt', action='store_true', help='with add: the promise is in doubt, so the goal gate runs')
     p.add_argument('--class', dest='cls', choices=plan.CLASSES, help='class of service; default standard, fixed-date for a dated goal')
     p.add_argument('--after', action='append', help='an item this one waits on; repeat for each')
     for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):

@@ -65,7 +65,7 @@ role's lines of `.wuwei/standards.md`.
   per day its first PR is open. An item may wait on others (`--after <id>`): while one is open the
   board shows `waiting on <id>`, the Stop leaves it out, and the item it waits on adds its cost of
   delay (value + time + risk, or reach x impact x confidence) to its own score. A PR idle 4 hours
-  with no live seat on its item in this session shows `stale` with its last event, first in its class.
+  with no live seat on its item in any session shows `stale` with its last event, first in its class.
 - A close (`/wuwei-close`, `wuwei close`) is a checkpoint: the report and the retro for the day so
   far. A later pass reopens the day; a second checkpoint reports what changed since the first.
 
@@ -108,8 +108,8 @@ waived, since the hook ends its gap there.
 | A test in the diff, or `No test: <reason>` (docs-only exempt) | every PR |
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
-| The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths. The delta is what moved in the PR's own diff against its base, so a base merge that leaves the PR's own patches alone (line numbers aside) carries the passes, as do files a dated `Generated` standards line names off risky, owner and contract paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
+| The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard, full and smart complex (where they hold the merge), when the repo has `.specify/` or `openspec/` |
+| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths. The delta is what moved in the PR's own diff against its base, so a base merge that leaves the PR's own patches alone (line numbers aside) carries the passes, as do files a dated `Generated` standards line names off risky, owner and contract paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four; smart, the default, starts from standard and adds by the item's Cynefin domain (complicated: arch on a trust path; complex: security and arch) and by measured signals (a function's McCabe complexity rising over 10: security; a patch naming what a guard waives or refuses: arch; a promise in doubt: goal) |
 | CI green (every check the base branch requires ran), threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |

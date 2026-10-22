@@ -9,7 +9,7 @@
   SessionStart read `board.rows` in order, so ordering the rows orders both.
 - `cli/wuwei/plan.py` `score` holds the WSJF and RICE formulas; `save` ranks the plan file.
 - `board.running` reads live seats from `seat.started` rows, which already carry the item.
-- Runtime at the base: 3,401 lines; budget for this item: +80.
+- Runtime at the base: 3,401 lines (3,448 after merging main at b9522fc7); budget for this item: +80.
 
 ## Design
 
@@ -20,7 +20,7 @@
 2. `board.flow` after the per-repo loop: class, score, last event, waiting and stale per row, then
    the sort. Owed replies stay first, the `team` row stays on top. `board.text` shows
    `[class, last event Nh ago]`.
-3. `running(root, session, key='role')` also reads the items of live seats.
+3. The live seats of #1238's `running` (any session) name the items that are not stale.
 4. CLI `--class` and `--after` on `plan add`; the lead file's `class` and `after`.
 5. docs/design.md, docs/site/concepts/the-day.md, docs/site/reference.md.
 
@@ -29,7 +29,7 @@
 - tests/test_flow.py red on main, green at the head; full suite green.
 - Main-versus-head route differential over tests/fixtures/routes.json through hook.pre_tool and
   guards.bash.
-- Runtime 3,481 lines.
+- Runtime 3,481 lines; 3,528 after merging main (+80).
 
 ## Constitution check
 

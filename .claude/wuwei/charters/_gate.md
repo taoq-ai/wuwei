@@ -9,7 +9,7 @@ requirement and the running code, not the builder's summary.
    what blocks. Review exactly the head sha the brief names: the pushed
    branch or its draft PR before it turns ready (diff it against the default branch), or the PR
    head on a delta after review. If the head moves while you review, start again.
-2. At `full`, probe the builder's `How this fails:` scenarios first.
+2. At `full` or `smart` complex, probe the builder's `How this fails:` scenarios first.
 3. Run checks, probes and mutants in a `git archive <sha>` copy (Evidence 4). For each changed
    guard or validation,
    reverse it in the copy and name the test that fails, or write `not run` with the reason. A

@@ -18,3 +18,9 @@
 - [x] T011 docs/design.md, docs/site/concepts/the-day.md, docs/site/reference.md
 - [x] T012 `setup.vendor('.')`; full suite green; runtime 3,481 lines
 - [x] T013 Route differential main against head
+
+## Phase 3: Merge of main at b9522fc7
+
+- [x] T014 Merge #1238 (multi-session `running`, `changed` stamp), #1240 (smart tier) and #1241; `flow` reads live seats of any session
+- [x] T015 `test_an_item_never_waits_on_itself` red, then the self-wait refusal in `plan.add`
+- [x] T016 Full suite green; runtime 3,528 lines (+80 over main); route differential at the merged head

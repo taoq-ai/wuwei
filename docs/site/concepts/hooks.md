@@ -16,7 +16,7 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 | Hook | Role |
 | --- | --- |
 | SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, the board with how many items it left out |
-| PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
+| PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back; a seat launch for an item another live session holds sent back, naming that session |
 | PostToolUse | a trace per call; what a new PR lacks; owner answers kept as `answer.pending`, then recorded as prompts, rulings, exceptions once the session transcript shows them (on the planner's next call, before its doors, since Claude Code writes the answer after the hook) |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested; only when the session transcript shows the seat's launch |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |
@@ -65,5 +65,11 @@ only waiting work is left and no watch pass ran in the last hour, it says nothin
 the session for the waiting work unless a check-in or PR subscription is armed, which WUWEI cannot
 see, and asks it to arm `/wuwei-watch` on a schedule; when the queue is empty and goals are
 set, it asks for a plan pass from the goals.
+
+Several sessions can share one workspace. The board counts the live seats of every session (a
+`seat.started` row with no stop or unconfirmed row, at most six hours old) and names the session
+holding each item, so the WIP limit, the seat ceiling and the team row see them all. A launch whose
+brief names an item another live session holds is sent back. The brief's item is its first line
+that starts with `Item:`, else its first `Item:`.
 
 **Why:** it turns "honour the promise" into a habit without turning it into a trap.

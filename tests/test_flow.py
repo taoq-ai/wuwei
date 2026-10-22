@@ -95,7 +95,7 @@ def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_t
     assert 'last event 5h ago' in board.text(board.compute(root), root)
     ws.cache_put(root, 'board', None)
     with pytest.MonkeyPatch.context() as patch:  # a seat started on I-1 more than 4 hours ago, still running
-        patch.setattr(board, 'running', lambda root, session, key='role': {'I-1'} if key == 'item' else set())
+        patch.setattr(board, 'running', lambda root, hours=6: [{'role': 'builder', 'agent': 'b1', 'session': 's2', 'item': 'i-1'}])
         assert not any(g['text'].startswith('stale') for row in board.compute(root) for g in row['gaps'])
         assert order(root) == ['I-2', 'I-1']
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b1', 'session': 's9', 'item': 'i-1'})  # an event
@@ -103,11 +103,11 @@ def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_t
     assert order(root) == ['I-2', 'I-1'] and 'last event 0h ago' in board.text(board.compute(root), root)
 
 
-def test_running_reads_the_items_of_live_seats(root):
-    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b1', 'session': 's1', 'item': 'I-1'})
-    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b2', 'session': 's1', 'item': 'I-2'})
-    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'b2'})
-    assert board.running(root, 's1', 'item') == {'I-1'} and board.running(root, 's1') == {'builder'}
+def test_an_item_never_waits_on_itself(root):
+    plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1})
+    with pytest.raises(ValueError, match='i-1 is not in the plan or is this item'):
+        plan.add(root, 'I-1', 'base', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1}, after=['i-1'])
+    assert plan.find(root, 'I-1').get('after') == []
 
 
 def test_the_cli_and_the_lead_file_name_a_class_and_what_an_item_waits_on(root, monkeypatch, capsys, tmp_path):
