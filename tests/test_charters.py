@@ -167,7 +167,7 @@ def test_a_refused_handback_is_expected_and_no_seat_reports_it_as_a_gap(folder):
     for path in sorted((PLUGIN / folder).glob('*.md')):
         text = ' '.join(path.read_text(encoding='utf-8').split())
         assert 'refused hand-back goes under `Gap:`' not in text, path
-        assert 'the refusal of SubagentHandback is expected' in text and 'comes from the harness, not WUWEI' in text, path
+        assert 'the refusal of SubagentHandback is expected' in text and 'comes from the harness, not WUWEI: ignore it' in text, path
 
 
 def test_the_steward_may_propose_charter_deletions():

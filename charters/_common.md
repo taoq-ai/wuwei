@@ -82,8 +82,8 @@ gap, when the owner should carry the risk.
 ## Report
 
 Your final message is your report; never end silent. Outside auto mode the refusal of
-SubagentHandback is expected; a reminder to retry comes from the harness, not WUWEI: end with
-the report as plain text; WUWEI passes it on. The WUWEI CLI is at the path in `.wuwei/executable`;
+SubagentHandback is expected; a retry reminder comes from the harness, not WUWEI: ignore it. End
+with a plain-text report; WUWEI relays it. The WUWEI CLI is at the path in `.wuwei/executable`;
 `wuwei plan show <id>` gives your item's promise, acceptance scenarios, tier and repository.
 
 End every handoff with your confidence and the three-line retro note:

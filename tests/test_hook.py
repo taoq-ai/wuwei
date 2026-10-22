@@ -1165,16 +1165,17 @@ def planner_call(root, tool='Read', data=None, session='s1', event='PreToolUse')
         ws.PROJECTS / '-repo' / f'{session}.jsonl'), 'tool_input': data or {'file_path': str(root / 'README.md')}})
 
 
-def notified(agent, text, session='s1', operation='enqueue', escape=True):
+def notified(agent, text, session='s1', operation='enqueue', escape=True, at=None):
     """The harness's task notification for a seat's stop, as Claude Code 2.1.299 enqueues it in the session transcript
-    (2026-10-20): the result escaped for &, < and >. A queue that is cleared (operation remove, reason cleared_on_cancel)
-    keeps the row but never shows it to the planner."""
+    (2026-10-20): the result escaped for &, < and >, the row stamped in UTC milliseconds (at; '' leaves it unstamped). A queue
+    that is cleared (operation remove, reason cleared_on_cancel) keeps the row but never shows it to the planner."""
+    at = ws.now().isoformat(timespec='milliseconds')[:23] + 'Z' if at is None else at
     result = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;') if escape else text
     with (ws.PROJECTS / '-repo' / f'{session}.jsonl').open('a', encoding='utf-8') as out:
         out.write(json.dumps({'type': 'queue-operation', 'operation': operation, 'sessionId': session, 'content':
                               f'<task-notification>\n<task-id>{agent}</task-id>\n<status>completed</status>\n'
                               f'<summary>Agent finished</summary>\n<result>{result}</result>\n</task-notification>',
-                              **({'reason': 'cleared_on_cancel'} if operation == 'remove' else {})}) + '\n')
+                              **({'reason': 'cleared_on_cancel'} if operation == 'remove' else {}), **({'timestamp': at} if at else {})}) + '\n')
 
 
 @pytest.mark.parametrize('mode', ['default', 'plan', 'acceptEdits', 'bypassPermissions', 'dontAsk'])
@@ -1343,6 +1344,24 @@ def test_a_notification_the_planner_absorbed_mid_turn_is_a_delivery(root, tmp_pa
                               f'<task-notification>\n<task-id>lead1</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n'
                               f'<result>{REPORT_1198.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</result>\n</task-notification>'}) + '\n')
     assert planner_call(root, event='Stop') is None and POINTER in planner_call(root)['hookSpecificOutput']['additionalContext']
+
+
+@pytest.mark.parametrize('shape', ['handed_before', 'dequeued_only', 'unstamped'])
+def test_only_the_seats_notifications_enqueued_since_its_report_was_kept_say_whether_it_was_given(root, tmp_path, shape):
+    """#1222: an earlier hand-back of the same seat, a row the queue only dequeued, or one with no time, gives no later report:
+    when the queue cleared this report's own notification, or never enqueued it, the planner's Stop blocks on it in full."""
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    if shape == 'handed_before':
+        notified('lead1', HANDED, escape=False, at='2000-01-01T00:00:00.000Z')  # the harness's time format
+        notified('lead1', REPORT_1198)
+        notified('lead1', REPORT_1198, operation='remove')
+    elif shape == 'dequeued_only':
+        notified('lead1', REPORT_1198, operation='dequeue')
+    else:
+        notified('lead1', REPORT_1198, at='')
+    out = planner_call(root, event='Stop')
+    assert out['decision'] == 'block' and REPORT_1198 in out['reason'] and POINTER not in out['reason']
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None  # once
 
 
 def test_a_handback_sentence_naming_another_seat_is_no_delivery_of_this_one(root, tmp_path):

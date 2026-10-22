@@ -483,16 +483,16 @@ def deliver(root, event, payload, out, said):
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found = Path(root) / ws.DIR / 'reports' / 'pending', []
-    session = re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
+    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
         try:
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
-            told = any(r['content'] not in gone and (html.unescape(b) == text or b.startswith(
-                HANDED.format(agent))) for r in rows for b in re.findall(r'<result>(.*?)</result>', r['content'], re.S))
+            at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
+            told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
+                       if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
