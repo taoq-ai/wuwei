@@ -22,7 +22,21 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install pytest
-      - run: python -m pytest -q
+      - run: python -m pytest -q --junitxml=pytest.xml
+      # Each failure as an annotation, so the PR and the checks API show which test failed on which OS.
+      - if: failure()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          def say(text):
+              print('::error::' + text.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+          bad = [(f"{c.get('classname')}.{c.get('name')}", f) for c in ET.parse('pytest.xml').iter('testcase')
+                 for f in [*c.iter('failure'), *c.iter('error')]]
+          say(f'{len(bad)} failed:\n' + '\n'.join(name for name, _ in bad))
+          for name, f in bad[:9]:
+              say(name + '\n' + (f.get('message') or '') + '\n' + (f.text or '')[-1500:])
+          PY
       - run: bin/wuwei agents check
         shell: bash
 

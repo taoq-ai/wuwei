@@ -1,5 +1,8 @@
 import contextlib
 import json
+import os
+from pathlib import Path
+import threading
 
 import pytest
 
@@ -57,13 +60,54 @@ def _append(root, n):
 def test_seats_starting_at_once_keep_one_chain(root):
     import multiprocessing
     ws.clone(root)
-    procs = [multiprocessing.get_context('fork').Process(target=_append, args=(root, 25)) for _ in range(8)]
+    procs = [multiprocessing.get_context('spawn').Process(target=_append, args=(root, 25)) for _ in range(8)]
     for proc in procs:
         proc.start()
     for proc in procs:
         proc.join()
     assert len(ws.ledger(root)) == 200
     assert ws.verify(root) == []
+
+
+def test_the_projects_folder_follows_the_account_never_the_home_variables(tmp_path):
+    import subprocess
+    import sys
+    env = {**os.environ, 'HOME': str(tmp_path), 'USERPROFILE': str(tmp_path), 'PYTHONPATH': str(Path(ws.__file__).parents[1])}
+    said = subprocess.run([sys.executable, '-c', 'from wuwei import ws; print(ws.PROJECTS)'], env=env, capture_output=True, text=True, timeout=60)
+    assert said.returncode == 0, said.stderr
+    assert said.stdout.strip().endswith(os.path.join('.claude', 'projects')) and str(tmp_path) not in said.stdout
+
+
+@pytest.fixture(params=['descriptors', 'names'])
+def writes(request, monkeypatch):
+    """atomic_write as each platform runs it: by folder descriptor (POSIX) or by checked name (Windows has no dir_fd)."""
+    if request.param == 'names':
+        monkeypatch.setattr(os, 'supports_dir_fd', set())
+    elif os.mkdir not in os.supports_dir_fd:
+        pytest.skip('this platform has no dir_fd: Windows writes by name')
+    return request.param
+
+
+def test_atomic_write_makes_its_folders_and_replaces_the_file(tmp_path, writes):
+    ws.atomic_write(tmp_path / 'a' / 'b' / 'f.txt', 'one')
+    ws.atomic_write(tmp_path / 'a' / 'b' / 'f.txt', b'two', tmp_path)
+    ws.atomic_write(tmp_path / 'c' / 'd' / 'g.txt', 'three', tmp_path)
+    assert (tmp_path / 'a' / 'b' / 'f.txt').read_bytes() == b'two' and (tmp_path / 'c' / 'd' / 'g.txt').read_text() == 'three'
+    assert sorted(p.name for p in tmp_path.rglob('*') if p.is_file()) == ['f.txt', 'g.txt']
+
+
+def test_atomic_write_never_writes_through_a_linked_folder_or_temporary_name(tmp_path, writes):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (tmp_path / 'root').mkdir()
+    (tmp_path / 'root' / 'linked').symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError):
+        ws.atomic_write(tmp_path / 'root' / 'linked' / 'f.txt', 'x', tmp_path / 'root')
+    (tmp_path / 'root' / '.f.txt.{}.{}.tmp'.format(os.getpid(), threading.get_ident())).symlink_to(outside / 'kept')
+    (outside / 'kept').write_text('kept')
+    ws.atomic_write(tmp_path / 'root' / 'f.txt', 'x', tmp_path / 'root')
+    assert sorted(p.name for p in outside.iterdir()) == ['kept'] and (outside / 'kept').read_text() == 'kept'
+    assert (tmp_path / 'root' / 'f.txt').read_text() == 'x'
 
 
 def _mine(root):
