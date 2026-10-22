@@ -1,0 +1,81 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000001211",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000001211.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "one-way: drop the legacy sessions table in acme/app?",
+        "header": "one-way",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Drop it",
+            "description": "The migration deletes the table."
+          },
+          {
+            "label": "Keep it",
+            "description": "The table stays."
+          }
+        ]
+      },
+      {
+        "question": "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.",
+        "header": "plan",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Approve",
+            "description": "Start the 2 items."
+          },
+          {
+            "label": "Change",
+            "description": "Say what to change; the planner applies it and re-asks."
+          }
+        ]
+      }
+    ]
+  },
+  "tool_response": {
+    "questions": [
+      {
+        "question": "one-way: drop the legacy sessions table in acme/app?",
+        "header": "one-way",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Drop it",
+            "description": "The migration deletes the table."
+          },
+          {
+            "label": "Keep it",
+            "description": "The table stays."
+          }
+        ]
+      },
+      {
+        "question": "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.",
+        "header": "plan",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Approve",
+            "description": "Start the 2 items."
+          },
+          {
+            "label": "Change",
+            "description": "Say what to change; the planner applies it and re-asks."
+          }
+        ]
+      }
+    ],
+    "answers": {
+      "one-way: drop the legacy sessions table in acme/app?": "Keep it until the export job stops reading it, then drop it",
+      "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.": "Approve"
+    }
+  },
+  "tool_use_id": "toolu_01FreeTextReconstructed0001"
+}

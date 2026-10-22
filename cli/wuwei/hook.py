@@ -273,7 +273,7 @@ def post_tool(root, payload):
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
                 'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
         if transcript_rows(kept['path'], kept['id'] or '\0') is None:
-            return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)))
+            return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)[1]))
         ws.record(root, 'answer.pending', kept)  # never a silent drop: with no later prompt or answer.unconfirmed it reads as unconfirmed
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), kept['id']))  # no \ in an f-string on 3.11
         if ws.cache_get(root, 'answer-' + name, 7 * 86400) is None:  # the first entry for these ids stays: a forged repeat cannot replace it
@@ -313,36 +313,46 @@ def _replied(root, tool, sent):
     return None
 
 
-def _shown(kept):  # why the transcript lacks the AskUserQuestion with this id and these answers in its last tool_result, or ''
+def _shown(kept):  # (the answers the transcript shows for this AskUserQuestion id, why the rest are not), or None before its tool_result
     if (rows := transcript_rows(kept.get('path'), tid := str(kept.get('id') or '\0'))) is None:
-        return f'{kept.get("path")} is not a transcript under {ws.PROJECTS}'
-    done = [r.get('toolUseResult') for r in rows if any(p.get('tool_use_id') == tid for p in parts([r], 'tool_result'))]
-    return '' if done and isinstance(done[-1], dict) and done[-1].get('answers') == kept.get('answers') and any(
-        p.get('id') == tid and p.get('name') == 'AskUserQuestion' for p in parts(rows, 'tool_use')) else \
-        f'the transcript holds no AskUserQuestion {tid} answered so'
+        return {}, f'{kept.get("path")} is not a transcript under {ws.PROJECTS}'
+    if not (use := [p for p in parts(rows, 'tool_use') if p.get('id') == tid and p.get('name') == 'AskUserQuestion']):
+        return {}, f'the transcript holds no AskUserQuestion tool_use {tid}'
+    if not (done := [(r.get('toolUseResult'), json.dumps(p.get('content'))) for r in rows for p in parts([r], 'tool_result') if p.get('tool_use_id') == tid]):
+        return None
+    asked = [q.get('question') for p in use for q in (p.get('input') or {}).get('questions') or () if isinstance(q, dict)]
+    (result, text), after = done[-1], dict(zip(asked, [f', "{q}"=' for q in asked[1:]] + ['.']))  # its text: "<q>"="<answer>", "<next q>"=... .
+    mine, own = a if isinstance(a := kept.get('answers'), dict) else {}, isinstance(result, dict) and isinstance(result.get('answers'), dict)
+    said = result['answers'] if own else {q: a for q, a in mine.items() if q in after and json.dumps(f'"{q}"="{a}"{after[q]}')[1:-1] in text}
+    same = {q: a for q, a in mine.items() if q in said and said[q] == a}  # each question on its own: one differing answer voids no other
+    why = '; '.join(f'the transcript answers {q[:60]!r} with {str(said.get(q))[:60]!r}, not {str(a)[:60]!r}' for q, a in mine.items() if q not in same)
+    return same, (why and f'its tool_result row holds no toolUseResult answers ({type(result).__name__}), and its text does not match: ' * (not own) + why) or (
+        '' if same else 'the payload holds no answer')
 
 
-def _unconfirmed(root, kept, why):
-    ws.record(root, 'answer.unconfirmed', {**kept, 'reason': why[:300]})
-    return f'WUWEI: the answer to {kept.get("questions")} is not recorded: {why}.'[:1000]
+def _unconfirmed(root, kept, why, same=()):
+    ws.record(root, 'answer.unconfirmed', {**kept, 'questions': (left := [q for q in kept.get('questions') or () if q not in same]), 'reason': why[:600]})
+    return f'WUWEI: the answer to {left} is not recorded: {why}.'[:1000]
 
 
 def _confirm(root, payload, final):
-    """Notes for the answers this session asked, recorded once the transcript shows them (the harness writes the answer after
-    PostToolUse returns), or at a Stop, after up to WAIT seconds, as answer.unconfirmed. A racing hook skips one claimed."""
+    """Notes for the answers this session asked, each recorded once the transcript shows it (the harness writes the row after
+    PostToolUse returns; a Stop rereads for WAIT seconds), else answer.unconfirmed. A racing hook skips one claimed."""
     notes, end, session = [], time.monotonic() + WAIT * final, re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
         kept = entry if isinstance(entry := ws.cache_get(root, path.stem, 7 * 86400), dict) else {}  # a planted [1] reads as nothing
-        while (why := _shown(kept)) and time.monotonic() < end:
+        while (shown := _shown(kept)) is None and time.monotonic() < end:
             time.sleep(0.1)
-        if why and not final:
-            continue
+        same, why = shown or ({}, f'no tool_result row in {BOUND // 60} minutes')
+        if why and (final or shown is None and ws.cache_get(root, path.stem, BOUND) is not None):  # with no row a later call rereads it;
+            continue  # a Stop leaves an unrecorded answer to the next call, so its note never blocks the stop (#1231)
         try:
             path.unlink()
         except OSError:
             continue
-        if why or all(r['data'].get('id') != kept['id'] for r in ws.rows(root, 'prompt')):  # a replayed answer records nothing more
-            notes += [_unconfirmed(root, kept, why)] if why else _answers(root, kept)
+        notes += [_unconfirmed(root, kept, why, same)] if why else []
+        if same and all(r['data'].get('id') != kept['id'] for r in ws.rows(root, 'prompt')):  # a replayed answer records nothing more
+            notes += _answers(root, {**kept, 'answers': same, 'questions': [q for q in kept.get('questions') or () if q in same]})
     return notes
 
 
@@ -388,7 +398,7 @@ def _answers(root, kept):
 
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
-WAIT = 1.5  # seconds a Stop rereads a transcript the harness may still be writing
+WAIT, BOUND = 1.5, 600  # seconds a Stop rereads a transcript the harness may still be writing, and an answer waits for its row
 AWAY = ('This session is not in auto mode, so the harness refuses SubagentHandback: do not call it again. End now with your '
         'report as plain text; WUWEI keeps it and passes it on, and your stop attests a verdict file it names.')
 
