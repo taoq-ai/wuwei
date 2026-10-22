@@ -76,10 +76,17 @@ security`); a part of either waives nothing. `wuwei evidence`, the merge door an
 exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
 The question door sends back an `exception:` that names a template, size or age gap (process fit);
 one that names a spec engine gap reaches the owner, since at full tier that gap is safety. When the
-gap holds a finding row (`: |`), the hook reads it to the row's end (its last `|` before a `. `, `?`
-or the end), so the row keeps its sentences; any other gap ends at its first `. ` or `?`. Each open
-finding row and each checklist with an unchecked box is its own gap, so a yes waives only the gap
-the owner saw.
+gap holds a finding row (a `: |` before the gap's first `. ` or `?`), the hook reads it to the row's
+end (its last `|` before a `. `, `?` or the end), so the row keeps its sentences; any other gap ends
+at its first `. ` or `?`, whatever `|` the question's own words hold. Each open finding row and each
+checklist with an unchecked box is its own gap, so a yes waives only the gap the owner saw. A long
+row prints to its last cell edge within 100 characters, unless that cut matches another spec gap of
+the PR, in any file, cut or whole, the way an exception matches (case, spacing, end marks and a
+printed `[waiting]` aside); then the row prints whole. Gaps whose whole texts still match that way
+(rows that differ only in case, or files and feature folders whose names do) carry their place
+after the feature folder, as in `specs/7-rate-limits/(2 of 2) checklists/a.md has 1 unchecked
+item`, so each takes its own yes. A row whose feature folder name holds a `. ` or `?` cannot be
+waived, since the hook ends its gap there.
 
 ## 6. The evidence contract
 
@@ -247,7 +254,7 @@ flow.
 | SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the board with how many items it left out |
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
-| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text |
+| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
 
 An owner answer and a seat stop count only when the harness wrote them (#962). The harness keeps

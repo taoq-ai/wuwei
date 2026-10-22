@@ -166,6 +166,15 @@ def test_the_shepherd_asks_for_an_announcement_url_that_exists_at_the_head():
     assert '`Announcement: <url>`' in common and '`Announcement: <link>`' not in common
 
 
+@pytest.mark.parametrize('folder', ['agents', '.claude/agents'])
+def test_a_refused_handback_is_expected_and_no_seat_reports_it_as_a_gap(folder):
+    """#1222: outside auto mode the refusal is expected; a seat that lists it under Gap: is noise in every hand-back."""
+    for path in sorted((PLUGIN / folder).glob('*.md')):
+        text = ' '.join(path.read_text(encoding='utf-8').split())
+        assert 'refused hand-back goes under `Gap:`' not in text, path
+        assert 'the harness refuses SubagentHandback, as expected' in text and "its retry reminder is not WUWEI's: ignore it" in text, path
+
+
 def test_the_steward_may_propose_charter_deletions():
     text = ' '.join((PLUGIN / 'charters' / 'steward.md').read_text(encoding='utf-8').split())
     assert 'Charters shrink too' in text and 'proposed for deletion' in text
