@@ -4,8 +4,9 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
-from os.path import join, normpath, realpath
-from pathlib import Path
+from os.path import realpath
+from pathlib import Path, PurePosixPath
+from posixpath import join, normpath  # a command reads the same on every OS
 import re
 import shlex
 import subprocess
@@ -70,19 +71,25 @@ PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
+    path = path.replace('\\', '/')  # Windows reads a backslash as /
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
         return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    return any(p[:1] == '.' and fnmatchcase(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
-        fnmatchcase(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
+    match = lambda n, p: fnmatchcase(n, p) or fnmatchcase(n, p.lower())  # macOS and Windows open .WUWEI as .wuwei
+    return any(p[:1] == '.' and match(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        match(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
 def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: str(Path.home()), path)  # keep: a file in <project>/memory, as a literal path
-    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'/[\w./@+-]*', full) and (  # resolves, links read
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: Path.home().as_posix(), path.replace('\\', '/'))  # keep: a file in <project>/memory, as a literal path
+    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*', full) and (  # resolves, links read
         real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
+
+
+def progname(word):  # the program a word runs: macOS and Windows find it in any case, Windows by name.exe and a backslash path too
+    return re.sub(r'\.exe$', '', PurePosixPath(word.replace('\\', '/')).name.lower())
 
 
 def deny(reason):
@@ -138,13 +145,13 @@ def _unwrap(tokens):
         i += 1
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
-    if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
+    if argv and progname(argv[0]) in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
         argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
-                     and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
+                     and (progname(a) in READ or progname(a).startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
-    if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
+    if body and progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
         return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
-    return [(argv, targets)] + ([UNREAD] if argv and Path(argv[0]).name in SHELLS else [])  # its commands come from stdin or a file
+    return [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
 
 
 def _default(root, repo):
@@ -363,14 +370,14 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command, re.I) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
-        program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
+        program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
