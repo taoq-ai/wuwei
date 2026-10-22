@@ -55,33 +55,6 @@
    "approved": true
   },
   {
-   "id": "flow-advice",
-   "title": "docs(charters): finish before starting: a WIP limit of four items, a ceiling of eight seats the planner tells the owner about, and housekeeping at the close",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "The owner's 2026-10-22 asks for Kanban advice, a seat alert and housekeeping, as text first: it changes what the planner does today at 0 runtime lines and is the cheap trial for flow-board. Lands before 1221, which edits the same planner.md section and _way.md.",
-   "promise": "Kanban flow as advice, with no runtime lines. planner.md Running the work 1: finish before starting. An item is in progress when it has an open PR, a running builder or a registered Codex job. Start a new item only while fewer than 4 items are in progress across the workspace; fix rounds, gates, shepherd work and merges on open PRs come before any start. Keep at most 8 seats running at once. When the owner asks for more items or seats than that, say the cost once (slower turns, rate limits sooner, more notifications in this session's context) and do it anyway; record the owner's numbers as dated 'WIP limit: <n>' and 'Seat ceiling: <n>' lines in .wuwei/standards.md, which hold until the owner changes them. Each builder brief carries an 'Item: <id>' line so the launch records its item. charters/_way.md and skills/wuwei-watch step 5 start approved items only under the limit. skills/wuwei-close gains a housekeeping step that advises and acts only on what this session started: worktrees whose item is done, parked or dropped (git worktree list against the plan; a clean one removed with git worktree remove), background shells and tasks this session started that still run (stopped with the harness's own task tools), finished seats' scratch folders, and the size of .wuwei/cache and test temp folders; a process this session did not start is named to the owner once and never killed. charters/steward.md Measure adds flow: peak live seats per session, peak items in progress, items started against items merged per day, and median tool-call duration from the traces by live seat count, each unmeasured when its source is absent; a WIP or ceiling change is proposed with those numbers. Files: charters/planner.md, charters/_way.md, charters/steward.md, skills/wuwei-watch/SKILL.md, skills/wuwei-close/SKILL.md, agents/*.md and the vendored copies rebuilt with bin/wuwei agents build, a docs/site concepts page, tests/test_charters.py only if a fitness ceiling moves. No config key (constitution VI). Runtime: 0 lines.",
-   "acceptance": [
-    "Given 4 items in progress and approved items with no PR, when the planner follows its charter, then it starts none of them until one merges or parks, and it takes fix rounds, gates and merges first",
-    "Given the owner asks for 12 seats, when the planner launches them, then it states the cost once, records a dated Seat ceiling line in .wuwei/standards.md and starts them",
-    "Given a close, when the housekeeping step runs, then it lists the worktrees of done items and the session's own running tasks, removes or stops only those, and names any other process to the owner once",
-    "Given the steward's retro, when it reads the ledger and traces, then it reports peak seats, peak in progress, starts against merges and tool duration by seat count, or says which is unmeasured"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
    "id": "reply-thread-ts",
    "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
    "goal": "G-2",
@@ -967,6 +940,34 @@
    "added": "2026-10-18",
    "approved": false,
    "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
+  },
+  {
+   "id": "flow-advice",
+   "title": "docs(charters): finish before starting: a WIP limit of four items, a ceiling of eight seats the planner tells the owner about, and housekeeping at the close",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "The owner's 2026-10-22 asks for Kanban advice, a seat alert and housekeeping, as text first: it changes what the planner does today at 0 runtime lines and is the cheap trial for flow-board. Lands before 1221, which edits the same planner.md section and _way.md.",
+   "promise": "Kanban flow as advice, with no runtime lines. planner.md Running the work 1: finish before starting. An item is in progress when it has an open PR, a running builder or a registered Codex job. Start a new item only while fewer than 4 items are in progress across the workspace; fix rounds, gates, shepherd work and merges on open PRs come before any start. Keep at most 8 seats running at once. When the owner asks for more items or seats than that, say the cost once (slower turns, rate limits sooner, more notifications in this session's context) and do it anyway; record the owner's numbers as dated 'WIP limit: <n>' and 'Seat ceiling: <n>' lines in .wuwei/standards.md, which hold until the owner changes them. Each builder brief carries an 'Item: <id>' line so the launch records its item. charters/_way.md and skills/wuwei-watch step 5 start approved items only under the limit. skills/wuwei-close gains a housekeeping step that advises and acts only on what this session started: worktrees whose item is done, parked or dropped (git worktree list against the plan; a clean one removed with git worktree remove), background shells and tasks this session started that still run (stopped with the harness's own task tools), finished seats' scratch folders, and the size of .wuwei/cache and test temp folders; a process this session did not start is named to the owner once and never killed. charters/steward.md Measure adds flow: peak live seats per session, peak items in progress, items started against items merged per day, and median tool-call duration from the traces by live seat count, each unmeasured when its source is absent; a WIP or ceiling change is proposed with those numbers. Files: charters/planner.md, charters/_way.md, charters/steward.md, skills/wuwei-watch/SKILL.md, skills/wuwei-close/SKILL.md, agents/*.md and the vendored copies rebuilt with bin/wuwei agents build, a docs/site concepts page, tests/test_charters.py only if a fitness ceiling moves. No config key (constitution VI). Runtime: 0 lines.",
+   "acceptance": [
+    "Given 4 items in progress and approved items with no PR, when the planner follows its charter, then it starts none of them until one merges or parks, and it takes fix rounds, gates and merges first",
+    "Given the owner asks for 12 seats, when the planner launches them, then it states the cost once, records a dated Seat ceiling line in .wuwei/standards.md and starts them",
+    "Given a close, when the housekeeping step runs, then it lists the worktrees of done items and the session's own running tasks, removes or stops only those, and names any other process to the owner once",
+    "Given the steward's retro, when it reads the ledger and traces, then it reports peak seats, peak in progress, starts against merges and tool duration by seat count, or says which is unmeasured"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1225"
   },
   {
    "id": "config-door",
