@@ -187,27 +187,25 @@ def _unchecked(path, text):
 
 
 def _rule(repo, path, rule, head):
-    """None when the artifact at the head meets its rule, else the gap text."""
+    """The artifact's gaps at the head, [] when it meets its rule: one per open finding row and per checklist with an open box (#1228)."""
     if path.endswith('/'):
         if not (entries := gh.listing(repo, path.rstrip('/'), head)):
-            return f'{path} missing: run the spec engine step that writes it'
-        return next((problem for e in entries if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')
-                     if (problem := _unchecked(e['path'], gh.file(repo, e['path'], head)))), None)
+            return [f'{path} missing: run the spec engine step that writes it']
+        return [_unchecked(e['path'], gh.file(repo, e['path'], head)) for e in entries
+                if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')]
     try:
         text = gh.file(repo, path, head)
     except gh.GhError:
-        return f'{path} missing: run the spec engine step that writes it'
+        return [f'{path} missing: run the spec engine step that writes it']
     if rule == 'checked':
-        return _unchecked(path, text)
+        return [_unchecked(path, text)]
     if rule == 'clarified' and not re.search(r'^##\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
-        return f'{path} has no ## Clarifications section: run clarify'
-    if rule == 'clean':
-        for line in text.splitlines():
-            cells = {cell.strip().upper() for cell in line.strip().strip('|').split('|')}
-            if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'} and not any(
-                    c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells):  # a recorded resolution (#1047)
-                return f'{path} has an open CRITICAL or HIGH finding: {line.strip()[:100]}'
-    return None
+        return [f'{path} has no ## Clarifications section: run clarify']
+    rows = [line.strip() for line in text.splitlines() if rule == 'clean' and line.lstrip().startswith('|') and (cells := {
+        cell.strip().upper() for cell in line.strip().strip('|').split('|')}) & {'CRITICAL', 'HIGH'} and not any(
+            c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells)]  # a recorded resolution (#1047)
+    cuts = [row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row for row in rows]  # at a cell edge
+    return [f'{path} has an open CRITICAL or HIGH finding: {cut if cuts.count(cut) == 1 else row}' for row, cut in zip(rows, cuts)]
 
 
 def spec_gaps(repo, engine, tier, files, head):
@@ -221,7 +219,7 @@ def spec_gaps(repo, engine, tier, files, head):
         return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
             gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
-    problems = (_rule(repo, feature + name, rule, head) for feature in features for name, rule in wanted)
+    problems = (problem for feature in features for name, rule in wanted for problem in _rule(repo, feature + name, rule, head))
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 

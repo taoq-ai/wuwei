@@ -417,7 +417,7 @@ def pre_tool(root, payload):
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
-            r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open [0-9]+ days", q)]
+            r"template's sections|changed lines|open [0-9]+ days", q)]  # a spec gap is safety at full tier (#1223)
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')

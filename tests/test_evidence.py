@@ -505,6 +505,51 @@ def test_full_tier_needs_clarify_a_clean_analysis_and_checked_checklists(root, f
         f'{SPEC}/checklists/requirements.md has 1 unchecked item']
 
 
+def test_each_open_finding_row_and_each_checklist_with_an_unchecked_box_is_its_own_gap(root, fake):
+    """An exception waives only the gap the owner saw, so a second open row or checklist never hides behind the first (#1228)."""
+    light(root, 'full')
+    files = speckit(fake, **{
+        f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n| A1 | HIGH | wording nit |\n| A2 | CRITICAL | auth bypass |\n',
+        f'{SPEC}/checklists/a.md': '- [ ] testable\n', f'{SPEC}/checklists/security.md': '- [ ] threat model\n' * 5})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: | A1 | HIGH | wording nit |',
+        f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: | A2 | CRITICAL | auth bypass |',
+        f'{SPEC}/checklists/a.md has 1 unchecked item', f'{SPEC}/checklists/security.md has 5 unchecked items']
+
+
+LONG_ROW = '| A10 | Inconsistency | HIGH | spec.md:L1 | ' + 'Spec says X. ' * 10 + '|'
+
+
+@pytest.mark.parametrize('row, printed', [
+    ('| A1 | HIGH | Spec says X. Plan says Y', '| A1 | HIGH | Spec says X. Plan says Y'),
+    (LONG_ROW, '| A10 | Inconsistency | HIGH | spec.md:L1 |'),
+    ('| A3 | HIGH | ' + 'y' * 86, '| A3 | HIGH | ' + 'y' * 86), ('| A4 | HIGH | ' + 'y' * 85 + ' |', '| A4 | HIGH |'),
+    ('| ' + 'x' * 120 + ' | HIGH |', '| ' + 'x' * 98)])
+def test_a_long_finding_row_is_printed_to_its_last_cell_edge_within_100_characters(root, fake, row, printed):
+    """The hook reads a row's gap to its last |, so a row cut inside a cell after a sentence break could not be accepted (#1228)."""
+    light(root, 'full')
+    files = speckit(fake, **{f'{SPEC}/analysis.md': f'| ID | Severity | Summary |\n|---|---|---|\n{row}\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {printed}']
+
+
+SHARED = '| HIGH | spec.md | ' + 'a' * 90 + ' |'
+
+
+@pytest.mark.parametrize('second', ['| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |'])
+def test_rows_whose_cuts_are_the_same_are_printed_whole(root, fake, second):
+    """Two rows that share their cells up to the cut stay two gaps, so one yes never waives both (#1228)."""
+    light(root, 'full')
+    files = speckit(fake, **{f'{SPEC}/analysis.md': f'| Severity | Location | Summary |\n|---|---|---|\n{SHARED}\n{second}\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}'
+                                                         for row in (SHARED, second)]
+
+
 def test_a_clean_full_tier_speckit_feature_passes(root, fake):
     light(root, 'full')
     fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
