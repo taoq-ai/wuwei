@@ -1,0 +1,26 @@
+Verdict: FIX
+Gate: quality
+Item: 1230
+PR: taoq-ai/wuwei#1234
+Head: a626a8aa68f9feece50525a9d245ae1caa4c9e06
+Confidence: medium
+Breaking: no
+
+## Findings
+- [medium] cli/wuwei/evidence.py:347 blocks: yes. Failure: the 300-file cap guard `len(was) < 300 > len(now)` is tested only where both own-diff compares have the same size (299/299 and 300/300), so reversing it to `len(was) < 300` (or to `300 > len(now)`) survives all 84 selected tests; a PR whose own diff grows from 299 files at the gated head to 301 at the new head (GitHub lists 300) is then measured on the truncated list, a changed risky file hidden past the cap is never seen, and the passes carry without the delta gate (requirement: fallbacks conservative, promise 'a PR-own delta on a risky path is still re-read'). Fix: add the two rows (299 then 300 files, and 300 then 299) to test_a_compare_at_githubs_300_file_cap_is_measured_head_to_head; both owe security.
+- [low] cli/wuwei/evidence.py:347 blocks: no. The fallback arm of `next(..., (now.get(p) or was.get(p))[1])` (a moved file the head-to-head compare does not list) is untested: swapping it for a zero-line entry or swapping the was/now order survives. Not shown deletable; add a row where main applies the same change as the PR (file in the old own diff, gone from the new one, absent from the head-to-head compare).
+- [low] cli/wuwei/evidence.py:345 blocks: no. The token split on a comma with no space (`guide/*,src/version.py`) is untested (mutant dropping the comma from the class survives); behaviour with the comma kept is conservative (the glob does not match, the pass is re-read). The Generated date is required but never checked for age.
+- [low] blocks: no. Limit: a relocated PR hunk with identical changed lines and identical three context lines (a repeated stanza) normalises to the same patch and carries; the line numbers are the only thing that differs. Rare; the real-git probe has no such case.
+- [low] blocks: no. Old delta tests set no baseRefOid, so they now exercise only the head-to-head fallback (and the 20-line boundary is not repeated on the own-diff path). They still mean what they meant; the production path is covered by the new rows.
+
+## Probes
+- Read at head a626a8a via `git archive` into /tmp/claude-0/-home-user-wuwei/3c3b5210-f1f3-5623-83c3-a701461b643a/scratchpad/sentinel-quality-1230/base; selected tests (-k base_merge, merge_door, create_door, delta, carries, generated, 300_file_cap) 84 passed; the whole of tests/test_evidence.py and tests/test_guards.py 2268 passed. Full suite not run (CI does).
+- Mutants, one at a time, applied to both cli/wuwei/ and .claude/wuwei/cli/wuwei/, 26 run, 21 killed by behavioural tests, 5 survived: `len(was) < 300` and `300 > len(now)` (finding 1, each confirmed killed by my probe test_cap_probe.py rows 299-300 and 300-299 in a fresh copy, whereas the builder suite passes), the two fallback-arm mutants (finding 2), the comma-class mutant (finding 3). Killed: if base off, raw patch (no @@ normalisation), patch emptied, object() sentinel replaced by '', `<=` cap and `True` cap, fnmatch dropped, `!=` reversed, keys union to now-only, was-only and intersection, next() dropped, date requirement dropped, repo wildcard, case flag dropped (both ?i and ?m), backtick class, baseRefOid arg dropped, gh summary baseRefOid, gh compare patch None, create door merge_base dropped.
+- Real-git probe specs/1230-own-diff-delta/probe.py re-run, main tree = git archive of fbf187b, head tree = a626a8a, my scratch folder: 26 cases generated, gate_gaps ran at both trees 26 and 26, holes 0. The hunk-context case (adjacent/risky, conflict-edit/risky) owes security; far, above and update-branch carry.
+- Acceptance: 1 is pinned by test_a_base_merge_that_leaves_the_prs_own_diff_unchanged_carries_the_passes and the merge-door test; 2 by the 30-line row and the door test (quality owed, and the create door); 3 by test_a_base_merge_that_changes_only_declared_generated_files_carries_the_passes (blank, undated, other repo, other label, case, backticks and commas all pinned). The `@@` normalisation drops numbers and headings and keeps context, so a changed context line moves the file (row 'main edits a line next to the hunk', 'one context line less').
+- Fallbacks: no baseRefOid, no merge base on create, a missing patch (object() sentinel) and the 300-file cap all fall to the head-to-head delta or count the file as moved; all conservative. Runtime lines: cli/wuwei numstat 11 added 3 removed, +8 net; total 3381 of 3400. I did not verify that GitHub's REST base.sha tracks the base tip; if it stays stale the feature degrades to head-to-head (conservative), unmeasured here.
+- Route differential and CI: not rerun (guards.py change is one argument; builder's route_diff.txt not relied on).
+- Simplicity: none deletable. The `or [0]` placeholders could be `.get(p, [0])` (cosmetic, same length); the fallback arm of next() is untested, not shown deletable by a differential.
+
+## Residual risk
+The cap guard is the only changed guard with a surviving, nameable bad input; a PR over 300 files is rare. The Generated glob is owner-declared in the workspace, so `*` there would carry everything by design.
