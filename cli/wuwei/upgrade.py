@@ -121,4 +121,5 @@ def verdicts(root):
 
 
 def run(root):
-    return review_channel(root) + config(root) + goals(root) + items(root) + verdicts(root)
+    fresh = not ws.ledger(root)  # a real 0.34 upgrade: a workspace with a ledger takes no day decision a seat could plant
+    return review_channel(root) + config(root) + goals(root) + items(root) + (verdicts(root) if fresh else [])

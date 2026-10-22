@@ -23,3 +23,10 @@
 - [x] T013 VAL: empty, cut, non-object, blank-line and repeated seat transcripts; a stop with no report text (`''`, whitespace, None, a number)
 - [x] T014 `route_diff.py` and `compare.py`: corpus sha256 de377966... at both trees, 288 routes through guards.bash and PreToolUse as planner and as seat, 0 moved; 12 hand-back cases, 7 moved, each from an attest row (or a deny) to `seat.unconfirmed` (`route_diff.txt`)
 - [x] T015 11 mutants, both runtime copies, one at a time: 9 killed by behavioural tests, M5 equivalent, M11 survives with its reason (`mutants.txt`)
+
+## Phase 4: Follow-up, a raw line separator (branch leone/handback-timing)
+
+- [x] T016 Red: fixtures from the real security seat adc67fc6fbcf3d857 (`separator.py`); the row read, the hand-back and the stop-only flows fail on main
+- [x] T017 `transcript_rows` splits on newlines only; a key that is no string reads as no transcript (a new forged-stop case)
+- [x] T018 `route_diff.py` adds the separator seat: corpus sha256 de377966... at both trees, 288 routes, 0 moved; 24 hand-back cases, 2 moved, both the real separator seat from unconfirmed or blocked to attested (`route_diff_separator.txt`)
+- [x] T019 Green: the focused tests, then the full suite

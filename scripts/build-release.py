@@ -68,7 +68,7 @@ def build(output, key):
     stage.mkdir(parents=True)
     for name in SHIPPED:
         shutil.copytree(ROOT / name, stage / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md'):
+    for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md', '.gitattributes'):  # LF checkouts on Windows too
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, stage / name)
     write_manifest(stage)

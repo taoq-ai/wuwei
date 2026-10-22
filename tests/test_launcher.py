@@ -14,7 +14,7 @@ import pytest
 from wuwei import hook, setup, ws
 
 PLUGIN = Path(__file__).resolve().parents[1]
-SHELLS = [s for s in ('sh', 'dash', 'bash') if shutil.which(s)]  # bash stands in for Git Bash on Windows
+SHELLS = [s for s in ('sh', 'dash', 'bash') if shutil.which(s) and (os.name != 'nt' or s != 'dash')]  # Windows hooks run Git Bash
 REJECT = 'Unknown option: -P\\nusage: {name} [option] ... [-c cmd | -m mod | file | -] [arg] ...\\n'
 
 
@@ -36,7 +36,9 @@ def launch(tmp_path, shims, shell='sh', python=None, payload=None):
     """Runs the hook entry with only the shims (and dirname) on PATH, as a harness with a short PATH would."""
     tools = tmp_path / 'tools'
     tools.mkdir(exist_ok=True)
-    if not (tools / 'dirname').exists():
+    if os.name == 'nt':  # Git's dirname.exe loads its DLLs from its own folder, which holds no Python
+        tools = Path(shutil.which('dirname')).parent
+    elif not (tools / 'dirname').exists():
         (tools / 'dirname').symlink_to(shutil.which('dirname'))
     env = {k: v for k, v in os.environ.items() if k not in ('WUWEI_PYTHON', 'CLAUDE_CODE_REMOTE')}
     env['PATH'] = os.pathsep.join([str(shims), str(tools)])
@@ -109,7 +111,7 @@ def test_windows_with_only_the_py_launcher_runs_wuwei_with_py_3(root, tmp_path, 
 
 def test_the_launcher_is_posix_sh():
     for shell in SHELLS:
-        assert subprocess.run([shell, '-n', str(PLUGIN / 'bin' / 'wuwei')]).returncode == 0, shell
+        assert subprocess.run([shutil.which(shell), '-n', str(PLUGIN / 'bin' / 'wuwei')]).returncode == 0, shell
     text = (PLUGIN / 'bin' / 'wuwei').read_text()
     assert not re.search(r'\[\[|\bfunction\b|\blocal\b|\$\{\w+//|<<<|\bsource\b', text)
     assert '-I -P -S -c' in text and 'unset PYTHONEXECUTABLE' in text
@@ -172,3 +174,13 @@ def test_an_interpreter_that_prints_its_version_to_stderr_is_named_with_it(root,
     (shims / 'python3').chmod(0o755)
     done = launch(tmp_path, shims)
     assert done.returncode == 2 and 'python3 2.7.18' in done.stderr and 'Python 3.11 or later' in done.stderr
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows only: cmd.exe runs bin/wuwei.cmd, as Codex on Windows does')
+@pytest.mark.parametrize('tool_name, tool_input', [('Write', {'file_path': '{root}\\.wuwei\\ledger\\x.jsonl', 'content': 'x'}),
+                                                   ('Bash', {'command': 'git.exe push --force origin main'})])
+def test_the_windows_entry_judges_through_cmd_as_bin_wuwei_does_on_linux(root, tool_name, tool_input):
+    payload = {'cwd': str(root), 'tool_name': tool_name, 'tool_input': {k: v.format(root=root) for k, v in tool_input.items()}}
+    done = subprocess.run(['cmd.exe', '/d', '/c', str(PLUGIN / 'bin' / 'wuwei.cmd'), 'hook', 'PreToolUse'], input=json.dumps(payload),
+                          capture_output=True, text=True, cwd=root, env={**os.environ, 'WUWEI_PYTHON': sys.executable})
+    assert judged(done) == 'deny'

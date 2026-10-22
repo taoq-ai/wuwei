@@ -13,6 +13,7 @@ promise and acceptance and the constitution.
 | C2 | Coverage | MEDIUM | acceptance 2 | The real flow rested on hand-made transcripts | Resolved: fixtures built from a real session by fixtures.py |
 | R1 | Risk | MEDIUM | spec How this fails 1 | The hand-back row may not exist when PreToolUse runs | Kept as residual: the stop still attests from the transcript; measured that the row exists while the tool runs |
 | R2 | Risk | MEDIUM | spec How this fails 3 | A replayed real report re-reads a rewritten verdict file | Kept as residual, named in SECURITY.md; outside this item's promise |
+| R3 | Risk | HIGH | FR-005 | A raw U+2028 in a transcript made the seat's report unreadable, so a real PASS went uncounted | Resolved: rows split on newlines only; real fixture, separator cases in route_diff_separator.txt |
 | M1 | Mutants | LOW | mutants.txt | M11 survives | Recorded with its reason; the attested text is the seat's own in both readings |
 
 No open finding at CRITICAL or HIGH.

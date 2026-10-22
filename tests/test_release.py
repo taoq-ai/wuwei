@@ -24,7 +24,7 @@ def signed(tmp_path, monkeypatch):
     root = tmp_path / 'root'
     for name in release.SHIPPED:
         shutil.copytree(REPO / name, root / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE'):
+    for name in ('README.md', 'LICENSE', '.gitattributes'):
         shutil.copyfile(REPO / name, root / name)
     shutil.copyfile(key.with_suffix('.pub'), root / release.KEY)
     monkeypatch.setattr(release, 'ROOT', root)
@@ -51,6 +51,7 @@ def test_build_writes_an_archive_whose_manifest_verifies_and_lists_every_shipped
     shipped = {p.relative_to(plugin).as_posix() for p in plugin.rglob('*') if p.is_file()} - release.EXCLUDED
     assert listed == shipped
     assert 'cli/wuwei/hook.py' in listed and 'README.md' in listed
+    assert '.gitattributes' in listed  # the dist branch checks bin/wuwei out with LF on Windows too
     assert release.measure(plugin) == []
 
 

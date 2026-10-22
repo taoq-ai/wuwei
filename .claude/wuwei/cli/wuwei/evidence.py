@@ -360,7 +360,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard',
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
         named = prior and prior['verdict'] == 'FIX' and prior['head'][:7] == found['head'][:7] and (fix or any(  # #1162
-            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
+            ('/' + s.replace('\\', '/')).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
         if (fix or (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) and ancestor(root, repo, found['head'], head) \
                 and (newer(root, repo, found, prior, found['head']) or fix and prior['verdict'] == 'PASS' or named):  # head asked above
             latest[found['gate']] = found
@@ -405,8 +405,8 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
             continue
         why = parsed['errors'][0] if parsed['errors'] else (
             f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
-            f'report with "Verdict file: {path.relative_to(root)}" (a Codex task job or Codex seat never attests)')
-        found.append(gap(f'verdict {path.relative_to(root)} not counted: {why}'))
+            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a Codex task job or Codex seat never attests)')
+        found.append(gap(f'verdict {path.relative_to(root).as_posix()} not counted: {why}'))
     return found
 
 
