@@ -34,6 +34,7 @@ SPEC_RULES = {
 # The plan item a PR names: the WUWEI footer ([WUWEI <version>](<site>) · Item <id> · ...), or a WUWEI-Item: line.
 ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
+norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
                      r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names its item by the old)")
@@ -187,7 +188,7 @@ def _unchecked(path, text):
 
 
 def _rule(repo, path, rule, head):
-    """The artifact's gaps at the head, [] when it meets its rule: one per open finding row and per checklist with an open box (#1228)."""
+    """The artifact's gaps at the head, [] when it meets its rule: one per open finding row, as (whole, cut), and per checklist with an open box (#1228)."""
     if path.endswith('/'):
         if not (entries := gh.listing(repo, path.rstrip('/'), head)):
             return [f'{path} missing: run the spec engine step that writes it']
@@ -204,8 +205,8 @@ def _rule(repo, path, rule, head):
     rows = [line.strip() for line in text.splitlines() if rule == 'clean' and line.lstrip().startswith('|') and (cells := {
         cell.strip().upper() for cell in line.strip().strip('|').split('|')}) & {'CRITICAL', 'HIGH'} and not any(
             c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells)]  # a recorded resolution (#1047)
-    cuts = [row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row for row in rows]  # at a cell edge
-    return [f'{path} has an open CRITICAL or HIGH finding: {cut if cuts.count(cut) == 1 else row}' for row, cut in zip(rows, cuts)]
+    lead = f'{path} has an open CRITICAL or HIGH finding: '
+    return [(lead + row, lead + (row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row)) for row in rows]  # cut at a cell edge
 
 
 def spec_gaps(repo, engine, tier, files, head):
@@ -219,8 +220,13 @@ def spec_gaps(repo, engine, tier, files, head):
         return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
             gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
-    problems = (problem for feature in features for name, rule in wanted for problem in _rule(repo, feature + name, rule, head))
-    return [gap(problem) for problem in dict.fromkeys(problems) if problem]
+    found = [*dict.fromkeys((feature, *((p, p) if isinstance(p, str) else p)) for feature in features for name, rule in wanted
+                            for p in _rule(repo, feature + name, rule, head) if p)]  # (feature, whole, cut)
+    seen = [n for _, *texts in found for n in {*map(norm, texts)}]  # what an exception reads each gap as, over the whole PR
+    shown = [(feature, cut if seen.count(norm(cut)) == 1 else whole) for feature, whole, cut in found]
+    keys = [norm(text) for _, text in shown]  # gaps that still read alike carry their place after the feature folder
+    return [gap(text if keys.count(k) == 1 else f'{f}({keys[:i].count(k) + 1} of {keys.count(k)}) {text[len(f):]}')
+            for i, ((f, text), k) in enumerate(zip(shown, keys))]
 
 
 def failures(repo, merged, deploys):
@@ -440,7 +446,7 @@ def gaps(root, repo, number, listed=None):
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             # the artifacts at a head never change, CI or not; the file list does when the base is retargeted (a path may hold a newline)
             listing = hashlib.sha256(json.dumps(sorted(files)).encode()).hexdigest()[:32]
-            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier}', f'{name}-{head}-{listing}'
+            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier} rows pr-wide', f'{name}-{head}-{listing}'  # not an older rule's result
             if key not in (spec := ws.cache_get(root, kept, 86400) or {}):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
                 if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
@@ -509,7 +515,6 @@ def gaps(root, repo, number, listed=None):
 def excepted(root, ref, head, found):
     """Drop each gap the owner accepted at this head by its exact text or its gate gap's exact gates, never by a part
     of either (case, spacing, end marks and a printed [waiting] aside); each acceptance is an exception on the record."""
-    norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
     accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
                 and row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}

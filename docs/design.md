@@ -76,10 +76,17 @@ security`); a part of either waives nothing. `wuwei evidence`, the merge door an
 exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
 The question door sends back an `exception:` that names a template, size or age gap (process fit);
 one that names a spec engine gap reaches the owner, since at full tier that gap is safety. When the
-gap holds a finding row (`: |`), the hook reads it to the row's end (its last `|` before a `. `, `?`
-or the end), so the row keeps its sentences; any other gap ends at its first `. ` or `?`. Each open
-finding row and each checklist with an unchecked box is its own gap, so a yes waives only the gap
-the owner saw.
+gap holds a finding row (a `: |` before the gap's first `. ` or `?`), the hook reads it to the row's
+end (its last `|` before a `. `, `?` or the end), so the row keeps its sentences; any other gap ends
+at its first `. ` or `?`, whatever `|` the question's own words hold. Each open finding row and each
+checklist with an unchecked box is its own gap, so a yes waives only the gap the owner saw. A long
+row prints to its last cell edge within 100 characters, unless that cut matches another spec gap of
+the PR, in any file, cut or whole, the way an exception matches (case, spacing, end marks and a
+printed `[waiting]` aside); then the row prints whole. Gaps whose whole texts still match that way
+(rows that differ only in case, or files and feature folders whose names do) carry their place
+after the feature folder, as in `specs/7-rate-limits/(2 of 2) checklists/a.md has 1 unchecked
+item`, so each takes its own yes. A row whose feature folder name holds a `. ` or `?` cannot be
+waived, since the hook ends its gap there.
 
 ## 6. The evidence contract
 
@@ -299,7 +306,7 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 ## 11. Configuration and budgets
 
 Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
-most 3,400 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+most 3,600 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
 first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and

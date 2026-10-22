@@ -539,15 +539,100 @@ def test_a_long_finding_row_is_printed_to_its_last_cell_edge_within_100_characte
 SHARED = '| HIGH | spec.md | ' + 'a' * 90 + ' |'
 
 
-@pytest.mark.parametrize('second', ['| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |'])
-def test_rows_whose_cuts_are_the_same_are_printed_whole(root, fake, second):
-    """Two rows that share their cells up to the cut stay two gaps, so one yes never waives both (#1228)."""
+@pytest.mark.parametrize('rows', [*([SHARED, row] for row in [
+    '| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |', '| High | spec.md | ' + 'b' * 90 + ' |',
+    '|  HIGH | spec.md  | ' + 'b' * 90 + ' |', '| high | spec.md |', '| HIGH |\tSpec.md |']),
+    ['| HIGH | stra\u00dfe | ' + 'a' * 90 + ' |', '| HIGH | STRASSE | ' + 'b' * 90 + ' |'],  # casefold, not lower()
+    ['| HIGH | \u212a | ' + 'a' * 90 + ' |', '| HIGH | k | ' + 'b' * 90 + ' |'],  # the Kelvin sign
+    ['| HIGH | x | ' + 'hidden auth bypass ' * 5 + '|', '| HIGH |' + ' ' * 95 + 'x |', '| HIGH | ' + 'f' * 100 + ' |'],
+    ['| HIGH | ' + '\u00df' * 50 + ' | ' + 'hidden auth bypass ' * 3 + '|', '| HIGH | ' + 'ss' * 50 + ' |', '| HIGH | ' + 'f' * 100 + ' |']])
+def test_rows_whose_cuts_are_the_same_are_printed_whole(root, fake, rows):
+    """Rows whose cuts match another row's cut or whole row as an exception matches them (case and spacing aside) stay
+    apart, so one yes never waives a row the owner did not see (#1228, #1223 follow-up)."""
+    from wuwei import guards
     light(root, 'full')
-    files = speckit(fake, **{f'{SPEC}/analysis.md': f'| Severity | Location | Summary |\n|---|---|---|\n{SHARED}\n{second}\n'})
+    files = speckit(fake, **{f'{SPEC}/analysis.md': '| Severity | Location | Summary |\n|---|---|---|\n' + '\n'.join(rows) + '\n'})
     fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}'
-                                                         for row in (SHARED, second)]
+    printed = [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}' for row in rows]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
+    for text in printed[1:]:
+        except_gap(root, text)
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and rows[0] in found['reason'], found
+
+
+def test_rows_in_feature_folders_whose_names_differ_only_in_case_are_printed_apart(root, fake):
+    """Rows are compared across every spec file of the PR, so two folders that read alike never share one printed cut."""
+    from wuwei import guards
+    light(root, 'full')
+    table, twin = '| Severity | Location | Summary |\n|---|---|---|\n', SPEC.replace('rate', 'RATE')
+    files = speckit(fake, **{f'{SPEC}/analysis.md': table + SHARED + '\n'})
+    fake.files.update({p.replace(SPEC, twin): fake.files[p] for p in files} | {
+        f'{twin}/analysis.md': table + '| HIGH | spec.md | ' + 'b' * 90 + ' |\n'})
+    fake.prs['42'] = make_pr(files=(*files, *(p.replace(SPEC, twin) for p in files), 'src/app.py', 'tests/test_app.py'),
+                             body=footer() + '\nRollback: revert')
+    full_gates(root)
+    printed = [f'{twin}/analysis.md has an open CRITICAL or HIGH finding: | HIGH | spec.md | ' + 'b' * 90 + ' |',
+               f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {SHARED}']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
+    except_gap(root, printed[0])
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and SHARED in found['reason'], found
+
+
+def test_gaps_that_still_read_alike_carry_their_place_after_the_feature_folder(root, fake):
+    """Checklists or rows whose whole texts match as an exception matches them print (i of n) after the feature folder."""
+    light(root, 'full')
+    files = speckit(fake, **{f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n| A1 | HIGH | x |\n| a1 | high | X |\n',
+                             f'{SPEC}/checklists/A.md': '- [ ] authz reviewed\n', f'{SPEC}/checklists/a.md': '- [ ] wording\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    printed = [f'{SPEC}/(1 of 2) analysis.md has an open CRITICAL or HIGH finding: | A1 | HIGH | x |',
+               f'{SPEC}/(2 of 2) analysis.md has an open CRITICAL or HIGH finding: | a1 | high | X |',
+               f'{SPEC}/(1 of 2) checklists/A.md has 1 unchecked item', f'{SPEC}/(2 of 2) checklists/a.md has 1 unchecked item']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
+    except_gap(root, printed[2])
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [*printed[:2], printed[3]]
+
+
+def test_no_two_printed_spec_gaps_of_a_pr_read_alike(root, fake):
+    """Generated row sets across feature folders and checklists whose names differ only in case or spacing: every printed
+    spec gap reads apart from every other as an exception matches them, and none goes missing (#1223 follow-up)."""
+    import random
+    fake.paths.add('.specify')
+    rng, cells = random.Random(1235), ['x', 'X', 'spec.md', 'SPEC.MD', 'stra\u00dfe', 'STRASSE', '\u212a', 'k', 'a' * 90, 'b' * 90,
+                                       'f' * 100, '\u00df' * 50, 'ss' * 50, 'hidden auth bypass ' * 5, '']
+    for _ in range(300):
+        fake.files.clear()
+        expected = 0
+        for folder in rng.sample(['7-rate-limits', '7-RATE-limits', '7-Rate-Limits', '8 auth', '8  AUTH'], rng.randint(1, 3)):
+            rows = {(f'| {rng.choice(["HIGH", "High", "high", "CRITICAL"])} |' + rng.choice([' ', '  ', '\t', ' ' * 95])
+                     + ' | '.join(rng.sample(cells, rng.randint(1, 3))) + rng.choice([' |', ''])).strip() for _ in range(rng.randint(1, 4))}
+            boxes = rng.sample(['A.md', 'a.md', 'b.md'], rng.randint(0, 2))
+            fake.files.update({f'specs/{folder}/spec.md': '## Clarifications\n', f'specs/{folder}/plan.md': '# Plan\n',
+                               f'specs/{folder}/tasks.md': DONE, f'specs/{folder}/analysis.md': '| Severity |\n|---|\n' + '\n'.join(rows) + '\n',
+                               f'specs/{folder}/checklists/r.md': '- [x] done\n'} | {f'specs/{folder}/checklists/{b}': '- [ ] open\n' for b in boxes})
+            expected += len(rows) + len(boxes)
+        printed = texts(evidence.spec_gaps('acme/app', '.specify', 'full', [*fake.files], HEAD))
+        assert len(printed) == expected and len({*map(evidence.norm, printed)}) == expected, printed
+
+
+@pytest.mark.parametrize('marker', ['', ' rows'])
+def test_a_spec_gap_result_cached_by_older_code_at_the_same_version_is_not_read(root, fake, marker):
+    """Code before #1228 cached only a file's first open row, and code before the #1223 follow-up compared cuts within one
+    file, both under the same version, so neither result is read."""
+    import json
+    light(root, 'full')
+    rows = ['| A1 | HIGH | wording nit |', '| A2 | CRITICAL | auth bypass |']
+    files = speckit(fake, **{f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n' + '\n'.join(rows) + '\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    printed = [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}' for row in rows]
+    listing = hashlib.sha256(json.dumps(sorted(f['path'] for f in fake.prs['42']['files'])).encode()).hexdigest()[:32]
+    old = f'{ws.version()} {evidence.spec_engine(root, "acme/app")} full{marker}'
+    ws.cache_put(root, f'pr-acme__app-42-{HEAD}-{listing}', {old: [evidence.gap(printed[0])]})
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
 
 
 def test_a_clean_full_tier_speckit_feature_passes(root, fake):
