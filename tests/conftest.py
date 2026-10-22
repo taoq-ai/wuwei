@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,15 @@ def projects(monkeypatch, tmp_path_factory):
     path = tmp_path_factory.mktemp('claude') / 'projects'
     monkeypatch.setattr(ws, 'PROJECTS', path)
     return path
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch, tmp_path_factory):
+    """A gh stub that exits 1 first on PATH for every test: in-process gh.run and hook subprocesses reach no network."""
+    stub = tmp_path_factory.mktemp('stub')
+    (stub / 'gh').write_text('#!/bin/sh\n# wuwei-test-stub\necho "gh is offline in tests" >&2\nexit 1\n')
+    (stub / 'gh').chmod(0o755)
+    monkeypatch.setenv('PATH', os.pathsep.join([str(stub), os.environ.get('PATH', '')]))
 
 
 ASKED = iter(range(1, 10 ** 6))  # one tool_use id per answer
