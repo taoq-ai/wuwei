@@ -341,6 +341,8 @@ def gates_for(root, repo, pr, files, item):
         tier, why = 'standard', ' (tier raised to standard: the diff touches a trust path)'
     cached = lambda: _cached(root, f'cc-{repo.replace("/", "__")}-{pr.get("baseRefOid")}-{pr.get("headRefOid")}', lambda: rose(repo, pr, files))  # noqa: E731
     gates = REQUIRED[tier] if why else needed(root, tier, files, item, cached)  # an overrun budget trims nothing
+    if spent['raised']:  # and keeps every gate the unraised item owed
+        gates = tuple(g for g in REQUIRED['full'] if g in gates + tuple(needed(root, (item or {}).get('tier', 'standard'), files, item, cached)))
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
 

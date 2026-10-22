@@ -167,6 +167,16 @@ def test_an_error_budget_overrun_raises_smart_to_standards_full_set(root, fake):
                           'over 28 days)']
 
 
+def test_an_error_budget_overrun_keeps_every_gate_the_unraised_item_owed(root, fake):
+    smart(root, in_doubt=True)
+    pr_with(fake, {'src/app.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
+    for n, title in enumerate(['feat: a', 'feat: b', 'Revert "feat: a"', 'feat: c', 'Revert "feat: c"'], 1):
+        merged = make_pr(number=n, state='MERGED')
+        merged.update(title=title, mergedAt=ws.now().isoformat(timespec='seconds'))
+        fake.prs[str(n)] = merged
+    assert owed(root)[0].startswith('gates missing at head aaaaaaa: arch, quality, security, goal (tier raised to standard')
+
+
 def test_the_create_door_reads_the_complexity_at_the_branch_head(root, fake, monkeypatch):
     monkeypatch.setattr(guards, 'origin', lambda cwd: 'acme/app')
     monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'i-1-change')
