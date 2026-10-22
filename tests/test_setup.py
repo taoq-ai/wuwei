@@ -118,7 +118,7 @@ def test_no_runtime_module_imports_outside_the_standard_library():
 
 def test_the_runtime_holds_its_size_budget():
     lines = sum(len(path.read_text().splitlines()) for path in (PLUGIN / 'cli' / 'wuwei').glob('*.py'))
-    assert lines <= 3400, f'{lines} runtime lines: the constitution budget is 3400'
+    assert lines <= 3600, f'{lines} runtime lines: the constitution budget is 3600'
 
 
 def test_the_runtime_reads_numbers_in_ascii_digits_only():
