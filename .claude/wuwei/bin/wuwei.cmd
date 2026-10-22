@@ -2,6 +2,8 @@
 rem WUWEI hook entry for a harness that runs hooks through cmd.exe (Codex on Windows); bin/wuwei is its sh twin.
 rem It runs WUWEI under WUWEI_PYTHON when that is Python 3.11 or later, else py -3, else python.
 setlocal DisableDelayedExpansion
+rem cmd.exe looks in the working folder before PATH; a py.bat there must never stand in for Python.
+set "NoDefaultCurrentDirectoryInExePath=1"
 for %%i in ("%~dp0..") do set "root=%%~fi"
 if not exist "%root%\cli\wuwei\" >&2 echo wuwei: cli not found under "%root%"
 if not exist "%root%\cli\wuwei\" exit /b 2

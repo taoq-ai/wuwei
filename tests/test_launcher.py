@@ -157,3 +157,18 @@ def test_the_doctor_names_the_interpreter_the_hooks_use(tmp_path, monkeypatch):
     assert sys.executable in rows()['python']
     hook.pre_tool(tmp_path, {'tool_name': 'Read', 'tool_input': {}})
     assert rows()['hooks'].endswith(f'under {sys.executable} {sys.version.split()[0]}')
+
+
+def test_the_windows_entry_never_runs_a_py_or_python_from_the_working_folder():
+    cmd = (PLUGIN / 'bin' / 'wuwei.cmd').read_bytes().decode()
+    guard = cmd.index('set "NoDefaultCurrentDirectoryInExePath=1"\r\n')  # cmd.exe would search the repository first
+    assert guard < cmd.index('call :fits') and guard > cmd.index('setlocal')
+
+
+def test_an_interpreter_that_prints_its_version_to_stderr_is_named_with_it(root, tmp_path):
+    shims = tmp_path / 'bin'
+    shims.mkdir()
+    (shims / 'python3').write_text('#!/bin/sh\necho "Python 2.7.18" >&2\nexit 0\n')
+    (shims / 'python3').chmod(0o755)
+    done = launch(tmp_path, shims)
+    assert done.returncode == 2 and 'python3 2.7.18' in done.stderr and 'Python 3.11 or later' in done.stderr
