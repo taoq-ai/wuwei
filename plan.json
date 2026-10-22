@@ -1,60 +1,6 @@
 {
  "items": [
   {
-   "id": "launcher-python",
-   "title": "fix(bin): the hook launcher finds a Python 3.11 or later on Windows, macOS and Linux, honours WUWEI_PYTHON, and says which version it found when none fits",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 20,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 20.5,
-   "why": "Eugenio Galioto 2026-10-22 (Codex user): the hooks used the wrong Python interpreter, one missing the -P flag, which blocks his Codex sessions. bin/wuwei checks only that some python3 exists, then runs python3 -I -P -S; -P exists from Python 3.11, so an older first python3 on the hook PATH (macOS /usr/bin/python3 3.9, Ubuntu 22.04 3.10) fails with an unknown option, and PreToolUse exits 2, which blocks every tool call. Codex can run hooks with a different PATH than the user's shell",
-   "promise": "the hook entry point runs WUWEI with WUWEI_PYTHON when set and at least 3.11, else the first interpreter at 3.11 or later among: on Windows the py launcher (py -3) and python.exe; on macOS and Linux python3.13, python3.12, python3.11, python3; the -P flag is passed only to an interpreter that has it (always, given 3.11+); when none fits it exits 2 with one line naming each interpreter tried and its version and saying WUWEI needs Python 3.11 or later; the entry point works whether the harness runs hooks through sh/bash (Claude Code, Git Bash on Windows) or directly on Windows (a .cmd or PowerShell entry beside bin/wuwei if the harness needs one); wuwei doctor names the interpreter the hooks use",
-   "acceptance": [
-    "given python3 on PATH is 3.9 and python3.12 is also on PATH, when a hook runs, then it runs under python3.12 and the call is judged as usual",
-    "given only a 3.9 python3, when a hook runs, then it exits 2 with a line naming python3 3.9 and Python 3.11 or later",
-    "given WUWEI_PYTHON names a 3.11 or later interpreter, when a hook runs, then that interpreter is used",
-    "given Windows with only the py launcher, when a hook runs, then py -3 runs WUWEI"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true,
-   "changed": "2026-10-22T17:09:00.374837+00:00"
-  },
-  {
-   "id": "decisions-survive",
-   "title": "fix(hook): owner answers survive compaction and new sessions: every session start shows the recorded answers, and a question already answered is sent back with its answer",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "owner 2026-10-22: in a long session, compaction loses decisions and the owner is asked again; WUWEI state should hold regardless. hook.session_start (cli/wuwei/hook.py:418) re-injects charters and the board after compaction but no owner answers; scope:, trust:, one-way: answers live only as ledger prompt rows; the question guard does not check for an answer already given",
-   "promise": "every SessionStart (startup, resume, clear, compact) adds the owner answers recorded in the last 7 days as compact question-and-answer lines within the context cap; an AskUserQuestion whose question matches one answered in that window (same class, normalised text) is sent back with the recorded answer and its date, unless it names a new head or PR",
-   "acceptance": [
-    "given a scope: answer recorded today, when the session is compacted and restarts, then its session context lists that question and answer",
-    "given that answer, when the planner asks the same scope: question again, then the guard sends it back with the recorded answer",
-    "given a plan: question after new items were added, when it is asked, then it reaches the owner"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
    "id": "verdict-bind",
    "title": "fix(evidence): a gate PASS counts only from the verdict its seat first attested, wuwei init imports day decisions only in a real 0.34 upgrade, and python3 -m wuwei hook is refused",
    "goal": "G-1",
@@ -86,32 +32,6 @@
    "changed": "2026-10-22T17:10:19.935177+00:00"
   },
   {
-   "id": "multi-session",
-   "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 11.33,
-   "why": "owner 2026-10-22: run WUWEI across several sessions; today it is tangled. board.running (cli/wuwei/board.py:65) counts only this session's seats, so WIP, the seat ceiling and the team row are blind to other sessions and a second session can start a builder on the same item; sync.py makes plan.json last-writer-wins across cloud clones, so concurrent plan changes drop each other",
-   "promise": "the board counts live seats from every session today and names the session holding each item; the WIP limit and seat ceiling count all sessions; an Agent launch for an item another live session holds is sent back naming that session; a cloud state sync merges plan.json by item id, newest change per item wins, instead of last writer wins",
-   "acceptance": [
-    "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
-    "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
-    "given two clones that each add a different plan item, when both sync, then the plan holds both"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
    "id": "handback-transcript",
    "title": "fix(hook): a gate attestation is recorded only from the seat's own transcript, on SubagentHandback and on SubagentStop",
    "goal": "G-1",
@@ -135,86 +55,6 @@
    "added": "2026-10-19",
    "approved": true,
    "reason": "restored"
-  },
-  {
-   "id": "cache-paths",
-   "title": "fix(ws): a cache entry or name never reads, writes or deletes outside .wuwei/cache",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 9.5,
-   "why": "security gate on #1229 (2026-10-22, verdict .wuwei/verdicts/free-lines-6/security-17a9553.md), pre-existing on main: ws.cache_get follows an entry linked outside the cache; cache names built from payload fields (stop-<session_id> in hook.py, notes-<session> in guards.py) can hold ../ unchecked; when .wuwei/cache is itself a link, ws.cache_prune deletes files in the folder it points to",
-   "promise": "every cache read, write and prune resolves to a regular file inside the workspace's own .wuwei/cache: a linked entry or a linked cache folder is skipped, and a name built from payload fields cannot leave the cache folder",
-   "acceptance": [
-    "given .wuwei/cache linked to another folder, when the cache is pruned, then no file outside .wuwei/cache is deleted",
-    "given a session_id holding ../, when the Stop hook writes its stop- entry, then the entry stays inside .wuwei/cache",
-    "given a cache entry linked to a file outside the cache, when it is read, then it reads as absent"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
-   "id": "smart-tier",
-   "title": "feat(tiers): a smart tier, the default, picks each item's gates from its Cynefin domain and raises them on measured diff signals",
-   "goal": "G-4",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 8,
-    "size": 5
-   },
-   "score": 8.2,
-   "why": "owner 2026-10-22: standard is too slow sometimes and full even worse; adjust the tier to the item's complexity with a formal framework; approved scope: Cynefin plus measured signals. Today's evidence: blocking findings by gate were quality 4, security 5, arch 2 (both changes to a trust rule), goal 0",
-   "promise": "a new tier smart, the default for new items: the lead records a Cynefin domain (clear, complicated, complex) with one line of evidence per item; clear takes quality, plus security on owner or risky paths; complicated adds arch when the item changes a trust or contract rule; complex takes quality, security and arch and a short How this fails; goal runs only when the promise is marked in doubt; measured signals at the head (owner, risky or contract paths, a cyclomatic complexity rise in changed functions read with stdlib ast, over 200 non-prose lines, a change to what a guard waives or refuses) raise the gate set and never lower it; the spec engine artifacts are required only for complex; light, standard and full keep working",
-   "acceptance": [
-    "given a clear item whose diff touches only non-risky code, when wuwei evidence reads its PR, then only quality is owed",
-    "given a clear item whose diff adds a branch that raises a changed function's cyclomatic complexity on a risky path, when evidence reads it, then security is owed as well",
-    "given a complicated item whose diff changes what a guard waives, when evidence reads it, then arch is owed",
-    "given an item with tier full, when evidence reads it, then its gates are as before"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
-   "id": "flow-order",
-   "title": "feat(board): in-progress work is ordered by Kanban flow policy (class of service, then closest to done, then age), cost of delay rises with time in progress, and an item can name what it waits on",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 8,
-    "size": 5
-   },
-   "score": 8.2,
-   "why": "owner 2026-10-22, approved scope: in-progress work is handled like a pile (attention goes to the last event), so an old draft starves (A-Teams-Network/ai-stacks#3386); staleness is not only age but urgency and relation to other work. Replaces stale-work and absorbs plan-after (#637)",
-   "promise": "each plan item has a class of service (expedite, fixed-date, standard, intangible; default standard, fixed-date when its goal has a date); at most one expedite item is in progress; the board and the Stop reminder list in-progress work by class, then right to left (ready to merge, owner review, gates, fix round, building), then age, each row showing its class and time since its last event; an item's time criticality rises by one Fibonacci step per day in progress; an item may name items it waits on (wuwei plan add --after <id>), the board shows it waiting and the Stop hook leaves it out, and an item others wait on adds their cost of delay to its own; in-progress work idle for 4 hours with no live seat shows stale at the top of its class",
-   "acceptance": [
-    "given an old draft with no recent event and a newer PR that just got a CI result, both standard, when the board is read, then the item closer to done lists first, and age orders ties",
-    "given an expedite item, when the board is read, then it lists above every other class, and a second expedite start is sent back",
-    "given item B added with --after A, when the board is read, then B shows waiting on A, the Stop reminder leaves B out, and A's score includes B's cost of delay",
-    "given an in-progress item idle 5 hours with no live seat, when the board is read, then it shows stale with its last event"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
   },
   {
    "id": "door-words-text",
@@ -956,6 +796,35 @@
    "reason": "merged as taoq-ai/wuwei#1136"
   },
   {
+   "id": "launcher-python",
+   "title": "fix(bin): the hook launcher finds a Python 3.11 or later on Windows, macOS and Linux, honours WUWEI_PYTHON, and says which version it found when none fits",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 20,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 20.5,
+   "why": "Eugenio Galioto 2026-10-22 (Codex user): the hooks used the wrong Python interpreter, one missing the -P flag, which blocks his Codex sessions. bin/wuwei checks only that some python3 exists, then runs python3 -I -P -S; -P exists from Python 3.11, so an older first python3 on the hook PATH (macOS /usr/bin/python3 3.9, Ubuntu 22.04 3.10) fails with an unknown option, and PreToolUse exits 2, which blocks every tool call. Codex can run hooks with a different PATH than the user's shell",
+   "promise": "the hook entry point runs WUWEI with WUWEI_PYTHON when set and at least 3.11, else the first interpreter at 3.11 or later among: on Windows the py launcher (py -3) and python.exe; on macOS and Linux python3.13, python3.12, python3.11, python3; the -P flag is passed only to an interpreter that has it (always, given 3.11+); when none fits it exits 2 with one line naming each interpreter tried and its version and saying WUWEI needs Python 3.11 or later; the entry point works whether the harness runs hooks through sh/bash (Claude Code, Git Bash on Windows) or directly on Windows (a .cmd or PowerShell entry beside bin/wuwei if the harness needs one); wuwei doctor names the interpreter the hooks use",
+   "acceptance": [
+    "given python3 on PATH is 3.9 and python3.12 is also on PATH, when a hook runs, then it runs under python3.12 and the call is judged as usual",
+    "given only a 3.9 python3, when a hook runs, then it exits 2 with a line naming python3 3.9 and Python 3.11 or later",
+    "given WUWEI_PYTHON names a 3.11 or later interpreter, when a hook runs, then that interpreter is used",
+    "given Windows with only the py launcher, when a hook runs, then py -3 runs WUWEI"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "changed": "2026-10-22T21:25:15.807034+00:00",
+   "reason": "merged as taoq-ai/wuwei#1241"
+  },
+  {
    "id": "status-curl",
    "title": "fix(guards): a curl or wget write to a commit status or check run meets the same door as gh api",
    "goal": "G-2",
@@ -1107,6 +976,34 @@
    "added": "2026-10-18",
    "approved": false,
    "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
+  },
+  {
+   "id": "decisions-survive",
+   "title": "fix(hook): owner answers survive compaction and new sessions: every session start shows the recorded answers, and a question already answered is sent back with its answer",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "owner 2026-10-22: in a long session, compaction loses decisions and the owner is asked again; WUWEI state should hold regardless. hook.session_start (cli/wuwei/hook.py:418) re-injects charters and the board after compaction but no owner answers; scope:, trust:, one-way: answers live only as ledger prompt rows; the question guard does not check for an answer already given",
+   "promise": "every SessionStart (startup, resume, clear, compact) adds the owner answers recorded in the last 7 days as compact question-and-answer lines within the context cap; an AskUserQuestion whose question matches one answered in that window (same class, normalised text) is sent back with the recorded answer and its date, unless it names a new head or PR",
+   "acceptance": [
+    "given a scope: answer recorded today, when the session is compacted and restarts, then its session context lists that question and answer",
+    "given that answer, when the planner asks the same scope: question again, then the guard sends it back with the recorded answer",
+    "given a plan: question after new items were added, when it is asked, then it reaches the owner"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1239",
+   "changed": "2026-10-22T21:25:15.844115+00:00"
   },
   {
    "id": "1223",
@@ -2089,6 +1986,34 @@
    "reason": "merged as taoq-ai/wuwei#1066"
   },
   {
+   "id": "multi-session",
+   "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "owner 2026-10-22: run WUWEI across several sessions; today it is tangled. board.running (cli/wuwei/board.py:65) counts only this session's seats, so WIP, the seat ceiling and the team row are blind to other sessions and a second session can start a builder on the same item; sync.py makes plan.json last-writer-wins across cloud clones, so concurrent plan changes drop each other",
+   "promise": "the board counts live seats from every session today and names the session holding each item; the WIP limit and seat ceiling count all sessions; an Agent launch for an item another live session holds is sent back naming that session; a cloud state sync merges plan.json by item id, newest change per item wins, instead of last writer wins",
+   "acceptance": [
+    "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
+    "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
+    "given two clones that each add a different plan item, when both sync, then the plan holds both"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1238",
+   "changed": "2026-10-22T21:25:15.904266+00:00"
+  },
+  {
    "id": "push-moved-head",
    "title": "fix(guards): a push after a command that moves HEAD or the working folder meets the push door",
    "goal": "G-2",
@@ -2540,6 +2465,34 @@
    "reason": "until 2026-10-24: WIP limit 4 and no runtime lines until free-lines-6 merges"
   },
   {
+   "id": "cache-paths",
+   "title": "fix(ws): a cache entry or name never reads, writes or deletes outside .wuwei/cache",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "security gate on #1229 (2026-10-22, verdict .wuwei/verdicts/free-lines-6/security-17a9553.md), pre-existing on main: ws.cache_get follows an entry linked outside the cache; cache names built from payload fields (stop-<session_id> in hook.py, notes-<session> in guards.py) can hold ../ unchecked; when .wuwei/cache is itself a link, ws.cache_prune deletes files in the folder it points to",
+   "promise": "every cache read, write and prune resolves to a regular file inside the workspace's own .wuwei/cache: a linked entry or a linked cache folder is skipped, and a name built from payload fields cannot leave the cache folder",
+   "acceptance": [
+    "given .wuwei/cache linked to another folder, when the cache is pruned, then no file outside .wuwei/cache is deleted",
+    "given a session_id holding ../, when the Stop hook writes its stop- entry, then the entry stays inside .wuwei/cache",
+    "given a cache entry linked to a file outside the cache, when it is read, then it reads as absent"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1242",
+   "changed": "2026-10-22T21:25:15.965162+00:00"
+  },
+  {
    "id": "1222",
    "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
    "goal": "G-2",
@@ -2884,6 +2837,64 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "smart-tier",
+   "title": "feat(tiers): a smart tier, the default, picks each item's gates from its Cynefin domain and raises them on measured diff signals",
+   "goal": "G-4",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 8.2,
+   "why": "owner 2026-10-22: standard is too slow sometimes and full even worse; adjust the tier to the item's complexity with a formal framework; approved scope: Cynefin plus measured signals. Today's evidence: blocking findings by gate were quality 4, security 5, arch 2 (both changes to a trust rule), goal 0",
+   "promise": "a new tier smart, the default for new items: the lead records a Cynefin domain (clear, complicated, complex) with one line of evidence per item; clear takes quality, plus security on owner or risky paths; complicated adds arch when the item changes a trust or contract rule; complex takes quality, security and arch and a short How this fails; goal runs only when the promise is marked in doubt; measured signals at the head (owner, risky or contract paths, a cyclomatic complexity rise in changed functions read with stdlib ast, over 200 non-prose lines, a change to what a guard waives or refuses) raise the gate set and never lower it; the spec engine artifacts are required only for complex; light, standard and full keep working",
+   "acceptance": [
+    "given a clear item whose diff touches only non-risky code, when wuwei evidence reads its PR, then only quality is owed",
+    "given a clear item whose diff adds a branch that raises a changed function's cyclomatic complexity on a risky path, when evidence reads it, then security is owed as well",
+    "given a complicated item whose diff changes what a guard waives, when evidence reads it, then arch is owed",
+    "given an item with tier full, when evidence reads it, then its gates are as before"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1240",
+   "changed": "2026-10-22T21:25:16.001823+00:00"
+  },
+  {
+   "id": "flow-order",
+   "title": "feat(board): in-progress work is ordered by Kanban flow policy (class of service, then closest to done, then age), cost of delay rises with time in progress, and an item can name what it waits on",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 8.2,
+   "why": "owner 2026-10-22, approved scope: in-progress work is handled like a pile (attention goes to the last event), so an old draft starves (A-Teams-Network/ai-stacks#3386); staleness is not only age but urgency and relation to other work. Replaces stale-work and absorbs plan-after (#637)",
+   "promise": "each plan item has a class of service (expedite, fixed-date, standard, intangible; default standard, fixed-date when its goal has a date); at most one expedite item is in progress; the board and the Stop reminder list in-progress work by class, then right to left (ready to merge, owner review, gates, fix round, building), then age, each row showing its class and time since its last event; an item's time criticality rises by one Fibonacci step per day in progress; an item may name items it waits on (wuwei plan add --after <id>), the board shows it waiting and the Stop hook leaves it out, and an item others wait on adds their cost of delay to its own; in-progress work idle for 4 hours with no live seat shows stale at the top of its class",
+   "acceptance": [
+    "given an old draft with no recent event and a newer PR that just got a CI result, both standard, when the board is read, then the item closer to done lists first, and age orders ties",
+    "given an expedite item, when the board is read, then it lists above every other class, and a second expedite start is sent back",
+    "given item B added with --after A, when the board is read, then B shows waiting on A, the Stop reminder leaves B out, and A's score includes B's cost of delay",
+    "given an in-progress item idle 5 hours with no live seat, when the board is read, then it shows stale with its last event"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1243",
+   "changed": "2026-10-22T21:25:16.038779+00:00"
   },
   {
    "id": "merge-dropped",
