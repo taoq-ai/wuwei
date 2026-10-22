@@ -2,23 +2,32 @@
 
 import contextlib
 import datetime
-import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
-import pwd
 import threading
 import tomllib
+
+if os.name == 'nt':
+    import msvcrt
+    import winreg
+else:
+    import fcntl
+    import pwd
 
 DIR = '.wuwei'
 DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}}
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
-try:  # the harness's transcripts; never HOME, which a caller sets
-    PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'
-except KeyError:  # a uid with no passwd entry: nothing lies under /dev/null, so answers and stops record as unconfirmed
+try:  # the harness's transcripts; never HOME or USERPROFILE, which a caller sets
+    if os.name == 'nt':  # the profile Windows set at logon
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Volatile Environment') as key:
+            PROJECTS = Path(winreg.QueryValueEx(key, 'USERPROFILE')[0]) / '.claude' / 'projects'
+    else:
+        PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'
+except (KeyError, OSError):  # no account entry: nothing lies under /dev/null, so answers and stops record as unconfirmed
     PROJECTS = Path('/dev/null/.claude/projects')
 
 
@@ -44,6 +53,8 @@ def atomic_write(path, text, root=None):  # every folder below root and the file
     path = Path(path)
     if root is None:  # by default the file's own folder, made first
         root, _ = path.parent, path.parent.mkdir(parents=True, exist_ok=True)
+    if os.mkdir not in os.supports_dir_fd:
+        return _write_by_name(path, text, Path(root))
     fd, temp = os.open(root, os.O_RDONLY | os.O_DIRECTORY), f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'  # threads share a pid (#1121)
     try:
         for part in path.parent.relative_to(root).parts:
@@ -58,6 +69,21 @@ def atomic_write(path, text, root=None):  # every folder below root and the file
         os.replace(temp, path.name, src_dir_fd=fd, dst_dir_fd=fd)
     finally:
         os.close(fd)
+
+
+def _write_by_name(path, text, root):  # Windows has no dir_fd: each folder below root is checked for a link or junction
+    folder, temp = root, f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'
+    for part in path.parent.relative_to(root).parts:
+        folder = folder / part
+        with contextlib.suppress(FileExistsError):
+            folder.mkdir()
+        if folder.is_symlink() or getattr(os.lstat(folder), 'st_file_attributes', 0) & 0x400:  # a reparse point: a junction
+            raise OSError(f'{folder} is a link; WUWEI writes only into real folders')
+    with contextlib.suppress(FileNotFoundError):  # a link planted at the temporary name is removed, never written through
+        os.unlink(folder / temp)
+    with open(os.open(folder / temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o666), 'wb') as out:
+        out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
+    os.replace(folder / temp, folder / path.name)
 
 
 def raw_config(root):
@@ -164,12 +190,32 @@ def ledger(root):
     return sorted((row for path in _ledgers(root) for row in _parse(path.read_text(encoding='utf-8'))), key=lambda row: row.get('ts', ''))
 
 
+@contextlib.contextmanager
+def _locked(handle):
+    if os.name != 'nt':
+        fcntl.flock(handle, fcntl.LOCK_EX)  # released when the handle closes
+        yield
+        return
+    for _ in range(3):  # one byte far past the rows, so readers never block; each try waits up to 10 seconds
+        os.lseek(handle.fileno(), 1 << 40, os.SEEK_SET)
+        with contextlib.suppress(OSError):
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            break
+    else:
+        raise OSError(f'{handle.name} stayed locked; retry once the other WUWEI process ends')
+    try:
+        yield
+    finally:
+        handle.flush()
+        os.lseek(handle.fileno(), 1 << 40, os.SEEK_SET)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
 def record(root, kind, data):
     """Append one row to this clone's file; each row carries the hash of the one before it there."""
     path = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a+', encoding='utf-8') as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)  # seats starting at once append in turn, each after the last (#1057)
+    with open(path, 'a+', encoding='utf-8') as handle, _locked(handle):  # seats starting at once append in turn (#1057)
         handle.seek(0)
         mine = _parse(handle.read())
         row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
