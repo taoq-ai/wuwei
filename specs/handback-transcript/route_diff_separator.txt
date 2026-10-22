@@ -1,0 +1,26 @@
+routes: 288 read at both trees through guards.bash, the planner's PreToolUse and a sentinel seat's PreToolUse, 0 moved (corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1; main read the same corpus: True)
+handbacks: 24 cases, 2 moved
+  PreToolUse agent transcript outside the projects folder: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse another seat type: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse forged report: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse no launch (agent id): main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse no session transcript: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse real: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md']}
+  PreToolUse security separator agent transcript outside the projects folder: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse security separator another seat type: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse security separator forged report: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse security separator no launch (agent id): main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  PreToolUse security separator no session transcript: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED PreToolUse security separator real: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/security-aaaaaaa.md']}
+  SubagentStop agent transcript outside the projects folder: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop another seat type: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop forged report: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop no launch (agent id): main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop no session transcript: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop real: main {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md', 'seat.stopped']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/arch-aaaaaaa.md', 'seat.stopped']}
+  SubagentStop security separator agent transcript outside the projects folder: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop security separator another seat type: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop security separator forged report: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop security separator no launch (agent id): main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  SubagentStop security separator no session transcript: main {'out': None, 'recorded': ['seat.unconfirmed']} -> head {'out': None, 'recorded': ['seat.unconfirmed']}
+  MOVED SubagentStop security separator real: main {'out': 'block', 'recorded': ['seat.stopped']} -> head {'out': None, 'recorded': ['attest .wuwei/verdicts/I-1/security-aaaaaaa.md', 'seat.stopped']}
