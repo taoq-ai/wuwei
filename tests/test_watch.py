@@ -479,7 +479,7 @@ def refused(out):
 def test_a_live_seat_in_another_session_shows_on_the_board_and_counts_for_the_team_row(root, fake, monkeypatch):
     monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 'B')
     open_prs(root, fake)
-    launch(root, 'A', 'Item: I-2\nBuild it.', agent='b1')
+    launch(root, 'A', 'Item: i-2\nBuild it.', agent='b1')
     seat(root, 'shepherd', session='A', agent='sh1')
     assert team(root) == [GATES]
     rows = [r for r in board.compute(root) if r['item'] == 'I-2']
@@ -539,4 +539,5 @@ def test_a_brief_that_quotes_or_wraps_another_items_line_is_judged_by_its_own_it
 def test_a_seat_recorded_without_a_session_holds_nothing(root, fake):
     open_prs(root, fake)
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x1', 'item': 'I-1'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x2', 'item': 'I-1', 'session': ''})
     assert refused(launch(root, 'B', 'Item: I-1')) is None and board.running(root) == []

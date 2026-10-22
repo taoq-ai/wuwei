@@ -178,6 +178,17 @@ def test_a_plan_change_stamps_only_the_items_it_changed(root, monkeypatch):
     monkeypatch.setattr(ws, 'now', lambda: later)
     plan.mark(root, 'I-2', 'parked', 'later')
     assert {i['id']: i['changed'] for i in plan.items(root)} == {'I-1': first['I-1'], 'I-2': later.isoformat()}
+    newer = (later + datetime.timedelta(minutes=1)).isoformat()
+    monkeypatch.setattr(ws, 'now', lambda: later + datetime.timedelta(minutes=9))
+    assert plan.merge(root, json.dumps({'items': [{'id': 'I-1', 'title': 'theirs', 'changed': newer}]}))
+    assert (plan.find(root, 'I-1')['title'], plan.find(root, 'I-1')['changed']) == ('theirs', newer)  # merged in, never stamped again
+
+
+def test_on_a_tie_this_clones_item_stays(root):
+    from conftest import write_plan
+    write_plan(root, [{'id': 'I-1', 'title': 'mine', 'status': 'open'}])  # an item from before the stamps
+    assert plan.merge(root, json.dumps({'items': [{'id': 'I-1', 'title': 'theirs', 'status': 'open'}, {'id': 'I-9', 'title': 'new'}]}))
+    assert [(i['id'], i['title']) for i in plan.items(root)] == [('I-1', 'mine'), ('I-9', 'new')]
 
 
 @pytest.mark.parametrize('theirs', [b'not json', b'{"items": ["I-1"]}', b'{"items": [{"title": "no id"}]}', b'[]',
