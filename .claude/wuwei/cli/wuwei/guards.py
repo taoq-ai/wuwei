@@ -53,6 +53,7 @@ READY = 'leaves draft or asks reviewers only once its gates pass at the PR head 
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
 PUSH_VALUED = {'o', *(n[:i] for n in ('push-option', 'repo', 'receive-pack', 'exec', 'recurse-submodules') for i in range(1, len(n) + 1))}
 REF_RULES = ('{}', 'refs/{}', 'refs/tags/{}', 'refs/heads/{}', 'refs/remotes/{}', 'refs/remotes/{}/HEAD')  # refs.c ref_rev_parse_rules
+WINDOWS = os.name == 'nt'
 TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -72,20 +73,34 @@ PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
-    path = path.replace('\\', '/')  # Windows reads a backslash as /
+    win = windows(path)  # a backslash is / on Windows and a name character elsewhere: either reading that names it counts
+    return win != path and _records(win, below, cap, name) or _records(path, below, cap, name)
+
+
+def windows(path):  # as Windows reads a path: \ is /, a drive-relative X: goes, and a name drops its :stream, trailing dots and spaces
+    parts = re.sub(r'^[A-Za-z]:', '', path.replace('\\', '/')).split('/')
+    return '/'.join(p if p in ('.', '..') else re.sub(r':.*', '', p).rstrip('. ') or p for p in parts)
+
+
+def named(n, p):  # p names n as sh globs it, in any case (macOS and Windows), or as a Windows 8.3 short name (WUWEI~1 for .wuwei)
+    short = re.fullmatch(r'([^~.]{1,6})~[0-9]+(\.[^.]*)?', p)
+    return fnmatchcase(n, p) or fnmatchcase(n, p.lower()) or bool(short) and n.replace('.', '').upper().startswith(short[1].upper())
+
+
+def _records(path, below, cap, name):
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
         return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    match = lambda n, p: fnmatchcase(n, p) or fnmatchcase(n, p.lower())  # macOS and Windows open .WUWEI as .wuwei
-    return any(p[:1] == '.' and match(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
-        match(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
+    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        named(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
 def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: (os.environ.get('HOME') or str(Path.home())).replace('\\', '/'), path.replace('\\', '/'))  # keep: a file in <project>/memory, as a literal path
-    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*', full) and (  # resolves, links read
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: os.environ.get('HOME') or str(Path.home()), path)  # keep: a file in
+    full = full.replace('\\', '/') if WINDOWS else full  # <project>/memory, as a literal path; \ is a separator on Windows only
+    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*' if WINDOWS else r'/[\w./@+-]*', full) and (  # resolves, links read
         real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
 
 

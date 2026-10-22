@@ -228,7 +228,10 @@ command naming `push` after an option before the subcommand that git 2.43 does n
 `-c` or `--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default`; a git command
 after a `-c` or `--config-env` that sets an alias or an include, whatever the subcommand; a secret
 or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
-sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
+sh expands (`//`, `/./`, `..`, globs, braces; on every OS also in any case, with a backslash read as a
+separator as well as a name character, and as Windows reads a name: no drive-relative `X:`, no `:stream`
+or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program named in any case or with
+`.exe`; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
 `-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
@@ -275,7 +278,8 @@ flow.
 
 An owner answer and a seat stop count only when the harness wrote them (#962). The harness keeps
 each session's transcript under the projects folder (`.claude/projects` in the account's home,
-read from the password database, never from `HOME`). An answer counts when that transcript holds the
+read from the password database on POSIX and from the logon profile in the registry on Windows,
+never from `HOME` or `USERPROFILE`). An answer counts when that transcript holds the
 AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
 the same answer to that question; each question in a batch counts on its own. Only the row's
 `toolUseResult.answers` counts, never its text: model-written questions and labels and WUWEI's own deny

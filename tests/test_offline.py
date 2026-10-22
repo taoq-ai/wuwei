@@ -25,6 +25,6 @@ def test_a_hook_subprocess_reads_the_board_through_the_stub_gh_and_never_reaches
     done = subprocess.run(['sh', str(ws.PLUGIN / 'bin' / 'wuwei'), 'hook', 'Stop'], text=True, capture_output=True, cwd=root,
                           input=json.dumps({'session_id': 's1', 'cwd': str(root), 'stop_hook_active': False}))
     assert done.returncode == 0, done.stderr
-    with pytest.raises(gh.GhError, match='offline|could not run'):  # Windows runs no stub: it finds no gh.exe
+    with pytest.raises(gh.GhError, match='offline|could not run' if os.name == 'nt' else 'offline'):  # Windows runs no stub: no gh.exe
         gh.run(['api', 'rate_limit'])
     assert not log.exists()

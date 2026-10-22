@@ -18,6 +18,10 @@ the hooks last used.
 On Windows, Claude Code runs hooks through Git Bash, so install
 [Git for Windows](https://git-scm.com/downloads/win) and Python from python.org (it brings `py`).
 
+The doors read every command as bash. A command run through PowerShell, cmd, wsl or zsh
+(`powershell -Command ...`, `cmd /c ...`) is not unwrapped yet, so Codex on Windows, which runs
+PowerShell, and zsh on macOS get weaker doors than bash; a follow-up closes this.
+
 ## Install
 
 In Claude Code:
