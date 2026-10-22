@@ -196,7 +196,7 @@ The doors and what they leave to the code host are in section 6 of the
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
   `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
   shut; every other hook fails open and records why.
-- Runtime: Python 3.11+ standard library only, at most 3,600 lines.
+- Runtime: Python 3.11+ standard library only, at most 3,800 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
 - Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
   other network call. Telemetry is local traces only.
