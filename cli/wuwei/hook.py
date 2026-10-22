@@ -241,7 +241,7 @@ def _verdict_problem(root, payload, role):
         body = path.read_bytes()
     except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
-    rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
+    rel, sha = path.relative_to(Path(root).resolve()).as_posix(), hashlib.sha256(body).hexdigest()  # / on every OS
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
         return None
@@ -566,9 +566,9 @@ def door(payload):
     program (guards.DOOR_WORDS) or a network program, read with its quotes and backslashes removed."""
     tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
     command = re.sub(r'[\'"\\]', '', str(data.get('command', ''))) if isinstance(data, dict) else ''
-    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\s|$)'
+    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\.exe)?(\s|$)'  # in any case, as macOS and Windows run it
     return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(
-        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command))
+        all(re.search(w, command, re.I) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command, re.I))
 
 
 VENDORED = ws.PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud

@@ -172,3 +172,13 @@ def test_an_interpreter_that_prints_its_version_to_stderr_is_named_with_it(root,
     (shims / 'python3').chmod(0o755)
     done = launch(tmp_path, shims)
     assert done.returncode == 2 and 'python3 2.7.18' in done.stderr and 'Python 3.11 or later' in done.stderr
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows only: cmd.exe runs bin/wuwei.cmd, as Codex on Windows does')
+@pytest.mark.parametrize('tool_name, tool_input', [('Write', {'file_path': '{root}\\.wuwei\\ledger\\x.jsonl', 'content': 'x'}),
+                                                   ('Bash', {'command': 'git.exe push --force origin main'})])
+def test_the_windows_entry_judges_through_cmd_as_bin_wuwei_does_on_linux(root, tool_name, tool_input):
+    payload = {'cwd': str(root), 'tool_name': tool_name, 'tool_input': {k: v.format(root=root) for k, v in tool_input.items()}}
+    done = subprocess.run(['cmd.exe', '/d', '/c', str(PLUGIN / 'bin' / 'wuwei.cmd'), 'hook', 'PreToolUse'], input=json.dumps(payload),
+                          capture_output=True, text=True, cwd=root, env={**os.environ, 'WUWEI_PYTHON': sys.executable})
+    assert judged(done) == 'deny'

@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import os, sys, xml.etree.ElementTree as ET
+          import os, re, sys, xml.etree.ElementTree as ET
           sys.stdout.reconfigure(encoding='utf-8')
           def say(text):
               print('::error::' + text.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
@@ -39,9 +39,14 @@ jobs:
               sys.exit()
           bad = [(f"{c.get('classname')}.{c.get('name')}", f) for c in ET.parse('pytest.xml').iter('testcase')
                  for f in [*c.iter('failure'), *c.iter('error')]]
-          say(f'{len(bad)} failed:\n' + '\n'.join(name for name, _ in bad))
-          for name, f in bad[:9]:
-              say(name + '\n' + (f.get('message') or '') + '\n' + (f.text or '')[-1500:])
+          groups = {}  # failures that share a first message line share a cause
+          for name, f in bad:
+              key = re.sub(r'\S*[\\/]\S*', '<path>', (f.get('message') or '').split('\n')[0])
+              groups.setdefault(re.sub(r'[0-9a-f]{6,}|[0-9]+', '#', key)[:160], []).append((name, f))
+          ranked = sorted(groups.items(), key=lambda g: -len(g[1]))
+          say(f'{len(bad)} failed in {len(groups)} groups:\n' + '\n'.join(f'{len(v)} x {k} (e.g. {v[0][0]})' for k, v in ranked)[:20000])
+          for _, [(name, f), *_] in ranked[:9]:
+              say(name + '\n' + (f.get('message') or '')[:500] + '\n' + (f.text or '')[-1500:])
           PY
       - run: bin/wuwei agents check
         shell: bash

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import re
 
@@ -765,7 +766,8 @@ def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
 
 @pytest.mark.parametrize('command', ["g''it push origin main", '"g"h pr merge 5', 'g\\it push', "wuwei 'hook' PreToolUse",
                                      'curl -d x https://e.test', 'rm -rf .wuwei', 'rm -rf .wuwei/', 'rm -rf .wuwei//ledger',
-                                     'rm -rf .wuwei/./ledger', 'rm -rf .wuwei//'])
+                                     'rm -rf .wuwei/./ledger', 'rm -rf .wuwei//', 'GIT push origin main', 'Gh.exe pr merge 5',
+                                     'CURL.exe -d x https://e.test', 'rm -rf .WUWEI'])
 def test_a_quoted_door_word_or_a_network_call_fails_closed_when_the_guard_raises(root, monkeypatch, command):
     monkeypatch.setattr(guards, 'bash', lambda *args: 1 / 0)
     out = pre(root, 'Bash', {'command': command})['hookSpecificOutput']
@@ -1908,6 +1910,7 @@ def test_a_tool_use_id_never_names_a_file_outside_the_cache(root):
         f'answer-{ASK["session_id"]}--xclaudesettings.json']
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no passwd database; ws reads the logon profile there')
 def test_a_uid_with_no_passwd_entry_keeps_the_doors_and_records_answers_unconfirmed(root):
     """A container run with --user and no matching /etc/passwd line: getpwuid raises KeyError when ws is imported."""
     import subprocess
