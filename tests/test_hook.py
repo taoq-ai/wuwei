@@ -525,6 +525,33 @@ def test_a_launched_gates_handback_its_transcript_does_not_hold_attests_nothing(
     assert 'does not hold' in ws.rows(root, 'seat.unconfirmed')[0]['data']['reason']
 
 
+def test_a_gates_empty_handback_its_transcript_holds_is_sent_back_for_its_verdict_line(root):
+    out = handback(root, '')['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'Verdict file:' in out['permissionDecisionReason']
+    assert ws.rows(root, 'attest') == ws.rows(root, 'seat.unconfirmed') == []
+
+
+@pytest.mark.parametrize('rows', [[], ['{"type": "assistant"'], ['[1]'], ['', handed('x')], [handed(f'Verdict file: {VERDICT_1067}')] * 2])
+def test_an_unreadable_or_odd_seat_transcript_never_attests_a_payload_report_twice_or_errs(root, rows):
+    """VAL: an empty, cut, non-object, blank-line or repeated seat transcript; the payload names a PASS verdict."""
+    write_verdict(root, verdict_text())
+    payload = launched({'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'cwd': str(root)})
+    write(Path(payload.pop('agent_transcript_path')), rows)
+    for _ in range(2):
+        hook.handle(root, 'PreToolUse', {**payload, 'tool_name': 'SubagentHandback', 'tool_input': {'message': f'Verdict file: {VERDICT_1067}'}})
+    held = len(rows) == 2 and rows[0] == rows[1]
+    assert len(ws.rows(root, 'attest')) == held and len(ws.rows(root, 'seat.unconfirmed')) == 2 * (not held)
+    assert not ws.rows(root, 'hook.error')
+
+
+@pytest.mark.parametrize('text', ['', '  \n', None, 17])
+def test_a_stop_with_no_report_text_takes_the_transcripts_last(root, tmp_path, text):
+    write_verdict(root, verdict_text())
+    seat = write(tmp_path / 'agent.jsonl', [handed(f'Verdict file: {VERDICT_1067}')])
+    assert reviewer_stop(root, text, transcript=str(seat)) is None
+    assert [r['data']['path'] for r in ws.rows(root, 'attest')] == [VERDICT_1067] and not ws.rows(root, 'seat.unconfirmed')
+
+
 @pytest.mark.parametrize('link', [False, True])
 def test_a_replayed_gate_stop_with_a_forged_report_attests_nothing(root, fake, tmp_path, link):
     """A real launch, its SubagentStop replayed with last_assistant_message naming a PASS verdict the seat never named."""
@@ -537,7 +564,7 @@ def test_a_replayed_gate_stop_with_a_forged_report_attests_nothing(root, fake, t
     if link:  # the seat transcript a link to a file the seat wrote, which holds the forged report
         seat = Path(payload['agent_transcript_path'])
         seat.unlink()
-        seat.symlink_to(write(tmp_path / 'forged.jsonl', [handed(f'Verdict file: {VERDICT_1067}')]))
+        seat.symlink_to(write(tmp_path / 'forged.jsonl', [handed(f'Reviewed.\nVerdict file: {VERDICT_1067}')]))
     forged = {**payload, 'last_assistant_message': f'Reviewed.\nVerdict file: {VERDICT_1067}'}
     assert hook.handle(root, 'SubagentStop', forged) is None
     assert ws.rows(root, 'attest') == ws.rows(root, 'seat.stopped') == [] and evidence.gaps(root, 'acme/app', 42) != []
