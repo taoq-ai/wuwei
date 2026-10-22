@@ -135,6 +135,32 @@
    "approved": true
   },
   {
+   "id": "1230",
+   "title": "fix(evidence): a base merge into an open PR is measured on the PR's own diff, so passes carry when the PR's own change did not move",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 10.33,
+   "why": "owner 2026-10-22: 'also fix this' (taoq-ai/wuwei#1230). evidence.gate_gaps measures the delta as compare(last gated head, head), so a main merge brings main's lines and risky paths into it; on ai-stacks 2026-10-22 three approved PRs (#3374, #3377, #3523) each held 2 to 12 seat-minutes behind a delta gate that found only renumbers; the main queue on a busy day",
+   "promise": "the delta a gate re-reads after a pass is the change in the PR's own diff (its diff against its base at the gated head versus at the new head); lines and files a base merge brought in are not the PR's delta; a PR-own delta over 20 non-prose lines or on a risky path is still re-read by the one gate wuwei evidence names",
+   "acceptance": [
+    "given a PR with all gates passed, when main is merged in and the PR's own diff is unchanged, then wuwei evidence shows no owed gate and the merge door accepts it",
+    "given a main merge where the PR's own diff gains a 30-line code change in conflict resolution, then the gate wuwei evidence names is owed",
+    "given a main merge where only files the workspace declares generated change in the PR's own diff, then the passes carry"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
+  },
+  {
    "id": "1222",
    "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
    "goal": "G-2",
