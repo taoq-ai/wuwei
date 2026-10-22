@@ -321,6 +321,13 @@ def test_an_exception_gap_keeps_the_sentence_breaks_of_a_finding_row(question, g
     assert hook.exception_refs(question) == ([('o/r', '1', 'abc1234')], gap)
 
 
+@pytest.mark.parametrize('gap', ['gates missing at head abc1234: quality', 'no test in the diff', 'CI failing: build'])
+@pytest.mark.parametrize('tail', ['. Accept (yes|no)?', '. Accept? 1. yes | 2. no', '.\nAccept (yes|no)?', '. Options: yes | no'])
+def test_a_gap_that_holds_no_finding_row_ends_at_its_first_break_whatever_the_tail(gap, tail):
+    """Only a finding row reads to its last |, so a | in the question's own words never joins a gap (#1228)."""
+    assert hook.exception_refs(f'exception: o/r#1 at abc1234: {gap}{tail}') == ([('o/r', '1', 'abc1234')], gap)
+
+
 def test_every_exception_the_guard_passes_is_one_the_hook_records_as_written(root):
     """Generated: prefixes x refs x separators x gaps x tails. A pass the hook reads as nothing, as other refs
     than the chain names, or as another gap than the one written, is a hole."""

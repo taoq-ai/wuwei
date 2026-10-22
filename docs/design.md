@@ -75,8 +75,10 @@ aside), or equal the gates a gate gap names (`security` for `gates missing at he
 security`); a part of either waives nothing. `wuwei evidence`, the merge door and the ready door read
 exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
 The question door sends back an `exception:` that names a template, size or age gap (process fit);
-one that names a spec engine gap reaches the owner, since at full tier that gap is safety. The hook
-reads the gap up to the first `. ` or `?` after its last `|`, so a finding row keeps its sentences.
+one that names a spec engine gap reaches the owner, since at full tier that gap is safety. When the
+gap holds a finding row (`: |`), the hook reads it up to the first `. ` or `?` after its last `|`, so
+the row keeps its sentences; any other gap ends at its first `. ` or `?`. Each open finding row and
+each checklist with an unchecked box is its own gap, so a yes waives only the gap the owner saw.
 
 ## 6. The evidence contract
 

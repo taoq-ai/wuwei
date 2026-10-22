@@ -95,6 +95,10 @@ directory the diff touches, so a later commit that only updates `tasks.md` still
 | spec-kit (`.specify/`, features in `specs/<feature>/`) | `spec.md`, `plan.md`, `tasks.md` with every task checked (implement done) | a `## Clarifications` section in `spec.md` (clarify ran), `analysis.md` with no open CRITICAL or HIGH row (analyze ran clean), every item in `checklists/` checked |
 | OpenSpec (`openspec/`, changes in `openspec/changes/<change>/`) | `proposal.md`, at least one capability spec under `specs/`, `tasks.md` with every task checked | |
 
+Each open CRITICAL or HIGH row is its own gap, printed whole or cut at its last cell edge within
+100 characters, and so is each checklist with an unchecked box. An owner who accepts one has seen
+the gap that the exception waives.
+
 **Why:** a spec nobody finished is worse than no spec, because it looks like agreement. Checking the
 artifacts, not the commands, keeps the rule true whichever way the steps were run.
 

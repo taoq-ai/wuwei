@@ -1,8 +1,9 @@
 """The route corpus through the guards at one tree, set up as tests/test_guards.py reads it.
 
-Run from a tree's root: PROBE_OUT=<file> pytest -q -p no:cacheprovider <this file>
+Run from a tree's root: PROBE_OUT=<file> [ROUTE_MODE=excepted] pytest -q -p no:cacheprovider <this file>
 Each line of PROBE_OUT is a JSON [route, the door it reaches, the reason]. Run it at main and at the head and compare the
-files: a line that differs is a route whose verdict or reason moves.
+files: a line that differs is a route whose verdict or reason moves. ROUTE_MODE=excepted first records an approved
+exception at the head for every gap that holds #5 and #7 (the PRs the doors read), so evidence.excepted is on the path.
 """
 
 import json
@@ -13,7 +14,7 @@ import pytest
 
 from conftest import fake, make_pr, projects, root  # noqa: F401  the fixtures, outside tests/
 from test_guards import ROUTES, branch, door_reached, memory  # noqa: F401
-from wuwei import guards
+from wuwei import evidence, guards, ws
 
 
 @pytest.mark.parametrize('route', ROUTES, ids=[r['command'] for r in ROUTES])
@@ -23,6 +24,11 @@ def test_route(root, fake, monkeypatch, memory, route):
     fake.prs['5'] = make_pr(number=5, files=('src/app.py',))
     fake.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True}
     branch(fake, ('src/app.py',))
+    if os.environ.get('ROUTE_MODE') == 'excepted':
+        for number in (5, 7):
+            for gap in evidence.blocking(evidence.gaps(root, 'o/r', number)):
+                ws.record(root, 'ruling', {'kind': 'exception', 'pr': f'o/r#{number}', 'head': 'aaaaaaa', 'gap': gap['text'],
+                                           'approved': True})
     decision = guards.pre_tool(root, {'tool_name': 'Bash', 'tool_input': {'command': route['command']}, 'cwd': '/repo', 'session_id': 's1'})
     with open(os.environ['PROBE_OUT'], 'a', encoding='utf-8') as out:
         out.write(json.dumps([route['command'], door_reached(decision), re.sub(r'/tmp/pytest-of-[^/]+/pytest-[0-9]+/', '<tmp>/', str((decision or {}).get('reason')))]) + '\n')
