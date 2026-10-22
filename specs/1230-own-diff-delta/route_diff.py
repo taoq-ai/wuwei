@@ -5,7 +5,9 @@ it (repository o/r, branch i-1-change, PR 5, PR 7 a draft):
 - gap: the corpus's own host, PR 5 with a safety gap and no gate passed;
 - merge: quality and security PASS on PRs 5 and 7 at an older head, then a base merge that brought main's 300-line
   risky file and left the PR's own diff unchanged (the PR's base sha and the compare's merge base name the base);
-- fix: the same passes, then a 4-line fix to src/app.py with no base sha known (today's head-to-head measure).
+- fix: the same passes, then a 4-line fix to src/app.py with no base sha known (today's head-to-head measure);
+- generated (fix round 1): the merge host, whose conflict resolution also adds 100 lines to the risky src/session.py in
+  the PR's own diff, under a `- Generated (o/r, 2026-10-22): *` standards line, which must not carry it.
 Both trees read the fake host from one tests folder, so only the runtime moves.
 
     python3 -I route_diff.py <tree> <tests folder> > <out>.json
@@ -17,12 +19,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+HOSTS = ('gap', 'merge', 'fix', 'generated')
 if sys.argv[1] == 'compare':
     main, head = (json.loads(Path(name).read_text(encoding='utf-8')) for name in sys.argv[2:4])
     moved = sorted(key for key in main['cases'] if main['cases'][key] != head['cases'].get(key))
     print(f"corpus sha256 {main['corpus_sha256']} (main) {head['corpus_sha256']} (head); {main['routes']} routes; "
           f"{len(main['cases'])} cases; {len(moved)} moved")
-    for host in ('gap', 'merge', 'fix'):
+    for host in HOSTS:
         print(f"{host}: {sum(1 for k in main['cases'] if k.startswith(host + ' '))} cases, "
               f"{sum(1 for k in moved if k.startswith(host + ' '))} moved")
     gaps = lambda case: '; '.join(case['reason'].split('\n- ')[1:]) or 'no gap'  # noqa: E731
@@ -63,7 +66,7 @@ def run(host, command):
                 for gate in ('quality', 'security'):
                     attest(root, gate, OLD, pr=pr, name=f'{gate}-{pr[-1]}.md')
             fake.ancestors.add((OLD, HEAD))
-        if host == 'merge':
+        if host in ('merge', 'generated'):
             for pr in fake.prs.values():
                 pr['baseRefOid'] = BASE
             fake.merge_base = BASE
@@ -72,6 +75,13 @@ def run(host, command):
             fake.deltas[(BASE, HEAD)] = [dict(own[0], patch=PATCH.replace('-10,3 +10,5', '-52,3 +52,5'))]
             fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 300, 'deletions': 0},
                                         {'path': 'src/app.py', 'additions': 12, 'deletions': 0}]
+        if host == 'generated':
+            (root / ws.DIR / 'standards.md').write_text('- Generated (o/r, 2026-10-22): *\n', encoding='utf-8')
+            session = '@@ -5,3 +5,4 @@\n x = 1\n y = 2\n z = 3\n+ttl = 60'
+            fake.deltas[(BASE, OLD)].append({'path': 'src/session.py', 'additions': 1, 'deletions': 0, 'patch': session})
+            fake.deltas[(BASE, HEAD)].append({'path': 'src/session.py', 'additions': 101, 'deletions': 0,
+                                              'patch': session + ''.join(f'\n+ttl_{i} = {i}' for i in range(100))})
+            fake.deltas[(OLD, HEAD)].append({'path': 'src/session.py', 'additions': 100, 'deletions': 0})
         if host == 'fix':
             fake.deltas[(OLD, HEAD)] = [{'path': 'src/app.py', 'additions': 4, 'deletions': 0}]
         decision = guards.bash(root, command, '/repo', 's1')
@@ -82,6 +92,6 @@ guards.origin = lambda cwd: 'o/r'
 guards.current_branch = lambda cwd: 'i-1-change'
 corpus = tests / 'fixtures' / 'routes.json'
 routes = json.loads(corpus.read_text(encoding='utf-8'))['routes']
-cases = {f'{host} {route["command"]}': run(host, route['command']) for host in ('gap', 'merge', 'fix') for route in routes}
+cases = {f'{host} {route["command"]}': run(host, route['command']) for host in HOSTS for route in routes}
 print(json.dumps({'corpus_sha256': hashlib.sha256(corpus.read_bytes()).hexdigest(), 'routes': len(routes), 'cases': cases},
                  sort_keys=True, indent=1))

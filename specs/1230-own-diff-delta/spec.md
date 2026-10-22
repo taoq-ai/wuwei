@@ -16,7 +16,8 @@ file. A file whose patch is the same at both heads (hunk line numbers and headin
 the delta, whatever a merge of the base brought into the branch. A file whose patch moved is
 measured as before (its lines in the head-to-head compare, or its own diff when that compare does
 not list it). Over 20 such non-prose lines, or a risky path, owes the one gate `wuwei evidence`
-names. Files the workspace declares generated are left out of the delta.
+names. Files the workspace declares generated are left out of the delta, unless on a risky
+path, an owner path or a contract file.
 
 The acceptance scenarios, restated:
 
@@ -41,9 +42,10 @@ gates' own reading of a delta.
    patch, line numbers aside, reads the same, so the move carries. A move with other context is
    caught (the "moves 12 PR lines" test, the probe's classes). A hunk moved between identical
    contexts stays a residual risk.
-3. A `Generated` line names a hand-written file (a contract, a risky path). A hand edit to it after
-   a pass then carries. The line is the owner's, dated, in the workspace standards that the
-   steward's 30-day rule reviews; the generator's own inputs are still measured.
+3. A `Generated` line names a hand-written file. Off risky, owner and contract paths, a hand edit
+   to it after a pass then carries. On those paths the line drops nothing: fix round 1 showed `*`,
+   `src/*`, `*.py` and `src/sess*` carrying a 100-line change to `src/session.py` at a626a8a.
+   Only the owner writes the line, dated; the generator's own inputs are still measured.
 
 ## Clarifications
 
@@ -73,7 +75,8 @@ gates' own reading of a delta.
 - FR-002: a moved file counts its head-to-head lines; one missing there counts its own diff.
 - FR-003: a file with no patch moves; an own diff at 300 files falls back to the head-to-head
   compare; with no base sha the delta is the head-to-head compare.
-- FR-004: files a dated `Generated (<repo>, <date>):` standards line names are out of the delta.
+- FR-004: files a dated `Generated (<repo>, <date>):` standards line names are out of the delta,
+  except a risky path, an owner path or a contract file, which keeps counting.
 - FR-005: `wuwei evidence`, the merge door, and the create and ready doors read the same delta.
 - FR-006: the gate owed, and the 20-line and risky-path rules, are unchanged.
 
@@ -85,6 +88,10 @@ gates' own reading of a delta.
   it at the PR's creation would overturn it; the result is then today's behaviour, not a miss.
 - Patches are kept in the compare cache (a day per sha pair). A workspace whose cache grows too
   large would overturn it.
+- Only the owner adds a `Generated` line, never a retro proposal the planner applies, and the
+  steward's 30-day pruning skips it (it holds a fact and catches nothing). No guard keeps other
+  sessions from writing `.wuwei/standards.md`; the line can drop no risky, owner or contract path,
+  so a stray line carries at most a plain-path change. An owner who wants a guard would overturn it.
 
 ## Rollback
 

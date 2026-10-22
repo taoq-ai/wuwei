@@ -925,11 +925,13 @@ def test_a_base_merge_is_measured_head_to_head_when_the_base_sha_is_unknown(root
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
 
 
-@pytest.mark.parametrize('size, found', [(299, []), (300, ['no gate passed at head aaaaaaa (a delta review by security)'])])
-def test_a_compare_at_githubs_300_file_cap_is_measured_head_to_head(root, fake, size, found):
-    """GitHub's compare lists at most 300 files: a PR's own diff that reaches the cap may hide a moved file."""
-    own = {f'src/m{i}.py': hunk(1, ADDED) for i in range(size)}
-    merged(root, fake, own, own)
+@pytest.mark.parametrize('before, after, found', [(299, 299, []), (300, 300, ['no gate passed at head aaaaaaa (a delta review by security)']),
+                                                  (299, 300, ['no gate passed at head aaaaaaa (a delta review by security)']),
+                                                  (300, 299, ['no gate passed at head aaaaaaa (a delta review by security)'])])
+def test_a_compare_at_githubs_300_file_cap_is_measured_head_to_head(root, fake, before, after, found):
+    """GitHub's compare lists at most 300 files: a PR's own diff that reaches the cap at either head may hide a moved file."""
+    own = [(f'src/m{i}.py', hunk(1, ADDED)) for i in range(300)]
+    merged(root, fake, dict(own[:before]), dict(own[:after]))
     assert texts(evidence.gaps(root, 'acme/app', 42)) == found
 
 
@@ -956,6 +958,8 @@ OWN_DELTAS = [  # (the PR's own diff at OLD, at HEAD, the head-to-head lines of 
     pytest.param({'deploy/key.bin': None}, {'deploy/key.bin': None}, None, 'security', id='a risky file with no patch'),
     pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ADDED) + '\n+'}, {'src/app.py': 1}, '',
                  id='a one-line change on a plain path'),
+    pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ADDED + [f'    step_{i} = {i}' for i in range(30)])}, {},
+                 'quality', id='the merge keeps 30 lines main removed, which the head-to-head compare does not list'),
 ]
 
 
@@ -969,7 +973,7 @@ def test_a_base_merge_owes_the_gate_its_change_to_the_prs_own_diff_needs(root, f
 
 @pytest.mark.parametrize('line, gate', [
     ('- Generated (acme/app, 2026-10-22): guide/* src/version.py', ''),
-    ('Generated (ACME/App, 2026-10-22): guide/openapi.json src/version.py', ''),
+    ('Generated (ACME/App, 2026-10-22): guide/api.json src/version.py', ''),
     ('- Generated (acme/app, 2026-10-22): `guide/*`, `src/version.py`', ''),
     ('- Generated (acme/app, 2026-10-22): guide/*', 'quality'),
     ('- Generated (acme/other, 2026-10-22): guide/* src/version.py', 'arch'),
@@ -981,9 +985,22 @@ def test_a_base_merge_that_changes_only_declared_generated_files_carries_the_pas
     """Acceptance 3 (#1230): a dated Generated line of .wuwei/standards.md names the repository's generated files."""
     (root / ws.DIR / 'standards.md').write_text(f'# Standards\n\n{line}\n')
     version = [f'VERSION = "1.{i}"' for i in range(30)]
-    last = {'src/app.py': hunk(10, ADDED), 'guide/openapi.json': hunk(1, ['"version": "1.0"']), 'src/version.py': hunk(1, version[:1])}
-    merged(root, fake, last, dict(last, **{'guide/openapi.json': hunk(1, ['"version": "1.1"']), 'src/version.py': hunk(1, version)}),
-           {'guide/openapi.json': 2, 'src/version.py': 31, 'src/app.py': 12})
+    last = {'src/app.py': hunk(10, ADDED), 'guide/api.json': hunk(1, ['"version": "1.0"']), 'src/version.py': hunk(1, version[:1])}
+    merged(root, fake, last, dict(last, **{'guide/api.json': hunk(1, ['"version": "1.1"']), 'src/version.py': hunk(1, version)}),
+           {'guide/api.json': 201, 'src/version.py': 31, 'src/app.py': 12})  # 201 generated lines make the change wide: arch
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ([f'no gate passed at head aaaaaaa (a delta review by {gate})'] if gate else [])
+
+
+@pytest.mark.parametrize('path, owner, glob, gate', [(p, owner, g, gate) for p, owner, gate in (
+    ('src/session.py', False, 'security'), ('src/sess.py', True, 'security'), ('src/sess.py', False, '')) for g in ('*', 'src/*', '*.py', 'src/sess*')]
+    + [('guide/openapi.json', False, '*', 'arch'), ('guide/openapi.json', False, 'guide/*', 'arch'), ('specs/1/contracts/api.py', False, '*.py', 'arch')])
+def test_a_generated_glob_never_drops_a_risky_owner_or_contract_path(root, fake, path, owner, glob, gate):
+    """Any session may write .wuwei/standards.md, and fnmatch's * crosses /: a Generated glob drops a file from the delta only
+    off risky, owner and contract paths, so a 100-line conflict resolution there still owes its gate (#1230 arch, security)."""
+    if owner:
+        ws.write_config(root, {**ws.config(root), 'owner_paths': ['infra/**', path]})
+    (root / ws.DIR / 'standards.md').write_text(f'- Generated (acme/app, 2026-10-22): {glob}\n')
+    merged(root, fake, {path: hunk(5, ['ttl = 60'])}, {path: hunk(5, [f'ttl_{i} = {i}' for i in range(100)])}, {path: 101})
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ([f'no gate passed at head aaaaaaa (a delta review by {gate})'] if gate else [])
 
 

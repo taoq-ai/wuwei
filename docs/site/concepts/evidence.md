@@ -185,7 +185,8 @@ arch for a contract, quality otherwise). The delta is what moved in the PR's own
 base, not everything between the two heads. A merge of the base that leaves the PR's own patches
 alone (line numbers aside) carries the passes, as does a change only to files the workspace
 declares generated with a dated line in `.wuwei/standards.md`, such as
-`- Generated (acme/app, 2026-10-22): guide/* openapi.json`. When the error budget is overrun, or a light item touches a
+`- Generated (acme/app, 2026-10-22): guide/* src/version.py`. The line applies off risky, owner
+and contract paths: a file there still counts, whatever the line names. When the error budget is overrun, or a light item touches a
 trust path (auth, sessions, tokens, secrets, permissions, grants, policies) outside docs, the raised
 tier takes its full gate set.
 

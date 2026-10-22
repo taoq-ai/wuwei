@@ -318,11 +318,10 @@ def gates_for(root, repo, pr, files, item):
 
 
 def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard', base=''):
-    """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR
-    (its repository before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head
-    a later finding replaces a FIX, and a pass clears it only by naming it in Supersedes (#1162). Code moved since the
-    last pass is re-read by the one gate the delta needs; docs or a small change off risky paths carries it. Given a base
-    sha, the delta is what moved in the PR's own diff, bar the files a dated Generated line of the standards names (#1230)."""
+    """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR (its repository
+    before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head a later finding replaces a FIX,
+    and a pass clears it only by naming it in Supersedes (#1162). Code moved since the last pass is re-read by the one gate the delta
+    needs; docs or a small change off risky paths carries it. Given a base sha, the delta is the PR's own diff (#1230)."""
     latest, last = {}, None
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
@@ -343,7 +342,8 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard',
                      for f in compare(root, repo, base, sha)['files']} for sha in (last, head))
         made = re.findall(r'[^\s`,]+', ' '.join(re.findall(rf'(?im)^[-*\s]*Generated \({re.escape(repo)}, [0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}\):(.*)$',
             path.read_text(encoding='utf-8')))) if (path := Path(root) / ws.DIR / 'standards.md').is_file() else []
-        moved = [p for p in was.keys() | now.keys() if (was.get(p) or [0])[0] != (now.get(p) or [0])[0] and not any(fnmatch.fnmatch(p, g) for g in made)]
+        moved = [p for p in was.keys() | now.keys() if (was.get(p) or [0])[0] != (now.get(p) or [0])[0] and (not any(fnmatch.fnmatch(p, g) for g in made)
+                 or RISKY.search(p) or CONTRACT.search(p) or owned(root, [p]))]  # a dated Generated glob never drops a risky, owner or contract path
         delta = [next((f for f in delta if f['path'] == p), (now.get(p) or was.get(p))[1]) for p in moved] if len(was) < 300 > len(now) else delta
     want = needed(root, 'light' if tier == 'light' else 'standard', delta)
     gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
