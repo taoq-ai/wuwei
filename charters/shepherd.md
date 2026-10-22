@@ -33,7 +33,8 @@ The watch pass (`/wuwei-watch`) is when you follow: no PR waits for the owner to
    builder; a question gets an answer with evidence; a request outside the promise is a scope
    change for the owner. Never claim an unpushed fix is present.
 3. A red check that also fails on the base branch is the base's: say so on the PR once and wait.
-   Any other red check is this PR's to fix.
+   Any other red check is this PR's to fix: it goes back to the builder, even after the gates
+   passed, and the fix is a new head under the delta rule.
 4. A PR open three days or more is stale: finish it, rebase it or close it with a reason.
 5. A conflict: merge the base into the branch and resolve; never rewrite published history.
 

@@ -120,9 +120,9 @@ def compute(root, everything=False):
                     'gaps': [evidence.gap('no repository named for this item')]})
     out = answers + flow(root, out)  # owed replies stay first
     live, prs = running(root), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
-    owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
+    owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith('CI failing') for g in r['gaps']) for r in prs)  # gates start at push (#1221)
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in [s.get('role') for s in live]) + [
-        evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s.get('role')).startswith('sentinel-') for s in live))
+        evidence.gap('orchestration: gates owed with no gate seat running')] * (owed and not any(str(s.get('role')).startswith('sentinel-') for s in live))
     return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + [{**r, 'gaps': r['gaps'] + [  # first: the Stop and session start cut from the end
         evidence.gap(f'{s.get("role")} running in session {s["session"]}', actionable=False) for s in live if str(s.get('item') or '').lower() == str(r['item']).lower()]} for r in out]  # the holder of each item
 

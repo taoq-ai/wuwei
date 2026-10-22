@@ -1324,6 +1324,40 @@ def test_a_draft_leaves_draft_or_asks_reviewers_only_once_its_gates_pass(root, d
     assert guards.bash(root, command, str(root), 's1') is None, command
 
 
+@pytest.mark.parametrize('command', READY)
+def test_a_draft_whose_gates_passed_stays_draft_while_a_check_fails_and_names_it(root, drafts, command):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    drafts.prs['7']['headRefOid'] = 'c' * 40  # its own head, so the checks read are its own
+    attest(root, 'quality', head='c' * 40, pr='o/r#7')
+    drafts.prs['7']['statusCheckRollup'] = [{'name': 'lint', 'conclusion': 'FAILURE', 'status': 'COMPLETED'},
+                                            {'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'},
+                                            {'context': 'ci/build', 'state': 'ERROR'}]
+    decision = guards.bash(root, command, str(root), 's1')
+    assert door_reached(decision) == 'ready' and '- CI failing: lint, ci/build' in decision['reason'], command
+    except_gap(root, 'CI failing: lint, ci/build', head='bbbbbbb')  # another head
+    except_gap(root, 'CI failing: lint, ci/build', head='ccccccc', approved=False)
+    assert door_reached(guards.bash(root, command, str(root), 's1')) == 'ready', command
+    except_gap(root, 'CI failing: lint, ci/build', head='ccccccc')  # the owner carries the red check at this head, as at the merge door
+    assert guards.bash(root, command, str(root), 's1') is None, command
+    drafts.prs['7']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    assert guards.bash(root, command, str(root), 's1') is None, command  # running is no failing check
+    drafts.prs['7']['statusCheckRollup'] = [{'name': 'test', 'conclusion': 'SUCCESS', 'status': 'COMPLETED'}]
+    assert guards.bash(root, command, str(root), 's1') is None, command
+
+
+def test_a_merge_with_its_gates_passed_and_a_failing_check_is_refused_naming_it(root, fake):
+    from test_evidence import attest, forget
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    attest(root, 'quality')
+    fake.prs['42'] = make_pr(checks='FAILURE')
+    decision = guards.bash(root, 'gh pr merge 42 -R acme/app --squash', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '- CI failing: test' in decision['reason']
+    fake.prs['42'] = make_pr()
+    forget(root)
+    assert guards.bash(root, 'gh pr merge 42 -R acme/app --squash', '/repo', 's1') is None
+
+
 def except_gap(root, gap, pr='o/r#7', head='aaaaaaa', approved=True):
     ws.record(root, 'ruling', {'kind': 'exception', 'pr': pr, 'head': head, 'gap': gap, 'approved': approved})
 
@@ -1459,8 +1493,8 @@ def test_the_pr_standard_note_is_the_charter_with_the_plugin_version(root, fake,
 
 def test_the_pr_standard_note_opens_a_draft_and_leaves_the_reviewer_to_the_shepherd(root, fake, repo):
     note = ' '.join(guards.bash(root, 'gh pr create --draft', str(root), 's1')['reason'].split())
-    for clause in ('The PR opens as a draft so CI runs, and the gates the diff needs read the draft head.',
-                   'It turns ready once they pass, and the shepherd requests the reviewer then.',
+    for clause in ('The PR opens as a draft, and the gates the diff needs read the draft head while CI runs.',
+                   'It turns ready once they pass and CI is green, and the shepherd requests the reviewer then.',
                    'Before merge, CI is green and every review thread is answered.'):
         assert clause in note, clause
     assert 'request a reviewer' not in note.lower() and 'before it opened' not in note

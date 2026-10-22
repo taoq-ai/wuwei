@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import re
+import shutil
 
 import pytest
 
@@ -87,6 +88,21 @@ def test_a_good_verdict_is_attested_however_it_was_written(root, fake):
     row = ws.rows(root, 'attest')[0]['data']
     assert (row['gate'], row['item'], row['head'], row['agent']) == ('quality', 'I-1', HEAD, 'rev1')
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_a_verdict_attested_while_ci_ran_counts_once_ci_turns_green_at_that_head(root, fake):
+    plan_one(root)  # gates start at push, in parallel with CI (#1221)
+    fake.prs['42'] = make_pr(checks='')
+    fake.prs['42']['statusCheckRollup'][0]['status'] = 'IN_PROGRESS'
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    assert reviewer_stop(root, 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/quality.md') is None
+    assert [r['data']['head'] for r in ws.rows(root, 'attest')] == [HEAD]
+    assert [g['text'] for g in evidence.gaps(root, 'acme/app', 42)] == ['CI running']
+    fake.prs['42'] = make_pr()
+    shutil.rmtree(root / ws.DIR / 'cache', ignore_errors=True)
+    assert evidence.gaps(root, 'acme/app', 42) == [] and guards.merge_door(root, 'acme/app', 42) is None
 
 
 def test_a_verdict_for_another_gate_is_refused(root):

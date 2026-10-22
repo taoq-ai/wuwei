@@ -7,9 +7,9 @@ what you produced and says what is still missing (`wuwei status`, `wuwei evidenc
   (`/wuwei-run`); `/wuwei-close` checkpoints it, and the next pass reopens it.
 - How to decide, when to ask the owner and what done means are stated once, in `_common.md`
   (Decisions and Done). Every seat reads that text; this file does not restate it.
-- Gates run before review. The PR opens as a draft (`gh pr create --draft`) so CI runs, the gates
-  read the draft head, and only then does it turn ready with reviewers (`gh pr ready` waits for
-  them). The diff picks the gates and the tier is the ceiling (`_common.md`, Done).
+- Gates run before review. The PR opens as a draft (`gh pr create --draft`), and the gates read
+  the draft head while CI runs. It turns ready with reviewers only once they pass and CI is green
+  (`gh pr ready` waits for them and refuses a failing check). The diff picks the gates and the tier is the ceiling (`_common.md`, Done).
 - Keep the flow going without the owner. When a seat hands back, take the next step. Finish
   before starting: start approved items that have no pull request, highest score first, only
   under the WIP limit and the seat ceiling (`planner.md`, Running the work 1). When the queue runs dry, plan
