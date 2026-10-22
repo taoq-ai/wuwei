@@ -186,7 +186,12 @@ The tier is a ceiling and the diff decides what runs under it:
 A one-line config flag costs one gate. After a fix round only the gate that found the problem
 re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
 the earlier passes; a larger one is re-read by the one gate it needs (security for risky paths,
-arch for a contract, quality otherwise). When the error budget is overrun, or a light item touches a
+arch for a contract, quality otherwise). The delta is what moved in the PR's own diff against its
+base, not everything between the two heads. A merge of the base that leaves the PR's own patches
+alone (line numbers aside) carries the passes, as does a change only to files the workspace
+declares generated with a dated line in `.wuwei/standards.md`, such as
+`- Generated (acme/app, 2026-10-22): guide/* src/version.py`. The line applies off risky, owner
+and contract paths: a file there still counts, whatever the line names. When the error budget is overrun, or a light item touches a
 trust path (auth, sessions, tokens, secrets, permissions, grants, policies) outside docs, the raised
 tier takes its full gate set.
 

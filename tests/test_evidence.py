@@ -930,6 +930,125 @@ def test_a_delta_review_gap_names_only_the_uncounted_verdicts_of_its_gate(root, 
         'verdict .wuwei/verdicts/I-1/security-aaaaaaa.md not counted: Confidence: must start with low, medium or high']
 
 
+BASE = 'c' * 40
+ADDED = ['def added():', '    return 1']
+
+
+def hunk(start, added, context=('x = 1', 'y = 2', 'z = 3'), heading='def run():'):
+    """One unified diff hunk at line start: three lines of context, then the lines the PR adds."""
+    return '\n'.join([f'@@ -{start},3 +{start},{3 + len(added)} @@ {heading}'] + [' ' + c for c in context]
+                     + ['+' + line for line in added])
+
+
+def merged(root, fake, last, now, delta=None, gates=('quality',)):
+    """PR 42 passed its gates at OLD, then took a merge of main at HEAD. last and now map each path of the PR's own diff
+    (its compare from the base at OLD and at HEAD) to its patch, None for none; the head-to-head compare holds main's
+    300-line risky file and delta (path -> lines), by default 12 lines main brought into each path of the PR's own diff."""
+    standard(root)
+    fake.prs['42'] = dict(make_pr(), baseRefOid=BASE)
+    fake.ancestors.add((OLD, HEAD))
+    for gate in gates:
+        attest(root, gate, OLD)
+    own = lambda d: [{'path': p, 'additions': (patch or '').count('\n+'), 'deletions': (patch or '').count('\n-'),  # noqa: E731
+                      **({'patch': patch} if patch is not None else {})} for p, patch in d.items()]
+    fake.deltas[(BASE, OLD)], fake.deltas[(BASE, HEAD)] = own(last), own(now)
+    fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 300, 'deletions': 0}] + [
+        {'path': p, 'additions': n, 'deletions': 0} for p, n in ({p: 12 for p in now} if delta is None else delta).items()]
+
+
+def test_a_base_merge_that_leaves_the_prs_own_diff_unchanged_carries_the_passes(root, fake):
+    """Acceptance 1 (#1230): main brought a risky file and lines into the PR's own file, far from its hunk."""
+    own = {'src/app.py': hunk(10, ADDED), 'tests/test_app.py': hunk(1, ['def test_added():', '    assert added() == 1'])}
+    merged(root, fake, own, dict(own, **{'src/app.py': hunk(52, ADDED, heading='def main_added():')}))
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_a_base_merge_is_measured_head_to_head_when_the_base_sha_is_unknown(root, fake):
+    own = {'src/app.py': hunk(10, ADDED)}
+    merged(root, fake, own, own)
+    del fake.prs['42']['baseRefOid']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
+
+
+@pytest.mark.parametrize('before, after, found', [(299, 299, []), (300, 300, ['no gate passed at head aaaaaaa (a delta review by security)']),
+                                                  (299, 300, ['no gate passed at head aaaaaaa (a delta review by security)']),
+                                                  (300, 299, ['no gate passed at head aaaaaaa (a delta review by security)'])])
+def test_a_compare_at_githubs_300_file_cap_is_measured_head_to_head(root, fake, before, after, found):
+    """GitHub's compare lists at most 300 files: a PR's own diff that reaches the cap at either head may hide a moved file."""
+    own = [(f'src/m{i}.py', hunk(1, ADDED)) for i in range(300)]
+    merged(root, fake, dict(own[:before]), dict(own[:after]))
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == found
+
+
+SESSION = {'src/session.py': hunk(5, ['ttl = 60'])}
+STEPS = [f'    step_{i} = {i}' for i in range(12)]
+OWN_DELTAS = [  # (the PR's own diff at OLD, at HEAD, the head-to-head lines of its paths or None for 12 each, the gate owed)
+    pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ADDED + [f'    step_{i} = {i}' for i in range(30)])},
+                 {'src/app.py': 42}, 'quality', id='conflict resolution adds 30 code lines (acceptance 2)'),
+    pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ['def added():', '    return 2'])},
+                 {'src/app.py': 2}, '', id='conflict resolution edits a PR line on a plain path'),
+    pytest.param(SESSION, {'src/session.py': hunk(5, ['ttl = 600'])}, {'src/session.py': 2}, 'security',
+                 id='conflict resolution edits a PR line on a risky path'),
+    pytest.param(SESSION, {'src/session.py': hunk(7, ['ttl = 60'])}, None, '', id='main renumbers a risky file far from the hunk'),
+    pytest.param(SESSION, {'src/session.py': hunk(5, ['ttl = 60'], heading='class Store:')}, None, '',
+                 id='main adds a function above the hunk of a risky file'),
+    pytest.param(SESSION, {'src/session.py': hunk(5, ['ttl = 60'], context=('x = 1', 'y = 9', 'z = 3'))}, None, 'security',
+                 id='main edits a line next to the hunk of a risky file'),
+    pytest.param(SESSION, {'src/session.py': hunk(5, ['ttl = 60']).replace('\n x = 1', '')}, None, 'security',
+                 id='one context line less'),
+    pytest.param({'src/app.py': hunk(10, STEPS)}, {'src/app.py': hunk(80, STEPS, context=('a = 1', 'b = 2', 'c = 3'))},
+                 {'src/app.py': 24}, 'quality', id='conflict resolution moves 12 PR lines elsewhere in the file'),
+    pytest.param(SESSION, {}, {'src/session.py': 1}, 'security', id='the merge drops the PR change to a risky file'),
+    pytest.param({}, SESSION, {}, 'security', id='the merge adds a risky change the head-to-head compare misses'),
+    pytest.param({'deploy/key.bin': None}, {'deploy/key.bin': None}, None, 'security', id='a risky file with no patch'),
+    pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ADDED) + '\n+'}, {'src/app.py': 1}, '',
+                 id='a one-line change on a plain path'),
+    pytest.param({'src/app.py': hunk(10, ADDED)}, {'src/app.py': hunk(10, ADDED + [f'    step_{i} = {i}' for i in range(30)])}, {},
+                 'quality', id='the merge keeps 30 lines main removed, which the head-to-head compare does not list'),
+]
+
+
+@pytest.mark.parametrize('last, now, delta, gate', OWN_DELTAS)
+def test_a_base_merge_owes_the_gate_its_change_to_the_prs_own_diff_needs(root, fake, last, now, delta, gate):
+    """Acceptance 2 (#1230), and the probes a merge asks for: a conflict resolution that edits the PR's own lines, a base
+    merge in a file the PR touches, on lines far from and next to its hunk; a patch GitHub leaves out moves its file."""
+    merged(root, fake, last, now, delta)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ([f'no gate passed at head aaaaaaa (a delta review by {gate})'] if gate else [])
+
+
+@pytest.mark.parametrize('line, gate', [
+    ('- Generated (acme/app, 2026-10-22): guide/* src/version.py', ''),
+    ('Generated (ACME/App, 2026-10-22): guide/api.json src/version.py', ''),
+    ('- Generated (acme/app, 2026-10-22): `guide/*`, `src/version.py`', ''),
+    ('- Generated (acme/app, 2026-10-22): guide/*', 'quality'),
+    ('- Generated (acme/other, 2026-10-22): guide/* src/version.py', 'arch'),
+    ('- Generated (acme/app): guide/* src/version.py', 'arch'),
+    ('- builder (acme/app, 2026-10-22): guide/* src/version.py', 'arch'),
+    ('', 'arch'),
+])
+def test_a_base_merge_that_changes_only_declared_generated_files_carries_the_passes(root, fake, line, gate):
+    """Acceptance 3 (#1230): a dated Generated line of .wuwei/standards.md names the repository's generated files."""
+    (root / ws.DIR / 'standards.md').write_text(f'# Standards\n\n{line}\n')
+    version = [f'VERSION = "1.{i}"' for i in range(30)]
+    last = {'src/app.py': hunk(10, ADDED), 'guide/api.json': hunk(1, ['"version": "1.0"']), 'src/version.py': hunk(1, version[:1])}
+    merged(root, fake, last, dict(last, **{'guide/api.json': hunk(1, ['"version": "1.1"']), 'src/version.py': hunk(1, version)}),
+           {'guide/api.json': 201, 'src/version.py': 31, 'src/app.py': 12})  # 201 generated lines make the change wide: arch
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ([f'no gate passed at head aaaaaaa (a delta review by {gate})'] if gate else [])
+
+
+@pytest.mark.parametrize('path, owner, glob, gate', [(p, owner, g, gate) for p, owner, gate in (
+    ('src/session.py', False, 'security'), ('src/sess.py', True, 'security'), ('src/sess.py', False, '')) for g in ('*', 'src/*', '*.py', 'src/sess*')]
+    + [('guide/openapi.json', False, '*', 'arch'), ('guide/openapi.json', False, 'guide/*', 'arch'), ('specs/1/contracts/api.py', False, '*.py', 'arch')])
+def test_a_generated_glob_never_drops_a_risky_owner_or_contract_path(root, fake, path, owner, glob, gate):
+    """Any session may write .wuwei/standards.md, and fnmatch's * crosses /: a Generated glob drops a file from the delta only
+    off risky, owner and contract paths, so a 100-line conflict resolution there still owes its gate (#1230 arch, security)."""
+    if owner:
+        ws.write_config(root, {**ws.config(root), 'owner_paths': ['infra/**', path]})
+    (root / ws.DIR / 'standards.md').write_text(f'- Generated (acme/app, 2026-10-22): {glob}\n')
+    merged(root, fake, {path: hunk(5, ['ttl = 60'])}, {path: hunk(5, [f'ttl_{i} = {i}' for i in range(100)])}, {path: 101})
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ([f'no gate passed at head aaaaaaa (a delta review by {gate})'] if gate else [])
+
+
 def test_verdicts_count_by_their_pr_when_the_item_is_not_in_the_plan(root, fake):
     fake.prs['42'] = make_pr(body=footer('OPS-9'))
     attest(root, 'quality', item='OPS-9')

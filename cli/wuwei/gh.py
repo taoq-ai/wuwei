@@ -44,7 +44,7 @@ def _summary(pr):
     return {'number': pr['number'], 'title': pr.get('title') or '', 'body': pr.get('body') or '',
             'state': 'MERGED' if pr.get('merged_at') else (pr.get('state') or '').upper(), 'isDraft': bool(pr.get('draft')),
             'headRefName': pr['head']['ref'], 'headRefOid': pr['head']['sha'], 'baseRefName': pr['base']['ref'],
-            'author': {'login': (pr.get('user') or {}).get('login', '')}, 'url': pr.get('html_url', ''),
+            'baseRefOid': pr['base'].get('sha'), 'author': {'login': (pr.get('user') or {}).get('login', '')}, 'url': pr.get('html_url', ''),
             'mergedAt': pr.get('merged_at'), 'createdAt': pr.get('created_at'), 'updatedAt': pr.get('updated_at')}
 
 
@@ -114,8 +114,8 @@ def unanswered_threads(repo, number, logins, since=''):
 def compare(repo, older, newer):
     """Status, commits and files (in the shape pr() gives) from older to newer, each a sha or a branch."""
     data = run(['api', f'repos/{repo}/compare/{older}...{newer}'])
-    return {**data, 'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0)}
-                              for f in data.get('files') or ()]}
+    return {**data, 'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0),
+                              'patch': f.get('patch')} for f in data.get('files') or ()]}
 
 
 def has_path(repo, path):

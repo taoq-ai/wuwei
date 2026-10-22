@@ -91,7 +91,7 @@ the owner saw.
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
+| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths. The delta is what moved in the PR's own diff against its base, so a base merge that leaves the PR's own patches alone (line numbers aside) carries the passes, as do files a dated `Generated` standards line names off risky, owner and contract paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change (over 200 lines that are not prose, or 10 code files; prose as CI not started reads it below, and specs count); a contract file or a spec contract (under a spec's `contracts/` folder) takes arch at any tier; full takes all four |
 | CI green (every check the base branch requires ran), threads answered, a reviewer requested | every PR |
 | Owner review, or an `owner review:` ruling, at that head (a `breaking:` or `exception:` ruling is not one) | `owner_paths` touched |
 | Open under three days | every PR |
@@ -254,13 +254,19 @@ An owner answer and a seat stop count only when the harness wrote them (#962). T
 each session's transcript under the projects folder (`.claude/projects` in the account's home,
 read from the password database, never from `HOME`). An answer counts when that transcript holds the
 AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
-the same answers. Claude Code writes that row after PostToolUse returns, so PostToolUse records
-`answer.pending` and keeps the first answer for its ids, and the planner's next hook call records it before
-any door reads the ledger. An error in that step records `hook.error` and the doors still judge the call. A Stop rereads for up to 1.5 s and then records `answer.unconfirmed` with the
-reason, as PostToolUse does at once for a transcript path outside the projects folder. An
-`answer.pending` row that no `prompt` or `answer.unconfirmed` row with its id follows (a session that
-ended before another hook call) reads as unconfirmed. Each answer id is recorded once: a replay
-records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
+the same answer to that question; each question in a batch counts on its own. Only the row's
+`toolUseResult.answers` counts, never its text: model-written questions and labels and WUWEI's own deny
+reasons fill that text, so a pair in it proves nothing. Claude Code
+writes that row after PostToolUse returns, so PostToolUse records `answer.pending` and keeps the first
+answer for its ids, and the planner's next hook call records it before any door reads the ledger. An
+error in that step records `hook.error` and the doors still judge the call. A Stop rereads for up to
+1.5 s for a row (not once the answer is 10 minutes old) and records an entry it can record whole; any other
+entry waits for the next call, so it never blocks the Stop (#1231). `answer.unconfirmed` records what is not recorded, with the check that failed: a
+transcript path outside the projects folder, no AskUserQuestion tool_use with the id, no
+`toolUseResult` answers in the row, a question whose answer differs (both values
+named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer.pending` row that no
+`prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
+call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
 type and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops, a
 moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
 recorded as unconfirmed until a reader for those transcripts exists. A process that writes the

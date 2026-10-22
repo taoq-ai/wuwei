@@ -395,6 +395,36 @@ def branch(fake, files=('src/app.py', 'tests/test_app.py')):
     fake.deltas[('main', 'i-1-change')] = [{'path': p, 'additions': 5, 'deletions': 0} for p in files]
 
 
+def test_the_merge_door_reads_a_base_merge_on_the_prs_own_diff(root, fake, repo):
+    """#1230 acceptance 1 and 2 at the merge door: an own diff a base merge left alone merges; 30 own lines are owed."""
+    from conftest import HEAD, OLD
+    from test_evidence import ADDED, BASE, forget, hunk, merged
+    own = {'src/app.py': hunk(10, ADDED), 'tests/test_app.py': hunk(1, ['def test_added():', '    assert added() == 1'])}
+    merged(root, fake, own, dict(own, **{'src/app.py': hunk(52, ADDED)}))
+    assert guards.pre_tool(root, bash('gh pr merge 42 --squash')) is None
+    fake.deltas[(BASE, HEAD)][0]['patch'] = hunk(52, ADDED + [f'    step_{i} = {i}' for i in range(30)])
+    fake.deltas[(OLD, HEAD)][1]['additions'] = 42
+    forget(root)
+    decision = guards.pre_tool(root, bash('gh pr merge 42 --squash'))
+    assert decision['decision'] == 'deny' and 'no gate passed at head aaaaaaa (a delta review by quality)' in decision['reason']
+
+
+def test_the_create_door_reads_a_base_merge_on_the_branchs_own_diff(root, fake, repo):
+    from conftest import HEAD, OLD
+    from test_evidence import ADDED, BASE, attest, hunk
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard'}])
+    branch(fake)
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'quality', OLD)
+    own = [{'path': 'src/app.py', 'additions': 2, 'deletions': 0, 'patch': hunk(10, ADDED)}]
+    fake.deltas[(BASE, OLD)], fake.deltas[(BASE, HEAD)] = own, [dict(own[0], patch=hunk(52, ADDED))]
+    fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 300, 'deletions': 0}]
+    decision = guards.pre_tool(root, bash('gh pr create --title x --body "WUWEI-Item: I-1"'))
+    assert decision['decision'] == 'deny' and 'a delta review by security' in decision['reason']  # no merge base: head to head
+    fake.merge_base = BASE
+    assert guards.pre_tool(root, bash('gh pr create --title x --body "WUWEI-Item: I-1"'))['decision'] == 'note'
+
+
 def test_a_pr_opens_only_once_its_gates_pass_on_the_branch(root, fake, repo):
     from test_evidence import attest
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard'}])

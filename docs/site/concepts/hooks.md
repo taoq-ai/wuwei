@@ -23,8 +23,13 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 
 **Why the transcript:** a hand-made hook call could otherwise write a ruling or a seat stop the owner never gave.
 An answer or stop the transcript does not show is recorded as `answer.unconfirmed` or
-`seat.unconfirmed` with the reason, at once or at the session's Stop. A session that ends before it
-confirms an answer leaves the answer's `answer.pending` row, which reads as unconfirmed. An error while
+`seat.unconfirmed` with the check that failed: at once, or for an answer once its tool_result row holds
+a different answer to that question or no `toolUseResult` answers (its text never counts), or after 10
+minutes with no row. Each question in a batch counts
+on its own, and an answer that is not recorded never blocks the planner's Stop: its note comes on the
+next tool call.
+A session that ends before it confirms an answer leaves the answer's `answer.pending` row, which reads
+as unconfirmed. An error while
 the next call confirms an answer is a `hook.error`; the doors still judge that call.
 
 **Seat reports outside auto mode:** Claude Code refuses SubagentHandback there, so SubagentStop keeps

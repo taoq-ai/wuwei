@@ -1,0 +1,50 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000001211",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000001211.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.",
+        "header": "plan",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Approve",
+            "description": "Start the 2 items."
+          },
+          {
+            "label": "Change",
+            "description": "Say what to change; the planner applies it and re-asks."
+          }
+        ]
+      }
+    ]
+  },
+  "tool_response": {
+    "questions": [
+      {
+        "question": "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.",
+        "header": "plan",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Approve",
+            "description": "Start the 2 items."
+          },
+          {
+            "label": "Change",
+            "description": "Say what to change; the planner applies it and re-asks."
+          }
+        ]
+      }
+    ],
+    "answers": {
+      "plan: approve this plan? 2 items on 1 goal, about 3 build hours; the plan is shown above.": "Approve"
+    }
+  },
+  "tool_use_id": "toolu_017Xbwiepr88GQA6eir2E962"
+}
