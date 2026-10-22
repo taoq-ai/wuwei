@@ -79,32 +79,6 @@
    "approved": true
   },
   {
-   "id": "stale-work",
-   "title": "feat(board): in-progress work that has not moved for hours shows as stale, so the Stop reminder and every session start name it until someone acts",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "owner 2026-10-22: A-Teams-Network/ai-stacks#3386 stalled third in one helper's serial queue of four PRs; the planner worked from the last event and never looked at a quiet draft again; WUWEI shows no ageing: a PR open three days is process fit, which evidence.visible hides, and the team row checks only that a shepherd seat runs, not that each PR moves. A standards line is advice that compaction and new sessions lose",
-   "promise": "an item in progress whose PR has had no new head, gate verdict, CI result or review event for 4 hours, and no live seat names it, shows on the board as an actionable 'stale since <time>: <last event>' line; the Stop reminder and the session start name it; it still counts toward the WIP limit until finished or parked with a reason; it never blocks a merge (process fit stays process fit)",
-   "acceptance": [
-    "given a draft PR whose last head, verdict and CI are 5 hours old and no seat names its item, when the board is read, then the item shows stale since that time with its last event",
-    "given the same PR with a live shepherd seat whose brief names its item, when the board is read, then it is not stale",
-    "given a stale item, when the planner stops, then the Stop reminder lists it"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": false
-  },
-  {
    "id": "reply-thread-ts",
    "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
    "goal": "G-2",
@@ -311,6 +285,33 @@
    "status": "open",
    "added": "2026-10-22",
    "approved": true
+  },
+  {
+   "id": "flow-order",
+   "title": "feat(board): in-progress work is ordered by Kanban flow policy (class of service, then closest to done, then age), cost of delay rises with time in progress, and an item can name what it waits on",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 8.2,
+   "why": "owner 2026-10-22, approved scope: in-progress work is handled like a pile (attention goes to the last event), so an old draft starves (A-Teams-Network/ai-stacks#3386); staleness is not only age but urgency and relation to other work. Replaces stale-work and absorbs plan-after (#637)",
+   "promise": "each plan item has a class of service (expedite, fixed-date, standard, intangible; default standard, fixed-date when its goal has a date); at most one expedite item is in progress; the board and the Stop reminder list in-progress work by class, then right to left (ready to merge, owner review, gates, fix round, building), then age, each row showing its class and time since its last event; an item's time criticality rises by one Fibonacci step per day in progress; an item may name items it waits on (wuwei plan add --after <id>), the board shows it waiting and the Stop hook leaves it out, and an item others wait on adds their cost of delay to its own; in-progress work idle for 4 hours with no live seat shows stale at the top of its class",
+   "acceptance": [
+    "given an old draft with no recent event and a newer PR that just got a CI result, both standard, when the board is read, then the item closer to done lists first, and age orders ties",
+    "given an expedite item, when the board is read, then it lists above every other class, and a second expedite start is sent back",
+    "given item B added with --after A, when the board is read, then B shows waiting on A, the Stop reminder leaves B out, and A's score includes B's cost of delay",
+    "given an in-progress item idle 5 hours with no live seat, when the board is read, then it shows stale with its last event"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
   },
   {
    "id": "door-words-text",
@@ -1094,6 +1095,33 @@
    "added": "2026-10-18",
    "approved": false,
    "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
+  },
+  {
+   "id": "stale-work",
+   "title": "feat(board): in-progress work that has not moved for hours shows as stale, so the Stop reminder and every session start name it until someone acts",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "owner 2026-10-22: A-Teams-Network/ai-stacks#3386 stalled third in one helper's serial queue of four PRs; the planner worked from the last event and never looked at a quiet draft again; WUWEI shows no ageing: a PR open three days is process fit, which evidence.visible hides, and the team row checks only that a shepherd seat runs, not that each PR moves. A standards line is advice that compaction and new sessions lose",
+   "promise": "an item in progress whose PR has had no new head, gate verdict, CI result or review event for 4 hours, and no live seat names it, shows on the board as an actionable 'stale since <time>: <last event>' line; the Stop reminder and the session start name it; it still counts toward the WIP limit until finished or parked with a reason; it never blocks a merge (process fit stays process fit)",
+   "acceptance": [
+    "given a draft PR whose last head, verdict and CI are 5 hours old and no seat names its item, when the board is read, then the item shows stale since that time with its last event",
+    "given the same PR with a live shepherd seat whose brief names its item, when the board is read, then it is not stale",
+    "given a stale item, when the planner stops, then the Stop reminder lists it"
+   ],
+   "prs": [],
+   "status": "dropped",
+   "added": "2026-10-22",
+   "approved": false,
+   "reason": "owner 2026-10-22: widened into flow-order (scope: answer)"
   },
   {
    "id": "flow-advice",
@@ -2910,10 +2938,10 @@
     "given --after zz where zz is not in the plan, when plan add runs, then it is refused naming zz and nothing is added",
     "given b waiting and nothing else open, when the Stop hook runs, then it does not list b"
    ],
-   "status": "parked",
+   "status": "dropped",
    "added": "2026-10-18",
    "approved": true,
-   "reason": "until after 2026-10-23: features behind bugs (G-2 first), WIP limit 4"
+   "reason": "folded into flow-order (waits-on relations), owner scope answer 2026-10-22"
   },
   {
    "id": "sandbox-spike",
