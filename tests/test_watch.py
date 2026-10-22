@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from conftest import make_pr, write_plan
+from conftest import launched, make_pr, write_plan
 from wuwei import board, evidence, gh, hook, plan, report, ws
 
 THREAD = 'https://acme.slack.com/archives/C0123ABC/p1760510000000200'
@@ -262,19 +262,21 @@ def test_a_running_seat_in_this_session_clears_its_line(root, fake, monkeypatch)
 def test_a_dead_stopped_or_unconfirmed_seat_never_counts_as_running(root, fake, monkeypatch):
     monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 's2')
     open_prs(root, fake)
-    seat(root, 'shepherd', session='s1')  # a session that died without a stop
+    now = ws.now()
+    monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(hours=6, seconds=1))
+    seat(root, 'shepherd', session='s1')  # a session that died without a stop, past the live bound
+    monkeypatch.setattr(ws, 'now', lambda: now)
     seat(root, 'shepherd', session='s2', agent='a2')
     seat(root, 'shepherd', session='s2', agent='a2', kind='seat.stopped')
-    seat(root, 'sentinel-quality', session='s2', agent='a3')
-    seat(root, 'sentinel-quality', session='s2', agent='a3', kind='seat.unconfirmed')
-    now = ws.now()
+    seat(root, 'sentinel-quality', session='s1', agent='a3')
+    seat(root, 'sentinel-quality', session='s1', agent='a3', kind='seat.unconfirmed')
     monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(days=1))
     seat(root, 'shepherd', session='s2', agent='a4')  # this session's seat from yesterday
     monkeypatch.setattr(ws, 'now', lambda: now)
     assert team(root) == [SHEPHERD, GATES]
     ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'a5'})  # a launch whose payload named no session
     monkeypatch.delenv('CLAUDE_CODE_SESSION_ID')
-    assert team(root) == [SHEPHERD, GATES]  # no session known: no seat of any session counts
+    assert team(root) == [SHEPHERD, GATES]  # a seat with no session counts in no session
 
 
 def test_two_open_prs_need_no_shepherd_line(root, fake, monkeypatch):
@@ -458,3 +460,84 @@ def test_plan_add_keeps_and_merges_recorded_prs_and_matches_the_repo_case(root, 
     _add('--promise', 'new contract')
     _add('--pr', 'acme/app#8')
     assert plan.find(root, 'T')['prs'] == ['acme/app#7', 'acme/app#8']
+
+
+def launch(root, session, prompt, agent=None, role='builder'):
+    """A builder launch in session: its PreToolUse decision, then (when agent names one) the seat it starts."""
+    data = {'subagent_type': f'wuwei:{role}', 'description': 'build', 'prompt': prompt}
+    out = hook.handle(root, 'PreToolUse', {'session_id': session, 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': data})
+    if agent and not refused(out):  # an accepted launch only
+        hook.handle(root, 'PostToolUse', {'session_id': session, 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': data,
+                                          'tool_response': {'agentId': agent}})
+    return out
+
+
+def refused(out):
+    return out['hookSpecificOutput']['permissionDecisionReason'] if out and out['hookSpecificOutput'].get('permissionDecision') == 'deny' else None
+
+
+def test_a_live_seat_in_another_session_shows_on_the_board_and_counts_for_the_team_row(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 'B')
+    open_prs(root, fake)
+    launch(root, 'A', 'Item: i-2\nBuild it.', agent='b1')
+    seat(root, 'shepherd', session='A', agent='sh1')
+    assert team(root) == [GATES]
+    rows = [r for r in board.compute(root) if r['item'] == 'I-2']
+    assert [g['text'] for r in rows for g in r['gaps'] if 'running' in g['text']] == ['builder running in session A']
+    assert '- I-2 c (acme/app#42): ' in (text := board.text(board.compute(root), root)) and 'builder running in session A [waiting]' in text
+    assert not [g for r in board.compute(root) if r['item'] != 'I-2' for g in r['gaps'] if 'running in session' in g['text']]
+
+
+def test_a_seat_past_the_live_bound_no_longer_counts_in_any_session(root, fake, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 'B')
+    open_prs(root, fake)
+    now = ws.now()
+    monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(hours=6, minutes=1))
+    seat(root, 'shepherd', session='A', agent='old')
+    launch(root, 'A', 'Item: I-2', agent='b-old')
+    monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(hours=6, minutes=-1))
+    seat(root, 'sentinel-quality', session='A', agent='young')
+    monkeypatch.setattr(ws, 'now', lambda: now)
+    assert team(root) == [SHEPHERD] and [s['agent'] for s in board.running(root)] == ['young']
+    assert refused(launch(root, 'B', 'Item: I-2')) is None
+
+
+def test_a_launch_for_an_item_another_live_session_holds_is_sent_back_naming_it(root, fake):
+    open_prs(root, fake)
+    launch(root, 'A', 'Model: claude-opus-5-5 high\nItem: `I-1`.\nBuild it.', agent='b1')
+    reason = refused(launch(root, 'B', 'Item: I-1\nBuild it.'))
+    assert 'I-1' in reason and 'session A' in reason and 'b1' in reason
+    assert refused(launch(root, 'B', 'Item: i-1', role='sentinel-quality'))  # the plan reads ids without case
+    assert ws.rows(root, 'refused')[-1]['data']['session'] == 'B'
+    assert refused(launch(root, 'A', 'Item: I-1\nBuild the next part.')) is None  # the holding session itself
+    hook.handle(root, 'SubagentStop', launched({'session_id': 'A', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                                'last_assistant_message': 'done', 'cwd': str(root)}))
+    assert refused(launch(root, 'B', 'Item: I-1\nBuild it.')) is None  # stopped: free again
+
+
+@pytest.mark.parametrize('prompt, sent_back', [
+    ('Item: I-10\nBuild it.', False),  # I-1 is a prefix of I-10: a different item
+    ('Item: I-1x', False), ('Item: I', False),
+    ('Item: I-2\nThe brief in session A said `Item: I-1`; leave it alone.', False),  # a quote after the brief's own line
+    ('The brief in session A said `Item: I-1`.\nItem: I-2\nBuild it.', False),  # a quote before the brief's own line
+    ('> Item: I-1\nItem: I-2', False),  # a quoted line
+    ('Item: I-2\nItem: I-1', False),  # two lines: the first names the item, as the seat records it
+    ('Item: I-1\nItem: I-2', True), ('  Item: I-1', True), ('Build Item: `I-1`, then stop.', True),
+    ('Item:I-1.', True), ('Item: I-1 in acme/app.', True), ('Model: x\nItem: I-1', True),
+    ('The brief in session A said `Item: I-1`.\n- Item: I-2', False), ('Done: `Item: I-1`.\n**Item:** I-2', False),  # list and bold lines
+    ('- Item: I-1', True), ('* Item: I-1', True), ('**Item:** I-1', True), ('**Item: I-1**', True)])
+def test_a_brief_that_quotes_or_wraps_another_items_line_is_judged_by_its_own_item(root, fake, prompt, sent_back):
+    open_prs(root, fake, count=3)
+    write_plan(root, [{'id': i, 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}
+                      for i in ('I-1', 'I-10', 'I-1x', 'I', 'I-2')])
+    launch(root, 'A', 'Item: I-1', agent='b1')
+    assert bool(refused(launch(root, 'B', prompt, agent='b2'))) is sent_back
+    held = [s['item'] for s in board.running(root) if s['session'] == 'B']
+    assert held == ([] if sent_back else [hook.asked({'prompt': prompt})[0]])
+
+
+def test_a_seat_recorded_without_a_session_holds_nothing(root, fake):
+    open_prs(root, fake)
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x1', 'item': 'I-1'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x2', 'item': 'I-1', 'session': ''})
+    assert refused(launch(root, 'B', 'Item: I-1')) is None and board.running(root) == []

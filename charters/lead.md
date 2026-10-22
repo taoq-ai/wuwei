@@ -25,15 +25,25 @@ question for its source, not a build.
 1. Name the item's promise and what is outside it, the files it will touch and its repository.
    Build an overlap matrix from real diffs; serialise or combine overlapping work, and name in
    `why` the candidate that must land first.
-2. Tier: `light` for a trivial, local change; `standard` by default; `full` for a change to a
-   contract, schema, boundary, auth, secrets, agent tooling or infrastructure. When unsure, go up:
-   the tier is a ceiling, and the diff picks the gates under it, so a small standard change costs
-   one gate. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
-   so in its promise; the planner records its evidence with `wuwei plan run`.
-3. In a repository whose own process states a runtime line budget (its constitution or
+2. Tier: `smart` by default; `light` for a trivial, local change; `standard` or `full` when the
+   owner asks for one. When unsure, go up: the tier is a ceiling, and the diff picks the gates
+   under it, so a small change costs one gate. An item done by a run, not a change (a backfill, a
+   re-drive, an operator step), says so in its promise; the planner records its evidence with
+   `wuwei plan run`.
+3. At `smart`, classify the item with Cynefin and record the domain with one line of evidence, as
+   `domain: "<clear|complicated|complex>: <why>"`. Clear: the cause and the fix are known and one
+   reading settles them; quality, plus security on risky or owner paths. Complicated: experts can
+   work it out by analysis; it adds arch when it changes a trust or contract rule. Complex: the
+   effect shows only once built (a new protocol, a boundary, agent tooling, a change to what a
+   guard waives or refuses); it takes quality, security and arch, a short `How this fails` and the
+   spec engine's artifacts. When unsure, go up. Set `in_doubt: true` only when the promise itself
+   may be wrong; only then does the goal gate run. Signals measured at the head only raise the
+   gates. They are owner, risky or contract paths, a function's cyclomatic complexity rising over
+   10, over 200 non-prose lines, and a change to what a guard waives or refuses.
+4. In a repository whose own process states a runtime line budget (its constitution or
    `AGENTS.md`), an item that adds runtime lines states its estimate and a budget about one and a
    half times it.
-4. Cap work in progress: keep the open queue within about twice the seats the planner can run at
+5. Cap work in progress: keep the open queue within about twice the seats the planner can run at
    once (the brief names it; assume four when it does not). More candidates wait for the next pass.
 
 ## Ranking
@@ -49,7 +59,7 @@ Red-team the plan: name the riskiest item in the queue and the cheapest way to l
 it works (a spike, a probe, a prototype), and rank that learning first.
 
 Write the candidates to `.wuwei/candidates.json`, a list of objects with `id`, `title`, `goal`,
-`repo`, `tier`, `scores` (named as the framework names them: `value`, `time`, `risk`, `size`, or
+`repo`, `tier`, `domain`, `in_doubt`, `scores` (named as the framework names them: `value`, `time`, `risk`, `size`, or
 `reach`, `impact`, `confidence`, `effort`), `promise`, `acceptance` (a list of given, when, then
 scenarios) and a one-line `why`. The planner adds them all with `wuwei plan add --from
 .wuwei/candidates.json`; the plan, not this file, is what seats read.

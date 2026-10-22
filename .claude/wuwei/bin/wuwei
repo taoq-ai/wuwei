@@ -1,9 +1,22 @@
 #!/bin/sh
 plugin_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd) || exit 2
-command -v python3 >/dev/null 2>&1 || { echo "wuwei: python3 not found" >&2; exit 2; }
 [ -d "$plugin_root/cli/wuwei" ] || { echo "wuwei: cli not found under $plugin_root" >&2; exit 2; }
+tried=
+fits() {  # "$@" is Python 3.11 or later (it has -P); else add it and its version to $tried
+    v=$("$@" -V 2>&1) && v=${v#Python } || v='not found'
+    case $v in 3.1[1-9]*|3.[2-9][0-9]*|[4-9].*) return 0 ;; esac
+    tried="$tried, $* $v"; return 1
+}
+py= arg=  # WUWEI_PYTHON, else the newest python3.x, python3, the Windows py launcher (Git Bash), python
+if [ -n "${WUWEI_PYTHON:-}" ] && fits "$WUWEI_PYTHON"; then py=$WUWEI_PYTHON; else
+    for c in python3.15 python3.14 python3.13 python3.12 python3.11 python3 py python; do
+        [ "$c" = py ] && arg=-3 || arg=
+        fits "$c" $arg && py=$c && break
+    done
+fi
+[ -n "$py" ] || { echo "wuwei: WUWEI needs Python 3.11 or later (set WUWEI_PYTHON to one); tried ${tried#, }" >&2; exit 2; }
 unset PYTHONEXECUTABLE
-exec python3 -I -P -S -c 'import runpy, sys; sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]
+exec "$py" ${arg:+"$arg"} -I -P -S -c 'import runpy, sys; sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]
 try: runpy.run_module("wuwei", run_name="__main__", alter_sys=True)
 except Exception as exc:  # a PreToolUse hook that fails before it can judge refuses: only exit 2 blocks the call
     if sys.argv[1:] != ["hook", "PreToolUse"]: raise

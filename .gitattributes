@@ -1,0 +1,2 @@
+# cmd.exe reads labels reliably only from CRLF lines: keep the bytes as committed on every platform.
+*.cmd -text whitespace=cr-at-eol

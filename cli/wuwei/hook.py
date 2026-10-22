@@ -48,14 +48,18 @@ def context(event, text):
 def pre_tool(root, payload):
     try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
         ws.cache_put(root, 'hook-seen', ws.now().timestamp())
+        ws.cache_put(root, 'hook-python', f'{sys.executable} {sys.version.split()[0]}')  # the doctor names the launcher's choice
     except Exception as exc:
         print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
     away = payload.get('tool_name') == 'SubagentHandback' and payload.get('permission_mode') in ('default', 'plan', 'acceptEdits', 'dontAsk', 'bypassPermissions')
+    item = payload.get('tool_name') in ('Agent', 'Task') and asked(payload.get('tool_input') or {})[0]  # as seat.started records it: so here, not in guards
+    held = next((guards.deny(f'item {item} is held by session {s["session"]} ({s.get("role")} seat {s.get("agent")} running): leave it to that session, or launch after its seat stops.')
+                 for s in (board.running(root) if item else ()) if str(s.get('item') or '').lower() == item.lower() and s['session'] != payload.get('session_id')), None)
     found = {'decision': 'deny', 'reason': (problem + '\n' if problem else '') + (AWAY if away else 'Then hand back again.')} \
-        if problem or away else guards.pre_tool(root, payload)
+        if problem or away else guards.pre_tool(root, payload) or held
     if found is None:
         return advise(root, payload.get('tool_input') or {}) if payload.get('tool_name') in ('Agent', 'Task') else None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
@@ -70,9 +74,9 @@ def pre_tool(root, payload):
 
 
 def asked(data):
-    """The item the brief names, the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
+    """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\bItem:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 
@@ -107,7 +111,7 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or board.running(root, payload.get('session_id')):
+    if payload.get('stop_hook_active') or closed(root) or any(s['session'] == payload.get('session_id') for s in board.running(root)):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'
@@ -398,6 +402,7 @@ def _answers(root, kept):
 REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 SESSION_CAP = 10000  # Claude Code's additionalContext cap; a longer one reaches the session as a file path
 WAIT, BOUND = 1.5, 600  # seconds a Stop rereads a transcript the harness may still be writing, and an answer waits for its row
+HANDED = 'This agent\'s report was delivered to you as a message from "{}" (its SubagentHandback call)'  # the harness's words
 AWAY = ('This session is not in auto mode, so the harness refuses SubagentHandback: do not call it again. End now with your '
         'report as plain text; WUWEI keeps it and passes it on, and your stop attests a verdict file it names.')
 
@@ -479,30 +484,32 @@ def codex(payload):
 
 
 def deliver(root, event, payload, out, said):
-    """Seat reports the harness kept from the planner (SubagentHandback runs only in auto mode) unless its task notification
-    gave them, and owner answers' notes (said), given once on the planner's next tool call or stop; reports stay under .wuwei/reports (#1160)."""
+    """Seat reports the harness kept from the planner and owner answers' notes (said), once on its next call or stop (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
     if said and 'permissionDecisionReason' in spec:  # a refused call still carries the notes of the answers recorded on it
         spec['permissionDecisionReason'] += '\n\n' + '\n'.join(said)
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found = Path(root) / ws.DIR / 'reports' / 'pending', []
-    session = re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
+    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
         try:
-            os.replace(path, kept := pending.parent / path.name)  # one hook wins a race; the other skips it
+            (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
+            rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
+                    and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
+            gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
+            at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
+            told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
+                       if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
+            if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
+                continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
             continue
-        (_, agent, role, _), text = kept.stem.split('--', 3), kept.read_text(encoding='utf-8')
-        rows = transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or ()  # a queued notification
-        told = any(html.unescape(body) == text for r in rows if isinstance(r, dict)  # may be dropped, so
-                   for body in re.findall(r'<result>(.*?)</result>', str(r.get('content')), re.S))
         found.append((agent, f'## {role} {agent}: report already notified; kept at {kept}' if told else f'## {role} {agent} (kept at {kept})\n{text}'))
     if not said and not found:  # a notified report is a pointer, never lost (#1198)
         return out
-    note = '\n'.join(said + ["WUWEI: SubagentHandback runs only in auto mode, so the hook kept these seats' last messages (a "
-                             'report a task notification carried, by its path):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
+    note = '\n'.join(said + ["WUWEI: the hook kept these seats' last messages, which no task notification gave you (one it gave, "
+                             'by its path only):\n\n' + '\n\n'.join(text for _, text in found)] * bool(found))
     if event == 'Stop':
         return {'decision': 'block', 'reason': ((out or {}).get('reason', '') + '\n\n' + note).strip()}
     if payload.get('tool_name') == 'SendMessage' and any(agent and agent in str(data.get('to', '')) for agent, _ in found):

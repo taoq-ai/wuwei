@@ -308,10 +308,10 @@ def create_door(root, repo, branch, base, text, act=OPEN, ref=''):
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
     except gh.GhError as exc:
         return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; it {act}.')
-    pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch}
+    pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch,
+          'headRefOid': (head := (diff.get('commits') or [{}])[-1].get('sha', '')), 'baseRefOid': (diff.get('merge_base_commit') or {}).get('sha')}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
-    head = (diff.get('commits') or [{}])[-1].get('sha', '')
-    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier, (diff.get('merge_base_commit') or {}).get('sha'))
+    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier, pr['baseRefOid'])
     found = evidence.excepted(root, ref, head, found) if ref else found  # the owner's exception for this PR at this head (#1168)
     found += [{'text': 'no plan item is named, so no gate verdict can count: end the PR body with the WUWEI footer or a '
                'WUWEI-Item line, passed by --body or a --body-file path WUWEI can read (a literal path, not $VAR)'}] if found and not item_id else []

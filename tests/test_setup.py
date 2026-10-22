@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -299,7 +300,7 @@ def test_doctor_hooks_is_ok_only_when_pre_tool_fired_in_the_last_two_minutes(tmp
     monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(seconds=5))
     hook.pre_tool(tmp_path, {'tool_name': 'Read', 'tool_input': {}})
     monkeypatch.setattr(ws, 'now', lambda: real)
-    assert hooks() == ('ok', 'fired 5s ago')
+    assert hooks() == ('ok', f'fired 5s ago under {sys.executable} {sys.version.split()[0]}')  # the interpreter the hook ran under
     monkeypatch.setattr(ws, 'now', lambda: real + datetime.timedelta(seconds=121))
     assert hooks()[0] == 'warn'
 

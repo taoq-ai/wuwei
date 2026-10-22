@@ -1,13 +1,15 @@
 """The plan: goal-linked items, ranked by WSJF or RICE. The plan file is the day's contract."""
 
+import contextlib
 import json
+import re
 from pathlib import Path
 
 from wuwei import ws
 
 FIB = (1, 2, 3, 5, 8, 13, 20)
 FIELDS = {'wsjf': ('value', 'time', 'risk', 'size'), 'rice': ('reach', 'impact', 'confidence', 'effort')}
-TIERS = ('light', 'standard', 'full')
+TIERS = ('light', 'smart', 'standard', 'full')
 
 
 def _path(root):
@@ -36,8 +38,15 @@ def score(framework, scores):
 
 
 def save(root, rows):
+    old = {o.get('id'): o for o in items(root)}  # a changed item is stamped, unless it brings another clone's stamp (merge)
+    [r.update(changed=ws.now().isoformat()) for r in rows if r != (was := old.get(r.get('id'), {})) and r.get('changed') == was.get('changed')]
     rows.sort(key=lambda item: (item.get('status') != 'open', -item.get('score', 0)))
     ws.atomic_write(_path(root), json.dumps({'items': rows}, indent=1) + '\n')
+
+
+def merge(root, data):  # another clone's plan.json merged into this one by item id: the newer change to each item wins, this clone's on a tie
+    with contextlib.suppress(OSError, ValueError, TypeError, KeyError, AttributeError):  # None for a file that is not a plan: last writer wins, as before
+        return save(root, list({r['id']: r for r in sorted(json.loads(data)['items'] + json.loads(_path(root).read_bytes())['items'], key=lambda r: r.get('changed') or '')}.values())) or True
 
 
 # The names a lead may give its scores, mapped to the framework's own.
@@ -45,15 +54,17 @@ ALIASES = {'business_value': 'value', 'user_business_value': 'value', 'time_crit
            'risk_reduction': 'risk', 'opportunity_enablement': 'risk', 'job_size': 'size'}
 
 
-def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=(), prs=()):
+def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=(), prs=(), domain='', in_doubt=False):
     """Add an item, or update it in place when its id is already in the plan (a parked or dropped
     item reopens). The promise and acceptance travel with it, so every seat reads them here."""
     if tier not in TIERS:
         raise ValueError(f'tier must be one of {", ".join(TIERS)}')
+    if domain and not re.fullmatch(r'(clear|complicated|complex):[ \t]*\S.*', domain):  # the Cynefin domain and one line of why
+        raise ValueError(f'domain must read "clear|complicated|complex: <one line of evidence>", not {domain!r}')
     framework = ws.config(root)['prioritisation']
     scores = {ALIASES.get(k, k): v for k, v in scores.items()}
     fields = {'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'framework': framework, 'scores': scores,
-              'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance), 'prs': list(prs)}
+              'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance), 'prs': list(prs), 'domain': domain, 'in_doubt': bool(in_doubt)}
     rows = items(root)
     item = next((row for row in rows if row.get('id', '').lower() == str(item_id).lower()), None)
     if item is not None:
@@ -80,8 +91,8 @@ def add_from(root, path):
     for c in rows:
         scores = c.get('scores') or {k: c[k] for k in (*FIELDS['wsjf'], *FIELDS['rice'], *ALIASES) if k in c}
         found.append(add(root, c['id'], c['title'], c.get('goal', ''), c.get('repo') or c.get('repository', ''),
-                         c.get('tier', 'standard'), scores, c.get('why', ''), c.get('promise', ''),
-                         c.get('acceptance') or c.get('scenarios') or c.get('accept') or ()))
+                         c.get('tier', 'smart'), scores, c.get('why', ''), c.get('promise', ''),
+                         c.get('acceptance') or c.get('scenarios') or c.get('accept') or (), (), c.get('domain', ''), c.get('in_doubt')))
     return found
 
 
