@@ -1,27 +1,267 @@
 [
- {"id": "1198", "title": "fix(hook): a seat report reaches the planner once outside auto mode", "goal": "G-2", "repo": "taoq-ai/wuwei", "tier": "standard",
-  "scores": {"value": 8, "time": 8, "risk": 5, "size": 2},
-  "why": "taoq-ai/wuwei#1198: on 2026-10-20 in bypass mode every seat report reached the planner 2 to 6 times (task notification, PreToolUse context, Stop block), doubling planner context per seat. Owner ruled standard tier for today's batch.",
-  "promise": "Outside auto mode the hook delivers each kept seat report (.wuwei/reports/<file>) at most once: it records the report ids it has delivered and never repeats one in a PreToolUse note or a Stop block; the Stop hook names only reports not yet delivered and does not block on report text it already gave. Auto mode is unchanged. Files: cli/wuwei/hook.py and the vendored copy, tests/test_hook.py, docs/site/concepts/hooks.md. AGENTS.md Testing the guards applies to hook.py: route corpus at main and head with sha256. Runtime budget: 4 lines.",
-  "acceptance": ["Given two seats stopped outside auto mode, when the planner's next PreToolUse and Stop run, then each report appears once across them", "Given a report already delivered, when a later Stop runs, then it is not listed and the Stop does not block on it", "Given auto mode, when a seat hands back, then nothing changes from main"]},
- {"id": "1199", "title": "fix(evidence): a review thread counts as unanswered only when its last comment is not the owner's", "goal": "G-2", "repo": "taoq-ai/wuwei", "tier": "standard",
-  "scores": {"value": 8, "time": 8, "risk": 5, "size": 1},
-  "why": "taoq-ai/wuwei#1199: ai-assemble#2141 showed 10 unanswered threads that all ended with the owner's reply; owes R-1 and R-2 stayed overdue all day and the Stop hook kept listing them.",
-  "promise": "`N review threads unanswered` counts threads that are unresolved and whose last comment is not by the owner (the PR's owner login WUWEI already reads); an unresolved thread the owner answered no longer counts and no longer holds a merge; an owe whose where is that thread closes when its last comment is the owner's. Files: cli/wuwei/gh.py and/or evidence.py and board.py with vendored copies, tests. A change to the gaps in evidence.py runs the route differential. Runtime budget: 3 lines.",
-  "acceptance": ["Given an unresolved thread whose last comment is the owner's, when evidence is read, then it is not counted as unanswered", "Given an unresolved thread whose last comment is a reviewer's, when evidence is read, then it is counted", "Given an owe on a thread the owner last replied in, when the board is read, then the owe closes"]},
- {"id": "1200", "title": "fix(board): a run item is not marked done when a PR naming it merges", "goal": "G-2", "repo": "taoq-ai/wuwei", "tier": "standard",
-  "scores": {"value": 8, "time": 8, "risk": 8, "size": 1},
-  "why": "taoq-ai/wuwei#1200: G7-V4-HEAD-FIRST read done after its runner PR merged while production still had head none; later items keyed on it looked unblocked.",
-  "promise": "board marks an item done on a merged PR only when the item is not kind run; for a run item a merged PR records run evidence (`code merged as <ref>, run owed`) and the item stays open until `wuwei plan done <id> --reason <run evidence>`. Files: cli/wuwei/board.py and the vendored copy, tests/test_watch.py or the board tests. Runtime budget: 2 lines.",
-  "acceptance": ["Given a run item and a merged PR naming it, when the board is read, then the item stays open and shows code merged, run owed", "Given a build item and a merged PR naming it, when the board is read, then it is marked done as on main", "Given that run item, when the planner runs wuwei plan done with run evidence, then it is done"]},
- {"id": "1201", "title": "feat(board): a registered Codex job shows running, completed, failed or asked a question", "goal": "G-2", "repo": "taoq-ai/wuwei", "tier": "standard",
-  "scores": {"value": 5, "time": 5, "risk": 3, "size": 3},
-  "why": "taoq-ai/wuwei#1201: nine Codex jobs ran on 2026-10-20; their end, failure or a design question reached the planner only by tailing logs, and run rows stayed [waiting].",
-  "promise": "`wuwei plan run <id> --job <path to the companion's job JSON>` records the job file on the item; the board reads only files registered this way (never scans another plugin's folders) and shows the job's state from it: running, completed, failed, or asked a question (the job ended its turn with a question), with the HANDOFF.md path when the job names one. An unreadable or missing job file reads `job state unreadable`, never done. Files: cli/wuwei/__main__.py, plan.py, board.py and vendored copies, tests, charters/planner.md and docs. Runtime budget: 6 lines; if the companion's job JSON shape cannot be read from a real job file on this machine, record the shape assumed under Assumptions.",
-  "acceptance": ["Given a run item registered with a running job file, when the board is read, then it shows the job running", "Given the job file reports completed with a HANDOFF path, when the board is read, then it shows completed and the path", "Given a failed or question-ending job, when the board is read, then it shows failed or asked a question", "Given a missing job file, when the board is read, then it shows job state unreadable"]},
- {"id": "1202", "title": "fix(board): an item that names a PR without its plan link says so, and plan add links a taken-over PR", "goal": "G-2", "repo": "taoq-ai/wuwei", "tier": "standard",
-  "scores": {"value": 8, "time": 5, "risk": 5, "size": 3},
-  "why": "taoq-ai/wuwei#1202: six taken-over PRs by another author sat unlinked for three days and their items read no pull request yet. Part 2 (planner doing shepherd work) is mostly covered by #1189's orchestration row on main.",
-  "promise": "When an open item with no linked PR names a PR (`owner/repo#n` or `#n` of its repo in its title, promise or run reason) that is open, the board shows `PR owner/repo#n not linked: add the WUWEI footer naming <id>` in place of `no pull request yet`; `wuwei plan add --pr owner/repo#n` records the PR on the item and the board links it without a body line. Part 2: record under Assumptions that #1189's orchestration line covers the no-shepherd case; add no new note unless it fits the budget. Files: cli/wuwei/board.py, plan.py, __main__.py and vendored copies, tests, docs/site/reference.md. Runtime budget: 8 lines.",
-  "acceptance": ["Given an item whose title names open PR acme/app#7 with no plan link, when the board is read, then it says PR acme/app#7 not linked", "Given wuwei plan add with --pr acme/app#7, when the board is read, then the item links #7 and reads its gaps", "Given an item naming a merged or closed PR, when the board is read, then the not-linked line does not show"]}
+ {
+  "id": "tests-offline",
+  "title": "test: the suite never calls the real GitHub API, so a test run spends none of the owner's REST quota",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 8,
+   "time": 13,
+   "risk": 8,
+   "size": 1
+  },
+  "score_evidence": {
+   "value": "measured 2026-10-20: one full pytest run makes 140 real REST calls, a 15-mutant run about 2,000",
+   "time": "today's batch runs builders, gates and mutants on test_hook.py, the same exposure that took the quota to 0 on 2026-10-20",
+   "risk": "an exhausted quota fails every evidence read and the merge door until reset",
+   "size": "one autouse fixture in tests/conftest.py and one test; conftest.py on main has no gh stub (read 2026-10-22)"
+  },
+  "why": "taoq-ai/wuwei#1191 (labelled bug), parked 2026-10-20 as 'build later'; the owner's 2026-10-22 words 'check the recent bugs and fix them' restore it, and every seat in this batch spends the quota until it lands.",
+  "promise": "An autouse fixture in tests/conftest.py puts a stub gh that exits 1 first on PATH for every test, so in-process gh.run and every hook subprocess reach no network; tests that use the fake fixture still replace gh.run. A test asserts a full hook subprocess run makes no real gh call. Files: tests/conftest.py, one test, AGENTS.md note on the test command. Runtime budget: 0 lines.",
+  "acceptance": [
+   "Given the full suite run with a counting gh shim after the stub's folder on PATH, when it finishes, then the shim logs 0 calls",
+   "Given a test that runs the hook as a subprocess, when it reads the board, then gh resolves to the stub and the test still passes",
+   "Given a test using the fake fixture, when it calls gh.run, then the fake answers as before"
+  ]
+ },
+ {
+  "id": "1223",
+  "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 13,
+   "time": 13,
+   "risk": 8,
+   "size": 2
+  },
+  "score_evidence": {
+   "value": "a full-tier spec-only PR has no path to merge (A-Teams-Network/ai-stacks#3501, 2026-10-22); reproduced on main: guards.pre_tool denies 'exception: acme/app#3501 at 46dba41: specs/cid/tasks.md has 17 unchecked items. Accept?' while evidence.py:441 marks spec gaps safety at full",
+   "time": "that PR waits now, and every spec-first slice plan at full tier hits the same wall",
+   "risk": "a second hole on main: hook.exception_refs cuts the gap at the first '. ', so an accepted analysis.md finding row holding a sentence break is recorded short and never waives the printed gap (probe in the lead's scratch)",
+   "size": "one regex in the question branch, one parse in exception_refs, tests and the route differential"
+  },
+  "why": "taoq-ai/wuwei#1223: the question guard calls the spec artifacts process fit while the merge door holds on them as safety at full tier (_common.md Done lists them as safety). Option 1 of the issue, the one Done already states. Lands before door-words-text and exception-parser, which edit the same guard branch.",
+  "promise": "The question guard stops sending back an exception: question that names a spec engine gap (specs/..., openspec/..., no spec in the diff): at full tier wuwei evidence prints those as safety gaps, so the owner may accept them as _common.md Done says. Template, size and age gaps are still sent back as process fit. The hook records an accepted gap whole, including a gap text that holds a sentence break (an analysis.md finding row such as '| A08 | HIGH | Spec says X. Plan says Y |'), so the merge door waives exactly that gap at that head and records the exception with its follow-up item; a shorter text still waives nothing. Outside: reading unchecked tasks on a spec-only PR as expected (a scope change for the owner), and any change to which gaps are safety. Files: cli/wuwei/guards.py (AskUserQuestion branch), cli/wuwei/hook.py (exception_refs), the vendored copies under .claude/wuwei/cli/wuwei/, tests/test_guards.py, tests/test_hook.py, docs/design.md where it names the question door. AGENTS.md Testing the guards applies: route corpus at main and head with its sha256, each moved route a row, and a generated question probe (gap kinds x tiers x question tails) written by code. Assumption: below full tier the planner never sees spec gaps (evidence.visible hides process fit), so an exception asked there is harmless. Runtime: estimate +1, budget 2. Rollback: revert.",
+  "acceptance": [
+   "Given a full-tier spec-only PR whose tasks.md has unchecked items, gates passed and an approval, when the planner asks 'exception: o/r#n at <sha7>: specs/<f>/tasks.md has 17 unchecked items. Accept?', then the question guard passes it",
+   "Given the owner answers Yes and the session transcript shows it, when the merge door reads the PR at that head, then the spec gap is waived, the merge passes, and the exception and its follow-up item are on the record",
+   "Given an analysis.md gap whose finding row holds a sentence break, when the owner accepts it, then the recorded gap equals the printed gap and waives it, and a question naming only its first sentence waives nothing",
+   "Given an exception: question naming the template's sections, a changed-lines count or an open-days age, when asked, then it is still sent back as process fit"
+  ]
+ },
+ {
+  "id": "flow-advice",
+  "title": "docs(charters): finish before starting: a WIP limit of four items, a ceiling of eight seats the planner tells the owner about, and housekeeping at the close",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 13,
+   "time": 13,
+   "risk": 8,
+   "size": 2
+  },
+  "score_evidence": {
+   "value": "the owner's 2026-10-22 words: too many seats, slow turns, no alert, items started and not finished; the ledger shows peaks of 20, 15 and 12 live seats on 10-18, 10-19 and 10-20, and the PR list peaks of 9 open PRs on 10-18 and 10-20",
+   "time": "planner.md Running the work 1 says start every approved item 'in parallel up to what the machine and the owner's usage allow': no limit anywhere, and 34 approved items wait",
+   "risk": "lowers the load that fails the wall-clock tests and slows every turn, and cuts the open PRs queued for owner review",
+   "size": "text in five files and the rebuilt agents, no runtime"
+  },
+  "why": "The owner's 2026-10-22 asks for Kanban advice, a seat alert and housekeeping, as text first: it changes what the planner does today at 0 runtime lines and is the cheap trial for flow-board. Lands before 1221, which edits the same planner.md section and _way.md.",
+  "promise": "Kanban flow as advice, with no runtime lines. planner.md Running the work 1: finish before starting. An item is in progress when it has an open PR, a running builder or a registered Codex job. Start a new item only while fewer than 4 items are in progress across the workspace; fix rounds, gates, shepherd work and merges on open PRs come before any start. Keep at most 8 seats running at once. When the owner asks for more items or seats than that, say the cost once (slower turns, rate limits sooner, more notifications in this session's context) and do it anyway; record the owner's numbers as dated 'WIP limit: <n>' and 'Seat ceiling: <n>' lines in .wuwei/standards.md, which hold until the owner changes them. Each builder brief carries an 'Item: <id>' line so the launch records its item. charters/_way.md and skills/wuwei-watch step 5 start approved items only under the limit. skills/wuwei-close gains a housekeeping step that advises and acts only on what this session started: worktrees whose item is done, parked or dropped (git worktree list against the plan; a clean one removed with git worktree remove), background shells and tasks this session started that still run (stopped with the harness's own task tools), finished seats' scratch folders, and the size of .wuwei/cache and test temp folders; a process this session did not start is named to the owner once and never killed. charters/steward.md Measure adds flow: peak live seats per session, peak items in progress, items started against items merged per day, and median tool-call duration from the traces by live seat count, each unmeasured when its source is absent; a WIP or ceiling change is proposed with those numbers. Files: charters/planner.md, charters/_way.md, charters/steward.md, skills/wuwei-watch/SKILL.md, skills/wuwei-close/SKILL.md, agents/*.md and the vendored copies rebuilt with bin/wuwei agents build, a docs/site concepts page, tests/test_charters.py only if a fitness ceiling moves. No config key (constitution VI). Runtime: 0 lines.",
+  "acceptance": [
+   "Given 4 items in progress and approved items with no PR, when the planner follows its charter, then it starts none of them until one merges or parks, and it takes fix rounds, gates and merges first",
+   "Given the owner asks for 12 seats, when the planner launches them, then it states the cost once, records a dated Seat ceiling line in .wuwei/standards.md and starts them",
+   "Given a close, when the housekeeping step runs, then it lists the worktrees of done items and the session's own running tasks, removes or stops only those, and names any other process to the owner once",
+   "Given the steward's retro, when it reads the ledger and traces, then it reports peak seats, peak in progress, starts against merges and tool duration by seat count, or says which is unmeasured"
+  ]
+ },
+ {
+  "id": "1211-confirm",
+  "title": "fix(hook): an owner answer the transcript shows late, or beside a differing answer in a batch, is still recorded, and an unrecorded one says why",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 13,
+   "time": 13,
+   "risk": 13,
+   "size": 3
+  },
+  "score_evidence": {
+   "value": "answers the owner gave were reported not recorded: #1211's three cases on 2026-10-21 and a 'Re-scope' answer on a client repo on 2026-10-22; the planner must re-ask or leave a warning, against _common.md Decisions 2",
+   "time": "every plan approval and owner review in this batch passes through it; G-2 is due 2026-10-23",
+   "risk": "both mechanisms reproduce on main (lead probes): a Stop that runs before the harness writes the tool_result row records answer.unconfirmed for good after 1.5 s although the row lands a moment later, and one differing answer voids every labelled answer in its batch; this is the #962 trust boundary",
+   "size": "_shown and _confirm, a captured real fixture, a generated answer probe and design section 8"
+  },
+  "why": "taoq-ai/wuwei#1211 comments 2 and 3 and the 2026-10-22 Re-scope report share one source: _shown compares the whole answers dict and _confirm gives up for good at a Stop after 1.5 s. #1219 only showed the parse is sound. The riskiest item: its first step captures a real free-text answer row. Merges after free-lines-6 unless the headroom at its merge holds its lines; yes-word (same _answers code) waits for it.",
+  "promise": "An owner answer the session transcript shows is recorded even when the harness writes it late or a batch holds an answer that differs. (1) A Stop that does not yet find the tool_result row keeps the answer pending, and later hook calls re-read it; answer.unconfirmed is recorded only when the transcript holds the tool_result row with different answers, or after a named bounded age (about 10 minutes) with no row. (2) Each question in a batch is confirmed and recorded on its own: a labelled answer the transcript shows is recorded even when another answer in the same call is not. (3) answer.unconfirmed and its note say which case held: no tool_result row yet, or which question's answer differs, with both values truncated. First step, before code: capture one real free-text (Other) answer, the PostToolUse payload (its answer.pending row) and the transcript's toolUseResult row, from this pass's plan question or the next owner answer, and add it as tests/fixtures/payloads/claude-ask-post-free-text.json; if none exists when the build starts, record the assumed shape under Assumptions. Security holds: an answer counts only when the transcript holds that tool_use id and that question's exact answer, and a replay records nothing more. Files: cli/wuwei/hook.py (_shown, _confirm, _unconfirmed) and the vendored copy, tests/test_hook.py, the new fixture, docs/design.md section 8 (the 1.5 s rule). AGENTS.md Testing the guards: route corpus at main and head with sha256, and a generated answer probe (labels, free text, option notes, trailing text, batch mixes x row present, late, differing) written by code. Runtime: estimate +3, budget 5. Rollback: revert.",
+  "acceptance": [
+   "Given a plan answer whose tool_result row the harness writes after the planner's Stop waited 1.5 s, when the next hook call runs, then prompt and plan.approved are recorded and no answer.unconfirmed row precedes them",
+   "Given a batch of a one-way: question answered in free text and a plan: question answered Approve, where the transcript's free-text value differs from the payload's, when confirmed, then the plan approval is recorded and the note names only the one-way question as differing",
+   "Given no tool_result row ever, when the bound passes, then answer.unconfirmed records 'no tool_result row' once and the answer is not recorded",
+   "Given a payload whose answers the transcript does not hold, when any hook call runs, then nothing is recorded, as on main"
+  ]
+ },
+ {
+  "id": "free-lines-6",
+  "title": "refactor: free at least 16 runtime lines outside the guard, hook, board and evidence modules, with no behaviour change",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 5,
+   "time": 13,
+   "risk": 13,
+   "size": 3
+  },
+  "score_evidence": {
+   "value": "no behaviour of its own",
+   "time": "runtime is 3,396 of 3,400 (wc -l cli/wuwei/*.py at 6828776); 1222, 1211-confirm and flow-board need about 13 lines",
+   "risk": "unblocks three items, one of them the owner's seat alert",
+   "size": "a refactor with a differential probe per rewritten function, after five earlier rounds took the easy lines"
+  },
+  "why": "Constitution VI: a change that breaks the budget deletes something first. Kept out of guards.py, hook.py, board.py and evidence.py so it runs beside this batch without conflicts and needs no owner review; must merge before the second of 1222, 1211-confirm and flow-board.",
+  "promise": "Free at least 16 runtime lines (aim for 20) in modules other than guards.py, hook.py, board.py and evidence.py (report, view, sync, upgrade, setup, ws, plan, gh, verdict, agents, replay, __main__), with no behaviour change: CLI flags, messages, exit codes, ledger rows and output stay identical (wuwei evidence --record stays: docs/site/reference.md and README.md document it), and no complexity change (no line golf that makes a loop quadratic, the git-globals lesson in free-lines-5). Each rewritten function is checked by a differential probe over the suite's inputs on both trees. If fewer than 16 lines can go without golf, stop at what is clean and say so: the owner then decides a budget change. Files: those modules and the vendored copy under .claude/wuwei/cli/wuwei/. Runtime: -16 or more. Rollback: revert.",
+  "acceptance": [
+   "Given main and the head, when the suite and a differential probe over each rewritten function's inputs run on both trees, then outputs, ledger rows and exit codes are identical",
+   "Given wc -l cli/wuwei/*.py, when measured at the head, then it is at least 16 lines below main",
+   "Given the diff, when listed, then it touches none of guards.py, hook.py, board.py and evidence.py"
+  ]
+ },
+ {
+  "id": "1222",
+  "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 8,
+   "time": 8,
+   "risk": 3,
+   "size": 2
+  },
+  "score_evidence": {
+   "value": "every seat outside auto mode; reproduced on main: a kept report whose notification the transcript shows enqueued blocks the planner's first Stop with its pointer, and _common.md Report tells every seat to put the refused hand-back under Gap:",
+   "time": "each delivery day outside auto mode, as on 2026-10-22",
+   "risk": "no door; the report stays kept under .wuwei/reports",
+   "size": "deliver() and one charter line, agents rebuilt"
+  },
+  "why": "taoq-ai/wuwei#1222. What reproduces on main is the Stop pointer and the charter's Gap line; the handback-send-enforce hook is not WUWEI's (hooks/hooks.json registers none), so proposal 1 is the harness's, and proposal 2 is main's behaviour since #1217: say both on the issue.",
+  "promise": "Outside auto mode, a kept seat report whose task notification the session transcript shows enqueued, and not removed, is never given again: the planner's Stop does not block on its pointer (a pointer may still ride a PreToolUse note). A notification whose queue row was removed (cleared_on_cancel) is no delivery: that report is given in full, once. charters/_common.md Report drops the rule that a refused hand-back goes under Gap: and says that outside auto mode the refusal is expected, a reminder to call SubagentHandback again comes from the harness, not WUWEI, and the seat ends with its plain-text report. Outside: the harness's handback-send-enforce hook and proposal 2 of the issue (main since #1217). Files: cli/wuwei/hook.py (deliver) and the vendored copy, charters/_common.md, agents/*.md and vendored agents rebuilt with bin/wuwei agents build, tests/test_hook.py (the queue-dropped test moves from a pointer to the full report), docs/design.md hooks table where it names the pointer. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +2, budget 3. Rollback: revert.",
+  "acceptance": [
+   "Given a kept report whose notification the transcript shows enqueued, when the planner's first hook event after it is a Stop, then the Stop does not block on it",
+   "Given a notification enqueued and then removed with cleared_on_cancel, when the planner's next call or Stop runs, then the report is given in full once",
+   "Given a report with no notification, when the planner stops, then it is given in full once, as on main",
+   "Given the rebuilt agents, when a seat reads its charter, then no line asks it to report a refused hand-back under Gap:"
+  ]
+ },
+ {
+  "id": "1221",
+  "title": "docs(charters): gates start at push, in parallel with CI, and the ready door names a failing check",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {
+   "value": 8,
+   "time": 8,
+   "risk": 5,
+   "size": 3
+  },
+  "score_evidence": {
+   "value": "about one CI duration (35 to 45 minutes on the client repo) saved per review round per PR, measured by the owner on 2026-10-22",
+   "time": "filed today from a delivery day; every PR in this batch has at least one round",
+   "risk": "the ready door gains a CI read (design section 7), and board.py's duty today waits for CI (board.py:123)",
+   "size": "text in five charters and a skill, two small code edits, route differential"
+  },
+  "why": "taoq-ai/wuwei#1221. The waits are written in planner.md Running the work 2 ('once CI has run'), _way.md, _pr.md and builder.md, and board.py:123 names owed gates only on heads where CI is no longer running. The ready-door CI read is a design change the owner's issue asks for. Text lands after flow-advice (same planner.md section and _way.md); board.py after it and before flow-board (same lines).",
+  "promise": "Gates start at push, in parallel with CI; green CI stays a condition for ready and merge. Text: planner.md Running the work 2 launches the gates the diff needs when the builder hands back its pushed head, without waiting for CI; builder.md hands back once the push lands, with CI reported as unread; _way.md and _pr.md say the gates read the draft head while CI runs; shepherd.md keeps ready after green CI and passed gates; a red CI found after the gates pass goes back to the builder, and its fix is a new head under the delta rule. Runtime: board.py's orchestration duty names owed gates with no gate seat while CI runs or has not started (a red head goes to the builder first); the ready door refuses the flip to ready and a reviewer request on a draft while a check fails at the head, naming the failing checks (design section 7 amended in the PR). A test shows that nothing in the hooks or wuwei evidence discounts a verdict attested while CI ran. Files: charters/planner.md, _way.md, _pr.md, builder.md, shepherd.md, agents rebuilt, skills/wuwei-watch/SKILL.md, cli/wuwei/board.py, cli/wuwei/guards.py (ready_door) and the vendored copies, tests/test_guards.py, tests/test_watch.py, docs/design.md, docs/site. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +1, budget 3. Rollback: revert.",
+  "acceptance": [
+   "Given a builder push, when the builder hands back, then its charter has it hand back without a CI read and report CI as unread",
+   "Given a pushed draft head with CI running and gates owed, when the board is read with no gate seat running, then the team row names the owed gates",
+   "Given a verdict attested at head H while CI ran, when CI turns green at H, then wuwei evidence counts it and no hook refuses or discounts it",
+   "Given gates passed and a failing check at the head, when gh pr ready or a merge runs, then WUWEI refuses it and names the failing check; with CI green both pass"
+  ]
+ },
+ {
+  "id": "flow-board",
+  "title": "feat(board): the board shows items in progress against the WIP limit and queues the rest, and a launch over the seat ceiling carries a note",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {
+   "value": 8,
+   "time": 5,
+   "risk": 5,
+   "size": 3
+  },
+  "score_evidence": {
+   "value": "the alert the owner asked for, at the launch the planner cannot skip, and a WIP count the owner sees in wuwei status",
+   "time": "flow-advice carries the rule in text until this lands",
+   "risk": "a wrong count could hold starts: 2 builders on 2026-10-19 and 1 gate on 2026-10-20 never recorded a stop, so a seat must stop counting after an age",
+   "size": "board.compute, hook.advise, tests and design rows"
+  },
+  "why": "The runtime half of the owner's 2026-10-22 flow asks: the Stop hook today lists every approved item with no PR as 'no pull request yet', open work to close now, which pushes new starts. Merges after free-lines-6 (lines) and 1221 (same board.py lines 122-126); flow-advice is its cheap trial.",
+  "promise": "In progress is counted across the workspace: open items with a linked open PR, a builder seat this session started that names the item, has no stop and started within the last 4 hours, or a registered Codex job reading running. When in progress reaches the limit (4, or the last 'WIP limit: <n>' line in .wuwei/standards.md), each approved item with no PR and no running seat shows 'queued: <k> items in progress, WIP limit <n>: finish one first' as a waiting gap, so the Stop hook leaves it out; under the limit the highest-score items fill the free slots and show 'no pull request yet' as on main. The team row adds 'orchestration: <k> items in progress, over the WIP limit of <n>: finish before starting' when over, and 'orchestration: <s> seats running, over the ceiling of <c>' when this session's live seats exceed the ceiling (8, or the last 'Seat ceiling: <n>' line). An Agent or Task launch that would take live seats over the ceiling gets a PreToolUse note: 'WUWEI: seat <s+1> running in this session, over the ceiling of <c>: turns slow and rate limits come sooner. Tell the owner once; start it if the owner asked.' Never a refusal; no config key. Files: cli/wuwei/board.py, cli/wuwei/hook.py (advise), cli/wuwei/evidence.py only if the duty pattern must widen, the vendored copies, tests/test_watch.py, tests/test_hook.py, docs/design.md (board and PreToolUse rows), docs/site/reference.md. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +8, budget 12. Rollback: revert.",
+  "acceptance": [
+   "Given 4 items with open PRs and 2 approved items without one, when the board is read, then both show queued [waiting] and the Stop hook lists neither",
+   "Given 3 items in progress and 2 approved items without a PR, when the board is read, then the higher-score one shows no pull request yet and the other shows queued",
+   "Given a builder seat for item X started 5 hours ago with no stop, when in progress is counted, then X does not count",
+   "Given 8 live seats in this session, when the planner launches a ninth, then the launch passes with a note naming 9 over the ceiling of 8; at 7 live seats there is no note",
+   "Given 'WIP limit: 6' in .wuwei/standards.md, when the board is read, then the limit is 6"
+  ]
+ },
+ {
+  "id": "release-1022",
+  "title": "chore(release): merge the release-please PR that carries the 2026-10-22 bug fixes",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 8,
+   "time": 8,
+   "risk": 2,
+   "size": 1
+  },
+  "score_evidence": {
+   "value": "G-2 target: every fix released within two days of its merge",
+   "time": "G-2 is due 2026-10-23",
+   "risk": "a generated PR: no test or gate",
+   "size": "one merge by the shepherd"
+  },
+  "why": "Replaces release-features, whose features shipped in 5.0.0 to 5.1.1. Waits on 1223, 1211-confirm and 1222: park it on add with that reason and restore it when they merge.",
+  "promise": "Done by a run, not a change: once 1223, 1211-confirm and 1222 merge, the shepherd merges the release-please PR that carries them (read as generated: its version bump needs no test or gate), and the planner records the tag with wuwei plan done release-1022 --reason \"<tag and the PRs it carries>\". Fixes that merge later ride the next cut within two days of their merge. Files: none. Runtime: 0.",
+  "acceptance": [
+   "Given 1223, 1211-confirm and 1222 merged, when the release-please PR merges, then its tag's changelog lists each fix and the item is done with the tag as its evidence",
+   "Given the release-please PR, when wuwei evidence reads it, then it shows no test or gate gap, as for any generated release PR"
+  ]
+ },
+ {
+  "id": "prioritisation-docs",
+  "title": "docs(site): how RICE, Cost of Delay, Value vs Effort, MoSCoW, Kano and Eisenhower map onto the plan's two frameworks",
+  "goal": "unplanned",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {
+   "value": 3,
+   "time": 1,
+   "risk": 1,
+   "size": 1
+  },
+  "score_evidence": {
+   "value": "answers the owner's 2026-10-22 ask in place and heads off a later request for new prioritisation values; changes no ranking",
+   "time": "no date: G-1 and G-2 (due 2026-10-23) are bugs, and G-4's measure lists the 2026-10-18 issues, which hold no prioritisation issue",
+   "risk": "reduces no risk and unblocks nothing",
+   "size": "one paragraph in docs/site/concepts/the-day.md, no gate (docs only)"
+  },
+  "why": "The owner's 2026-10-22 ask for other prioritisation frameworks. Docs at 0 runtime lines; the quadrant label in wuwei plan view is not proposed (it changes no order and needs about 4 of the 4 free lines that flow-board needs). Ranks after the WIP and seat-alert work.",
+  "promise": "One short section after the WSJF and RICE list in docs/site/concepts/the-day.md says what each named framework is in WUWEI's terms, with no new scoring and no config value. RICE ships today (prioritisation = \"rice\"). Cost of Delay is WSJF's numerator, value + time + risk, and WSJF divides it by size. Value vs Effort is readable from the scores each item already holds (value or reach x impact against size or effort, both in the plan view). MoSCoW is buckets, not an order: Must is the approved queue, Should and Could are score order, and Won't is park or drop. Kano needs customer survey data the plan does not hold, so it stays out. Eisenhower is time criticality against value, which WSJF scores, with andon and bugs-first for the urgent. Files: docs/site/concepts/the-day.md. Runtime: 0 lines. Outside: a quadrant label or any new prioritisation value.",
+  "acceptance": [
+   "Given the concepts page, when a reader looks up Cost of Delay, Value vs Effort, MoSCoW, Kano or Eisenhower, then each has one or two sentences saying how it maps onto WSJF, RICE or the plan's statuses, or why it is not used",
+   "Given the diff, when wuwei evidence reads the PR, then it is docs only, with no runtime line and no config value added"
+  ]
+ }
 ]
