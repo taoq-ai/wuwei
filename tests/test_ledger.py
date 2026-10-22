@@ -153,6 +153,32 @@ def test_a_write_by_name_retries_a_replace_another_writer_holds_then_gives_up(tm
     assert len(calls) == 8 and (tmp_path / 'f.txt').read_text() == 'x'
 
 
+def test_of_two_racing_takes_one_wins_even_where_both_unlinks_succeed(root, monkeypatch):
+    """Windows lets two racing unlinks of one file both succeed (each opens it sharing delete), so a claim takes the ledger lock."""
+    import time
+    entry, real, won = root / ws.DIR / 'cache' / 'answer-s1--x.json', Path.unlink, []
+    ws.clone(root)  # one clone id, so one ledger file and one lock
+    entry.write_text('{}')
+
+    def windows_unlink(self, missing_ok=False):  # it checks, then removes: a racing caller between the two also succeeds
+        there = self.exists()
+        time.sleep(0.2)
+        if not there:
+            raise FileNotFoundError(self)
+        real(self, missing_ok=True)
+    monkeypatch.setattr(Path, 'unlink', windows_unlink)
+
+    def take():
+        with contextlib.suppress(OSError):
+            won.append(ws.take(root, entry))
+    calls = [threading.Thread(target=take) for _ in range(2)]
+    for call in calls:
+        call.start()
+    for call in calls:
+        call.join()
+    assert len(won) == 1 and not entry.exists()
+
+
 def _mine(root):
     path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)

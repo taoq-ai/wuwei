@@ -977,7 +977,7 @@ def test_a_link_replanted_at_the_temporary_name_after_its_unlink_is_refused(root
         try:
             unlink(name, dir_fd=dir_fd)
         finally:
-            if name == temp.name:
+            if os.path.basename(name) == temp.name:  # Windows writes by full path, POSIX by name in the walked folder
                 temp.symlink_to(ledger) if kind == 'symlink' else temp.hardlink_to(ledger)
     monkeypatch.setattr(ws.os, 'unlink', replant)
     assert reviewer_stop(root, f'Verdict file: {worktree_verdict(tmp_path_factory)}')['decision'] == 'block'
@@ -994,7 +994,7 @@ def test_a_workspace_reached_through_a_symlinked_path_still_copies_in(root, tmp_
 
 def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
     reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md')['reason']
-    assert str((root / ws.DIR / 'verdicts').resolve()) in reason
+    assert (root / ws.DIR / 'verdicts').resolve().as_posix() in reason  # / on every OS: Git Bash reads it unquoted
 
 
 def test_a_yes_to_a_goal_met_question_records_the_goal_as_met(root):
@@ -1374,7 +1374,7 @@ def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(r
     import os
     path = root / ws.DIR / 'reports' / 's1--lead1--lead--1.md'  # a kept report's place
     path.parent.mkdir(parents=True)
-    {'fifo': os.mkfifo, 'folder': os.mkdir, 'binary': lambda p: Path(p).write_bytes(b'\xff\xfe')}[planted](path)
+    {'fifo': getattr(os, 'mkfifo', None), 'folder': os.mkdir, 'binary': lambda p: Path(p).write_bytes(b'\xff\xfe')}[planted](path)
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
     assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
 

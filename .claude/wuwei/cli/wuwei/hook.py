@@ -359,7 +359,7 @@ def _confirm(root, payload, final):
         if why and (final or shown is None and fresh):  # with no row a later call rereads it;
             continue  # a Stop leaves an unrecorded answer to the next call, so its note never blocks the stop (#1231)
         try:
-            path.unlink()
+            ws.take(root, path)  # of two racing hooks, one records the answer
         except OSError:
             continue
         notes += [_unconfirmed(root, kept, why, same)] if why else []

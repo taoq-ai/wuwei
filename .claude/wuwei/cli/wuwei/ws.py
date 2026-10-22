@@ -240,6 +240,14 @@ def _locked(handle):
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def take(root, path):
+    """Remove path as one caller's claim on it, under the ledger lock: two racing unlinks can both succeed on Windows."""
+    ledger = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with open(ledger, 'a+', encoding='utf-8', newline='') as handle, _locked(handle):
+        Path(path).unlink()
+
+
 def record(root, kind, data):
     """Append one row to this clone's file; each row carries the hash of the one before it there."""
     path = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'

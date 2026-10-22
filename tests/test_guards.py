@@ -2046,7 +2046,8 @@ def test_a_push_of_15000_refspecs_makes_the_git_calls_a_push_of_one_makes(root, 
         command = 'git push origin ' + ''.join(word.format(i) for i in range(n)) + 'feature:main'
         assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', word
         counts.append(len(calls))
-    assert counts[0] == counts[1], (word, counts)
+    assert counts[0] == counts[1] or os.name == 'nt' and counts[1] < counts[0], (word, counts)  # Windows caps a command line
+    # at 32,767 characters: a call naming every ref fails there, and the door holds with fewer calls
 
 
 @pytest.mark.skipif(not shutil.which('git'), reason='needs git')
