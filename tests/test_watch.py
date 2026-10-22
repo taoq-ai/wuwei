@@ -1,6 +1,9 @@
 """Work in progress keeps moving without the owner's nudge: owed replies, the watch pass."""
 
 import datetime
+import json
+
+import pytest
 
 from conftest import make_pr, write_plan
 from wuwei import board, evidence, gh, hook, plan, report, ws
@@ -40,8 +43,10 @@ def _send(root, **fields):
         'tool_input': {**fields, 'text': 'Answered in the thread.'}, 'tool_response': {'ok': True}})
 
 
-def test_a_send_into_the_thread_closes_a_reply_owed_on_a_message_inside_it(root, fake):
-    plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+@pytest.mark.parametrize('link', [IN_THREAD, 'https://x.slack.com/archives/C1/p1729590000123456?cid=C1&thread_ts=1729580000.000100'],
+                         ids=['thread_ts-first', 'cid-first'])
+def test_a_send_into_the_thread_closes_a_reply_owed_on_a_message_inside_it(root, fake, link):
+    plan.owe(root, link, 'Omer asks about the rollout', 'Omer')
     out = _send(root, channel_id='C1', thread_ts='1729580000.000100')
     assert plan.find(root, 'R-1')['status'] == 'done'
     assert 'R-1' in out['hookSpecificOutput']['additionalContext']
@@ -55,10 +60,41 @@ def test_a_send_naming_the_linked_message_inside_a_thread_closes_it_too(root, fa
 
 def test_a_thread_reply_stays_owed_on_another_channel_or_thread(root, fake):
     plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+    plan.owe(root, 'https://x.slack.com/archives/C1/p1729590000123456?cid=C1 (thread_ts=1729580000.000900)', 'a note', 'Omer')
+    plan.owe(root, 'https://x.slack.com/archives/C1/p1729590000123456?cid=C1&xthread_ts=1729580000.000800', 'a typo', 'Omer')
     _send(root, channel_id='C2', thread_ts='1729580000.000100')
+    _send(root, channel_id='C12', thread_ts='1729580000.000100')
     _send(root, channel_id='C1', thread_ts='1729580000.000200')
+    _send(root, channel_id='C1', thread_ts='1729580000.000900')
+    _send(root, channel_id='C1', thread_ts='1729580000.000800')
     _send(root, channel_id='C1')
-    assert plan.find(root, 'R-1')['status'] == 'open'
+    assert [plan.find(root, i)['status'] for i in ('R-1', 'R-2', 'R-3')] == ['open', 'open', 'open']
+
+
+QUOTES = [('mcp__slack__slack_send_message', lambda line: {'channel_id': 'D04OWNER', 'text': f'Still open: {line}'}),
+          ('mcp__slack__slack_send_message', lambda line: {'channel_id': 'C1', 'text': f'Omer, {line}'}),
+          ('mcp__slack__slack_send_message', lambda line: {'channel_id': 'C2', 'text': f'FYI <{line.split()[5].rstrip(",")}|thread>'}),
+          ('mcp__github__add_issue_comment', lambda line: {'owner': 'acme', 'repo': 'app', 'issue_number': 7, 'body': line}),
+          ('mcp__filesystem__write_file', lambda line: {'path': 'notes.md', 'content': line})]
+
+
+@pytest.mark.parametrize('tool, fields', QUOTES, ids=['dm', 'channel', 'mrkdwn', 'github', 'write'])
+@pytest.mark.parametrize('link', [IN_THREAD, 'https://x.slack.com/archives/C1/p1729580000000100?thread_ts=1729580000.000100&cid=C1'],
+                         ids=['reply', 'root'])
+def test_a_message_quoting_the_link_elsewhere_leaves_the_reply_open(root, fake, link, tool, fields):
+    plan.owe(root, link, 'Omer asks about the rollout', 'Omer')
+    line = next(r for r in board.compute(root) if r['item'] == 'R-1')['gaps'][0]['text']
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root),
+                                      'tool_input': fields(line), 'tool_response': {'ok': True}})
+    assert link in json.dumps(fields(line)) and plan.find(root, 'R-1')['status'] == 'open'
+
+
+def test_a_send_naming_only_the_channel_of_a_top_level_link_neither_fails_nor_closes_it(root, fake):
+    plan.owe(root, 'https://x.slack.com/archives/C1/p1729570000000100', 'an older question', 'Omer')
+    plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+    _send(root, channel_id='C1', thread_ts='1729580000.000100')
+    assert [plan.find(root, i)['status'] for i in ('R-1', 'R-2')] == ['open', 'done']
+    assert ws.rows(root, 'hook.error') == []
 
 
 def test_a_send_elsewhere_leaves_the_reply_open(root, fake):
