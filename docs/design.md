@@ -80,8 +80,13 @@ gap holds a finding row (a `: |` before the gap's first `. ` or `?`), the hook r
 end (its last `|` before a `. `, `?` or the end), so the row keeps its sentences; any other gap ends
 at its first `. ` or `?`, whatever `|` the question's own words hold. Each open finding row and each
 checklist with an unchecked box is its own gap, so a yes waives only the gap the owner saw. A long
-row prints to its last cell edge within 100 characters, and rows whose printed parts match the way
-an exception matches (case and spacing aside) print whole.
+row prints to its last cell edge within 100 characters, unless that cut matches another spec gap of
+the PR, in any file, cut or whole, the way an exception matches (case, spacing, end marks and a
+printed `[waiting]` aside); then the row prints whole. Gaps whose whole texts still match that way
+(rows that differ only in case, or files and feature folders whose names do) carry their place
+after the feature folder, as in `specs/7-rate-limits/(2 of 2) checklists/a.md has 1 unchecked
+item`, so each takes its own yes. A row whose feature folder name holds a `. ` or `?` cannot be
+waived, since the hook ends its gap there.
 
 ## 6. The evidence contract
 
