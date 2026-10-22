@@ -306,6 +306,7 @@ def test_an_exception_answer_records_the_gap_after_the_refs(root):
 
 
 ROW = 'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Plan says Y? |'
+DOT = 'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A16 | HIGH | .env is read. Plan says Y |'
 
 
 @pytest.mark.parametrize('question, gap', [
@@ -313,6 +314,10 @@ ROW = 'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | 
     (f'exception: o/r#1 at abc1234: {ROW}', ROW),
     (f'exception: o/r#1 at abc1234: {ROW}. I recommend it. Accept?', ROW),
     (f'exception: o/r#1 at abc1234: {ROW}? Accept', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}. Accept (yes|no)?', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}. Accept? 1. yes | 2. no', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}.\nAccept (yes|no)?', ROW), (f'exception: o/r#1 at abc1234: {ROW} ', ROW),
+    (f'exception: o/r#1 at abc1234: {DOT}. Accept?', DOT),
     ('exception: o/r#1 at abc1234: specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Accept?',
      'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X'),
     ('exception: o/r#1 at abc1234: no test in the diff. I recommend it. Accept?', 'no test in the diff')])
@@ -322,9 +327,10 @@ def test_an_exception_gap_keeps_the_sentence_breaks_of_a_finding_row(question, g
 
 
 @pytest.mark.parametrize('gap', ['gates missing at head abc1234: quality', 'no test in the diff', 'CI failing: build'])
-@pytest.mark.parametrize('tail', ['. Accept (yes|no)?', '. Accept? 1. yes | 2. no', '.\nAccept (yes|no)?', '. Options: yes | no'])
+@pytest.mark.parametrize('tail', ['. Accept (yes|no)?', '. Accept? 1. yes | 2. no', '.\nAccept (yes|no)?', '. Options: yes | no',
+                                  '. Accept? | yes | no |'])
 def test_a_gap_that_holds_no_finding_row_ends_at_its_first_break_whatever_the_tail(gap, tail):
-    """Only a finding row reads to its last |, so a | in the question's own words never joins a gap (#1228)."""
+    """Only a finding row reads past its first break, so a | in the question's own words never joins a gap (#1228)."""
     assert hook.exception_refs(f'exception: o/r#1 at abc1234: {gap}{tail}') == ([('o/r', '1', 'abc1234')], gap)
 
 

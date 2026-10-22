@@ -8,7 +8,7 @@ from pathlib import Path
 
 T = Path(sys.argv[1])
 SEP = r"re.split(r'\.\s|\?', tail[cut:], maxsplit=1)[0]"
-CUT = "tail[:(cut := tail.rfind('|') + 1 if ': |' in tail else 0)]"
+CUT = r"cut = max((m.end() for m in re.finditer(r'\|(?=\s*(?:[.?]|$))', tail)), default=0) if ': |' in tail else 0"
 PROCESS = 'r"template\'s sections|changed lines|open [0-9]+ days"'
 CELL = 'row[:row.rfind("|", 1, 100) + 1] or row[:100] if len(row) > 100 else row'
 LISTED = ("        return [_unchecked(e['path'], gh.file(repo, e['path'], head)) for e in entries\n"
@@ -20,13 +20,20 @@ M = [
     ('guards.py', PROCESS, 'r"template\'s sections|changed lines"'),
     ('guards.py', PROCESS, 'r"specs/|template\'s sections|changed lines|open [0-9]+ days"'),
     ('guards.py', PROCESS, 'r"no spec in the diff|template\'s sections|changed lines|open [0-9]+ days"'),
-    ('hook.py', CUT, "tail[:(cut := tail.rfind('|') + 1)]"),  # round 1: every gap reads to its last |
-    ('hook.py', CUT, "tail[:(cut := tail.rfind('|') + 1 if '|' in tail else 0)]"),
-    ('hook.py', CUT, "tail[:(cut := tail.rfind('|') + 1 if ': |' not in tail else 0)]"),
-    ('hook.py', CUT, "tail[:(cut := tail.rfind('|') + 1 if ': |' in tail else len(tail))]"),
-    ('hook.py', CUT, "tail[:(cut := 0)]"),
-    ('hook.py', CUT, "tail[:(cut := tail.find('|') + 1 if ': |' in tail else 0)]"),
-    ('hook.py', CUT, "tail[:(cut := tail.rfind('|') if ': |' in tail else 0)]"),
+    ('hook.py', CUT, "cut = tail.rfind('|') + 1"),  # round 1: every gap reads to its last |
+    ('hook.py', CUT, CUT.replace(" if ': |' in tail else 0", '')),  # a gap without a row reads to a row end
+    ('hook.py', CUT, CUT.replace("': |' in tail", "'|' in tail")),
+    ('hook.py', CUT, CUT.replace("': |' in tail", "': |' not in tail")),
+    ('hook.py', CUT, CUT.replace('else 0', 'else len(tail)')),
+    ('hook.py', CUT, CUT.replace('default=0', 'default=len(tail)')),
+    ('hook.py', CUT, CUT.replace('max(', 'min(')),
+    ('hook.py', CUT, CUT.replace(r'(?=\s*(?:[.?]|$))', '')),
+    ('hook.py', CUT, CUT.replace('[.?]', '[.]')),
+    ('hook.py', CUT, CUT.replace('[.?]', '[?]')),
+    ('hook.py', CUT, CUT.replace('|$)', ')')),
+    ('hook.py', CUT, CUT.replace(r'\s*', '')),
+    ('hook.py', CUT, CUT.replace('m.end()', 'm.start()')),
+    ('hook.py', CUT, 'cut = 0'),
     ('hook.py', SEP, "tail[cut:]"),
     ('hook.py', SEP, r"re.split(r'\.\s', tail[cut:], maxsplit=1)[0]"),
     ('hook.py', SEP, r"re.split(r'\?', tail[cut:], maxsplit=1)[0]"),

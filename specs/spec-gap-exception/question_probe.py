@@ -7,9 +7,9 @@ asks "exception: acme/app#42 at aaaaaaa: <printed><tail>", answers Yes through t
 reads the evidence again. Each line of PROBE_OUT is a JSON object: kind, tier, tail, question, printed, recorded (the gap
 hook.exception_refs reads), verdict, outcome, door and hole. The oracle: a spec or safety kind reaches the owner, a
 process kind (template, size, age) is sent back; a passed question drops exactly the printed gap and keeps every other
-gap. A kind with a second open row or checklist (rest) must print it before and after the first yes (light tier reads
-no spec); at full tier the merge door must hold on it until a second question names it, then open. Any other outcome is
-a hole.
+gap. At full tier (the only tier that reads analysis.md and checklists/), a kind with a second open row or checklist
+(rest) must print it before and after the first yes, and the merge door must hold on it until a second question names
+it, then open. Any other outcome is a hole.
 """
 
 import datetime
@@ -119,7 +119,7 @@ def test_case(root, fake, kind, tier, tail):
     if verdict == 'owner':
         after = texts(root)
         outcome = 'waived' if after == [t for t in before if t != gap] else f'after the yes: {after}'
-        if rest and tier != 'light' and not (any(rest in t for t in before) and any(rest in t for t in after)):
+        if rest and tier == 'full' and not (any(rest in t for t in before) and any(rest in t for t in after)):
             outcome = 'masked: the rest is not printed before or after the first yes'
         elif rest and tier == 'full' and outcome == 'waived':
             held = guards.merge_door(root, 'acme/app', 42)
