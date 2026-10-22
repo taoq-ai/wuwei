@@ -14,7 +14,7 @@ import pytest
 from wuwei import hook, setup, ws
 
 PLUGIN = Path(__file__).resolve().parents[1]
-SHELLS = [s for s in ('sh', 'dash', 'bash') if shutil.which(s)]  # bash stands in for Git Bash on Windows
+SHELLS = [s for s in ('sh', 'dash', 'bash') if shutil.which(s) and (os.name != 'nt' or s != 'dash')]  # Windows hooks run Git Bash
 REJECT = 'Unknown option: -P\\nusage: {name} [option] ... [-c cmd | -m mod | file | -] [arg] ...\\n'
 
 
@@ -111,7 +111,7 @@ def test_windows_with_only_the_py_launcher_runs_wuwei_with_py_3(root, tmp_path, 
 
 def test_the_launcher_is_posix_sh():
     for shell in SHELLS:
-        assert subprocess.run([shell, '-n', str(PLUGIN / 'bin' / 'wuwei')]).returncode == 0, shell
+        assert subprocess.run([shutil.which(shell), '-n', str(PLUGIN / 'bin' / 'wuwei')]).returncode == 0, shell
     text = (PLUGIN / 'bin' / 'wuwei').read_text()
     assert not re.search(r'\[\[|\bfunction\b|\blocal\b|\$\{\w+//|<<<|\bsource\b', text)
     assert '-I -P -S -c' in text and 'unset PYTHONEXECUTABLE' in text

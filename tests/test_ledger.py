@@ -134,6 +134,25 @@ def test_a_folder_a_windows_write_walks_is_never_renamed_mid_write(tmp_path, mon
     assert refused and (folder / 'f.txt').read_text() == 'x' and not (tmp_path / 'moved').exists()
 
 
+def test_a_write_by_name_retries_a_replace_another_writer_holds_then_gives_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, 'supports_dir_fd', set())
+    monkeypatch.setattr(ws.time, 'sleep', lambda seconds: None)
+    real, calls = os.replace, []
+
+    def busy(*args):  # Windows answers Access is denied while another thread replaces the same name
+        calls.append(args)
+        if len(calls) < 3 or (tmp_path / 'never').exists():
+            raise PermissionError(13, 'Access is denied')
+        return real(*args)
+    monkeypatch.setattr(ws.os, 'replace', busy)
+    ws.atomic_write(tmp_path / 'f.txt', 'x', tmp_path)
+    assert len(calls) == 3 and (tmp_path / 'f.txt').read_text() == 'x'
+    (tmp_path / 'never').mkdir()
+    with pytest.raises(PermissionError):
+        ws.atomic_write(tmp_path / 'f.txt', 'y', tmp_path)
+    assert len(calls) == 8 and (tmp_path / 'f.txt').read_text() == 'x'
+
+
 def _mine(root):
     path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)

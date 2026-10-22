@@ -360,7 +360,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard',
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
         named = prior and prior['verdict'] == 'FIX' and prior['head'][:7] == found['head'][:7] and (fix or any(  # #1162
-            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
+            ('/' + s.replace('\\', '/')).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
         if (fix or (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) and ancestor(root, repo, found['head'], head) \
                 and (newer(root, repo, found, prior, found['head']) or fix and prior['verdict'] == 'PASS' or named):  # head asked above
             latest[found['gate']] = found

@@ -159,7 +159,7 @@ def test_the_hero_matches_its_generator():
     hero = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(hero)
     for name, palette in hero.PAL.items():
-        assert (PLUGIN / 'docs' / 'site' / 'assets' / f'hero-{name}.svg').read_text() == hero.svg(palette), name
+        assert (PLUGIN / 'docs' / 'site' / 'assets' / f'hero-{name}.svg').read_text(encoding='utf-8') == hero.svg(palette), name
 
 
 def test_one_module_holds_the_plugin_path_and_its_version_and_dead_definitions_are_gone():
@@ -193,10 +193,10 @@ def test_init_cloud_vendors_the_plugin_into_the_repository(tmp_path, monkeypatch
         assert [h['hooks'][0]['command'] for h in hooks[event]] == [f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}']
     assert (tmp_path / ws.DIR / '.gitignore').read_text().splitlines()[-1] == '*'
     version = json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']
-    assert subprocess.run([str(cli), '--version'], capture_output=True, text=True).stdout.strip() == version
+    assert subprocess.run(['sh', str(cli), '--version'], capture_output=True, text=True).stdout.strip() == version
     payload = json.dumps({'cwd': str(tmp_path)})
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDE_CODE_REMOTE'}
-    run = lambda env: subprocess.run([str(cli), 'hook', 'SessionStart'], input=payload, capture_output=True,
+    run = lambda env: subprocess.run(['sh', str(cli), 'hook', 'SessionStart'], input=payload, capture_output=True,
                                      text=True, env=env, cwd=tmp_path).stdout
     assert run(env) == ''  # on a machine, the installed plugin serves; the vendored copy stays quiet
     assert 'WUWEI' in run({**env, 'CLAUDE_CODE_REMOTE': 'true'})

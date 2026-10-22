@@ -2035,8 +2035,8 @@ def test_a_fifo_in_the_git_directory_does_not_hold_the_push_door(root, scratch, 
 def test_a_push_of_15000_refspecs_makes_the_git_calls_a_push_of_one_makes(root, ahead, monkeypatch, word):
     """Gates push-refspecs at 9cb834a: one git call per refspec took 77 s for 15,000 tags (main: 63 s for 15,000 `:`), and a hook
     that times out lets the tool run. The door reads the refs once per push, so 15,000 words make the git calls one word makes."""
-    subprocess.run(['git', 'update-ref', '--stdin'], cwd=ahead / 'c', check=True, capture_output=True, text=True,
-                   input=''.join(f'create refs/tags/t{i} HEAD\n' for i in range(15_000)))
+    subprocess.run(['git', 'update-ref', '--stdin'], cwd=ahead / 'c', check=True, capture_output=True,  # bytes: LF on Windows too
+                   input=''.join(f'create refs/tags/t{i} HEAD\n' for i in range(15_000)).encode())
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     calls, real = [], subprocess.run
     monkeypatch.setattr(guards.subprocess, 'run', lambda argv, *a, **k: calls.append(argv) or real(argv, *a, **k))

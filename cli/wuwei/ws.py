@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 import tomllib
 
 if os.name == 'nt':
@@ -86,7 +87,14 @@ def _write_by_name(path, text, root):  # Windows has no dir_fd: each folder belo
             os.unlink(folder / temp)
         with open(os.open(folder / temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o666), 'wb') as out:
             out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
-        os.replace(folder / temp, folder / path.name)
+        for wait in (0.01, 0.05, 0.2, 1, None):  # Windows refuses a replace while another writer replaces the same name
+            try:
+                os.replace(folder / temp, folder / path.name)
+                break
+            except PermissionError:
+                if wait is None:
+                    raise
+                time.sleep(wait)
     finally:
         for handle in filter(None, held):
             _kernel().CloseHandle(ctypes.c_void_p(handle))

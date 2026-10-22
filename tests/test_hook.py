@@ -704,7 +704,7 @@ def test_a_merge_door_that_cannot_write_its_cache_refuses_and_names_the_error(ro
     (root / ws.DIR / 'cache' / 'template-acme__app.json').mkdir(parents=True)
     out = pre(root, 'Bash', {'command': 'gh pr merge 5'})['hookSpecificOutput']
     assert out['permissionDecision'] == 'deny'
-    assert 'IsADirectoryError' in out['permissionDecisionReason']
+    assert ('PermissionError' if os.name == 'nt' else 'IsADirectoryError') in out['permissionDecisionReason']  # Windows opens no folder
     assert ws.rows(root, 'hook.error')
 
 
@@ -1367,7 +1367,8 @@ def test_another_seats_identical_report_never_suppresses_this_one(root, tmp_path
     assert '## lead lead1 (kept at' in note and '## lead lead2 (kept at' in note
 
 
-@pytest.mark.parametrize('planted', ['fifo', 'folder', 'binary'])
+@pytest.mark.parametrize('planted', [pytest.param('fifo', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO')),
+                                     'folder', 'binary'])
 def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(root, tmp_path, planted):
     """The dedupe reads only regular files: a FIFO would block the stop, a folder or non-UTF-8 bytes would raise (#1208 gate)."""
     import os

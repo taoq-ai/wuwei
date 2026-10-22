@@ -240,7 +240,7 @@ def _verdict_problem(root, payload, role):
         path.relative_to(verdicts)
         body = path.read_bytes()
     except (OSError, ValueError, RuntimeError):
-        return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
+        return f'the verdict must be a readable file under {verdicts.as_posix()}/ (got {match[1]}).'
     rel, sha = path.relative_to(Path(root).resolve()).as_posix(), hashlib.sha256(body).hexdigest()  # / on every OS
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
