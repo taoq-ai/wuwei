@@ -197,6 +197,14 @@ plugin's folders, and shows the job running, queued, completed (with the `HANDOF
 names), failed, cancelled or asked a question (its last answer ends in a question). A file it
 cannot read shows `job state unreadable`, never done.
 
+Builder host: an item added with `--host session` (the default is `agent`) has its builder started
+as its own session in the same environment, on the item's branch, with the builder charter as its
+brief; the planner records it with `wuwei plan session <id> <session id>`. That builder fires no
+subagent hook, so the board counts it as a live seat from the record while the item is open and
+names its session. Its gates still run as Agent-tool seats in the planner's session, where their
+transcripts attest each verdict, so attestation is unchanged. Every builder commits and pushes
+after each green step, so a restart loses at most one step.
+
 ## 7. The doors
 
 Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or

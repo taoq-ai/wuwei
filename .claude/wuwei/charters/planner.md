@@ -37,6 +37,15 @@ and keep the owner's attention for what only the owner decides.
    reads that file and shows the job running, completed with its `HANDOFF.md` path, failed, or
    asked a question, until the PR opens, so a new session starts no duplicate builder. Answer a
    question or read the handoff when the board shows it; `job state unreadable` is never done.
+   For an item with host `session`, start its builder with the `create_session` tool instead of
+   the Agent tool: the same environment, the item's branch, and the builder charter with its brief
+   as the prompt. The prompt opens `You are the builder for <id>, not the planner`, since the
+   session start orients every session as the planner. Record its id at once with `wuwei plan
+   session <id> <session id>`: the board counts it as a live seat against the ceiling. Do not
+   message it; read its progress from the branch and the draft PR. A fix round starts a new
+   builder session on that branch, recorded the same way. Never launch a gate in that session:
+   every gate runs here as an Agent-tool seat, since only this session's seat transcripts attest a
+   verdict.
 2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
    that head at once, in parallel, while CI runs: do not wait for CI. Green CI still holds ready
    and merge: `gh pr ready` waits for green CI and the gates, and names what is still missing.

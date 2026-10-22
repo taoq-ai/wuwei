@@ -42,6 +42,8 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    docs already state is a `fix:` (a patch) with release notes in the body; a new capability is a
    `feat:` (a minor). Prefer a compatible path (a deprecation window, a new version beside the old)
    when one exists.
+7. Commit and push after every green step, so a restart loses at most one step. Whether you run
+   as an Agent-tool seat or in your own session, hand back the pushed head.
 
 ## Disagreeing with a finding
 
