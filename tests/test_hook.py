@@ -2107,7 +2107,13 @@ def test_an_answer_older_than_seven_days_is_neither_shown_nor_sent_back(root, mo
     monkeypatch.setattr(ws, 'now', lambda: real() - datetime.timedelta(days=7, hours=1))
     ws.record(root, 'prompt', {'id': 'old', 'questions': [SCOPE], 'answers': {SCOPE: 'Yes'}})
     monkeypatch.setattr(ws, 'now', real)
-    assert ask_again(root, SCOPE) is None and SCOPE not in start(root)
+    assert ask_again(root, SCOPE) is None and SCOPE not in start(root) and 'Owner answers' not in start(root)
+
+
+def test_an_answer_not_yet_recorded_is_never_given_back_as_the_owners(root):
+    ws.record(root, 'answer.pending', {'id': 't1', 'questions': [SCOPE], 'answers': {SCOPE: 'Yes'}})
+    ws.record(root, 'answer.unconfirmed', {'id': 't2', 'questions': [SCOPE], 'answers': {SCOPE: 'Yes'}, 'reason': 'forged'})
+    assert ask_again(root, SCOPE) is None and f'{SCOPE} -> Yes' not in start(root)
 
 
 def test_session_start_lists_answers_pending_or_unconfirmed_with_their_reason(root):
