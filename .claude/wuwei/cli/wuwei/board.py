@@ -139,10 +139,12 @@ def queue(root, out, items):
     """Finish before starting: an open item is in progress with an open PR, a live builder seat under STALE_HOURS or a running
     Codex job. Free slots under the WIP limit go to the highest-score items with no PR; the rest wait, queued."""
     cap, found = limit(root, 'WIP limit', 4), {i['id'].lower(): i for i in items}
-    busy = found.keys() & ({r['item'].lower() for r in out if r['pr']} | {str(s.get('item')).lower() for s in running(root, STALE_HOURS) if s.get('role') == 'builder'}
+    busy = found.keys() & ({r['item'].lower() for r in out if r['pr']}
+                           | {str(s.get('item')).lower() for s in running(root, STALE_HOURS) if s.get('role') == 'builder'}
                            | {k for k, i in found.items() if i.get('job') and job(root, i['job']).startswith('job running')})
     free = cap - len(busy)
-    for row in sorted((r for r in out if r['item'].lower() not in busy and r['gaps'][:1] and r['gaps'][0]['text'] == 'no pull request yet'), key=lambda r: r.get('score') if isinstance(r.get('score'), (int, float)) else 0, reverse=True):
+    fresh = [r for r in out if r['item'].lower() not in busy and r['gaps'][:1] and r['gaps'][0]['text'] == 'no pull request yet']
+    for row in sorted(fresh, key=lambda r: r.get('score') if isinstance(r.get('score'), (int, float)) else 0, reverse=True):
         if (free := free - 1) < 0:
             row['gaps'] = [evidence.gap(f'queued: {len(busy)} items in progress, WIP limit {cap}: finish one first', actionable=False),
                            *(dict(g, actionable=False) for g in row['gaps'][1:])]

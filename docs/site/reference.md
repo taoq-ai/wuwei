@@ -17,7 +17,7 @@
 | `wuwei plan run <id> --job <job file>` | Register a Codex companion job file; the board shows its state (running, completed with the HANDOFF path, failed, asked a question, or `job state unreadable`) |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
 | `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
-| `wuwei status [--json]` | The board: what each open item lacks |
+| `wuwei status [--json]` | The board: what each open item lacks; past the WIP limit, an approved item with no PR shows `queued` |
 | `wuwei evidence owner/repo#n [--json] [--record DIR]` | One PR's gaps; exit 1 when there are gaps |
 | `wuwei report [--day YYYY-MM-DD]` | The day report |
 | `wuwei report --dora [--window 28]` | The DORA keys per repository |

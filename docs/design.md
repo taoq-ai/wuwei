@@ -68,6 +68,12 @@ role's lines of `.wuwei/standards.md`.
   delay (value + time + risk, or reach x impact x confidence) to its own score; a closed waiter adds
   nothing. A score is derived, so a rescore never stamps an item `changed` for the sync merge. A PR idle 4 hours
   with no live seat on its item in any session shows `stale` with its last event, first in its class.
+  Finish before starting: an open item is in progress while it has an open PR, a live builder seat
+  (no stop, started within 4 hours, in any session) or a Codex job reading running. Free slots under
+  the WIP limit (4, or the last `WIP limit: <n>` line in `.wuwei/standards.md`) go to the highest
+  scores; every other approved item with no PR shows `queued` as waiting, so the Stop leaves it out.
+  The team row names work over the WIP limit, and a session running more seats than the seat
+  ceiling (8, or the last `Seat ceiling: <n>` line).
 - A close (`/wuwei-close`, `wuwei close`) is a checkpoint: the report and the retro for the day so
   far. A later pass reopens the day; a second checkpoint reports what changed since the first.
 
@@ -279,7 +285,7 @@ flow.
 | Hook | Role |
 |---|---|
 | SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the owner's answers of the last 7 days (the latest 12, those not recorded first, with their reason), the board with how many items it left out; at every source, compaction included |
-| PreToolUse | the doors; an owner question answered in the last 7 days (same class and text, case and spacing aside) sent back with its answer and date, unless it is `plan:` and the plan has an unapproved item; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying |
+| PreToolUse | the doors; an owner question answered in the last 7 days (same class and text, case and spacing aside) sent back with its answer and date, unless it is `plan:` and the plan has an unapproved item; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying; a note, never a refusal, on a launch that takes this session's live seats over the seat ceiling |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
 | Stop | a reminder only when actionable work is new since the last one, naming only what changed, in board order (an item waiting on another is left out); once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |

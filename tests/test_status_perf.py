@@ -79,7 +79,8 @@ def test_a_cold_status_names_each_repository_on_stderr_and_keeps_stdout(root, fa
     assert cold.err.splitlines() == ['wuwei: reading acme/app: 18 open PRs']
     assert cold.out.splitlines() == ['Board (what each open item still lacks):', (
         '- team seats: orchestration: open PRs with no shepherd seat running; '
-        'orchestration: gates owed with no gate seat running')] + [
+        'orchestration: gates owed with no gate seat running; '
+        'orchestration: 18 items in progress, over the WIP limit of 4: finish before starting')] + [
         f'- I-{n} item {n} (acme/app#{100 + n}) [standard, last event 0h ago]: gates missing at head aaaaaaa: quality'
         for n in range(1, 19)]
 
