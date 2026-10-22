@@ -4,7 +4,7 @@ Instructions for coding agents working in this repository.
 
 - What to build: `docs/design.md`. How to build it: `.specify/memory/constitution.md`. Read both first.
 - Test first. Write the failing test, run it, see it fail, then implement.
-- Runtime code is stdlib-only Python 3.11+ under `cli/wuwei/`, at most 3,400 lines. Run the suite
+- Runtime code is stdlib-only Python 3.11+ under `cli/wuwei/`, at most 3,600 lines. Run the suite
   with `python3 -m pytest -q` from the repository root, or `pytest -q` where python3 lacks the
   module. An autouse fixture in `tests/conftest.py` puts a stub `gh` that exits 1 first on PATH
   and clears gh credentials, so the suite makes no real GitHub call; a test that needs answers
