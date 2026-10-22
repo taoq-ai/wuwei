@@ -514,6 +514,13 @@ def test_the_multi_line_refusal_names_the_door_words_it_found_and_the_write_tool
     assert found in reason and 'heredoc body or quoted prose' in reason and 'the Write tool' in reason, command
 
 
+def test_the_door_words_found_are_listed_each_once_and_bounded(root, fake, repo):
+    """Two door groups are both named; a 1 MB run of slashes after .wuwei never makes a 1 MB refusal (#1245 gates)."""
+    assert 'found: git push, gh pr' in guards.pre_tool(root, bash('echo "push it"\ngit status\ngh pr view 5'))['reason']
+    reason = guards.pre_tool(root, bash('cat .wuwei' + '/' * 1_000_000 + 'ledger\nls'))['reason']
+    assert 'found: .wuwei' in reason and len(reason) < 1000
+
+
 @pytest.mark.parametrize('command', ['node codex-companion.mjs task --write "$(cat brief.md)"',
                                      'echo "never git push to main" > brief.md',
                                      'gh pr create --draft --title t --body-file b.md'])

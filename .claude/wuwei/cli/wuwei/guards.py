@@ -364,7 +364,7 @@ def leak(root, text):
 def bash(root, command, cwd, session):
     parts = segments(command)
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
-            w, command)[0]).strip() for w in d) for d in DOOR_WORDS if all(re.search(w, command) for w in d)]):  # #1117
+            w, command)[0]).strip()[:40] for w in d) for d in DOOR_WORDS if all(re.search(w, command) for w in d)]):  # #1117
         return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
                     'anywhere in the text counts, a heredoc body or quoted prose included: run the door command in its own one-line '
                     'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.')
