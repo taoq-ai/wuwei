@@ -539,15 +539,36 @@ def test_a_long_finding_row_is_printed_to_its_last_cell_edge_within_100_characte
 SHARED = '| HIGH | spec.md | ' + 'a' * 90 + ' |'
 
 
-@pytest.mark.parametrize('second', ['| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |'])
+@pytest.mark.parametrize('second', ['| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |', '| High | spec.md | ' + 'b' * 90 + ' |',
+                                    '|  HIGH | spec.md  | ' + 'b' * 90 + ' |', '| high | spec.md |', '| HIGH |\tSpec.md |'])
 def test_rows_whose_cuts_are_the_same_are_printed_whole(root, fake, second):
-    """Two rows that share their cells up to the cut stay two gaps, so one yes never waives both (#1228)."""
+    """Two rows whose cuts match as an exception matches them (case and spacing aside) stay two gaps, so one yes
+    never waives both (#1228, #1223 follow-up)."""
+    from wuwei import guards
     light(root, 'full')
     files = speckit(fake, **{f'{SPEC}/analysis.md': f'| Severity | Location | Summary |\n|---|---|---|\n{SHARED}\n{second}\n'})
     fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
     full_gates(root)
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}'
-                                                         for row in (SHARED, second)]
+    printed = [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}' for row in (SHARED, second)]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
+    except_gap(root, printed[0])
+    found = guards.merge_door(root, 'acme/app', 42)
+    assert found is not None and second in found['reason'], found
+
+
+def test_a_spec_gap_result_cached_by_older_code_at_the_same_version_is_not_read(root, fake):
+    """Code before #1228 cached only a file's first open row under the same version, so its result must not be read."""
+    import json
+    light(root, 'full')
+    rows = ['| A1 | HIGH | wording nit |', '| A2 | CRITICAL | auth bypass |']
+    files = speckit(fake, **{f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n' + '\n'.join(rows) + '\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    printed = [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}' for row in rows]
+    listing = hashlib.sha256(json.dumps(sorted(f['path'] for f in fake.prs['42']['files'])).encode()).hexdigest()[:32]
+    old = f'{ws.version()} {evidence.spec_engine(root, "acme/app")} full'
+    ws.cache_put(root, f'pr-acme__app-42-{HEAD}-{listing}', {old: [evidence.gap(printed[0])]})
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == printed
 
 
 def test_a_clean_full_tier_speckit_feature_passes(root, fake):

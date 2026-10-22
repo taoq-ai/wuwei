@@ -34,6 +34,7 @@ SPEC_RULES = {
 # The plan item a PR names: the WUWEI footer ([WUWEI <version>](<site>) · Item <id> · ...), or a WUWEI-Item: line.
 ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
+norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
                      r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names its item by the old)")
@@ -205,7 +206,7 @@ def _rule(repo, path, rule, head):
         cell.strip().upper() for cell in line.strip().strip('|').split('|')}) & {'CRITICAL', 'HIGH'} and not any(
             c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells)]  # a recorded resolution (#1047)
     cuts = [row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row for row in rows]  # at a cell edge
-    return [f'{path} has an open CRITICAL or HIGH finding: {cut if cuts.count(cut) == 1 else row}' for row, cut in zip(rows, cuts)]
+    return [f'{path} has an open CRITICAL or HIGH finding: {cut if [*map(norm, cuts)].count(norm(cut)) == 1 else row}' for row, cut in zip(rows, cuts)]
 
 
 def spec_gaps(repo, engine, tier, files, head):
@@ -432,7 +433,7 @@ def gaps(root, repo, number, listed=None):
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             # the artifacts at a head never change, CI or not; the file list does when the base is retargeted (a path may hold a newline)
             listing = hashlib.sha256(json.dumps(sorted(files)).encode()).hexdigest()[:32]
-            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier}', f'{name}-{head}-{listing}'
+            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier} rows', f'{name}-{head}-{listing}'  # rows: not a pre-#1228 result
             if key not in (spec := ws.cache_get(root, kept, 86400) or {}):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
                 if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
@@ -501,7 +502,6 @@ def gaps(root, repo, number, listed=None):
 def excepted(root, ref, head, found):
     """Drop each gap the owner accepted at this head by its exact text or its gate gap's exact gates, never by a part
     of either (case, spacing, end marks and a printed [waiting] aside); each acceptance is an exception on the record."""
-    norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
     accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
                 and row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}

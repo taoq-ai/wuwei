@@ -328,7 +328,7 @@ def test_an_exception_gap_keeps_the_sentence_breaks_of_a_finding_row(question, g
 
 @pytest.mark.parametrize('gap', ['gates missing at head abc1234: quality', 'no test in the diff', 'CI failing: build'])
 @pytest.mark.parametrize('tail', ['. Accept (yes|no)?', '. Accept? 1. yes | 2. no', '.\nAccept (yes|no)?', '. Options: yes | no',
-                                  '. Accept? | yes | no |'])
+                                  '. Accept? | yes | no |', '. Options: | yes | no |', '. Accept? |.', '. Note: | x | y |'])
 def test_a_gap_that_holds_no_finding_row_ends_at_its_first_break_whatever_the_tail(gap, tail):
     """Only a finding row reads past its first break, so a | in the question's own words never joins a gap (#1228)."""
     assert hook.exception_refs(f'exception: o/r#1 at abc1234: {gap}{tail}') == ([('o/r', '1', 'abc1234')], gap)
