@@ -54,8 +54,11 @@ def pre_tool(root, payload):
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
     away = payload.get('tool_name') == 'SubagentHandback' and payload.get('permission_mode') in ('default', 'plan', 'acceptEdits', 'dontAsk', 'bypassPermissions')
+    item = payload.get('tool_name') in ('Agent', 'Task') and asked(payload.get('tool_input') or {})[0]  # as seat.started records it: so here, not in guards
+    held = next((guards.deny(f'item {item} is held by session {s["session"]} ({s.get("role")} seat {s.get("agent")} running): leave it to that session, or launch after its seat stops.')
+                 for s in (board.running(root) if item else ()) if str(s.get('item') or '').lower() == item.lower() and s['session'] != payload.get('session_id')), None)
     found = {'decision': 'deny', 'reason': (problem + '\n' if problem else '') + (AWAY if away else 'Then hand back again.')} \
-        if problem or away else guards.pre_tool(root, payload)
+        if problem or away else guards.pre_tool(root, payload) or held
     if found is None:
         return advise(root, payload.get('tool_input') or {}) if payload.get('tool_name') in ('Agent', 'Task') else None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
@@ -70,9 +73,9 @@ def pre_tool(root, payload):
 
 
 def asked(data):
-    """The item the brief names, the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
+    """The item the brief names (its first Item: line, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\bItem:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+        r'\A(?:[\s\S]*?^[ \t]*|[\s\S]*?\b)Item:[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 
@@ -107,7 +110,7 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or board.running(root, payload.get('session_id')):
+    if payload.get('stop_hook_active') or closed(root) or any(s['session'] == payload.get('session_id') for s in board.running(root)):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'

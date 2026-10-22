@@ -1,7 +1,7 @@
 """Durable state in git. .wuwei/ travels on its own branch, wuwei/state, never in a working branch,
-so a cloud session's fresh clone starts where the last session stopped. Each clone pushes only its
-own ledger file, so no session drops another's rows; other files follow the last writer, and a file
-changed both here and on the branch keeps the local copy."""
+so a cloud session's fresh clone starts where the last session stopped. Each clone pushes only its own ledger file,
+so no session drops another's rows; plan.json merges by item, the newest change to each winning; other files
+follow the last writer, and a file changed both here and on the branch keeps the local copy."""
 
 import hashlib
 import os
@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 
-from wuwei import ws
+from wuwei import plan, ws
 
 BRANCH = 'wuwei/state'
 REF = 'refs/remotes/origin/' + BRANCH
@@ -76,7 +76,7 @@ def pull(root):
         data = _git(top, 'cat-file', 'blob', f'{commit}:{name}')
         branch[name] = hashlib.sha256(data).hexdigest()
         local = here.get(name)
-        if local == data or name == f'ledger/{ws.clone(root)}.jsonl':
+        if local == data or name == f'ledger/{ws.clone(root)}.jsonl' or name == 'plan.json' and local is not None and plan.merge(root, data):
             continue
         if _theirs(root, name) or local is None or _digests({name: local})[name] == synced.get(name):
             try:  # no link a seat planted is followed: the pull stops there and names the file
@@ -106,6 +106,7 @@ def push(root):
     for attempt in (1, 2):
         parent = _fetch(top)
         names = set(_text(top, 'ls-tree', '-r', '--name-only', parent).splitlines()) if parent else set()
+        here = files(root) if 'plan.json' in names and plan.merge(root, _git(top, 'cat-file', 'blob', f'{parent}:plan.json')) else here
         with tempfile.TemporaryDirectory() as temp:
             env = {'GIT_INDEX_FILE': str(Path(temp) / 'index'), **ident}
             _git(top, 'read-tree', *([parent] if parent else ['--empty']), env=env)

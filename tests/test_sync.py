@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from wuwei import sync, ws
+from wuwei import plan, sync, ws
 
 
 def git(cwd, *args):
@@ -131,3 +131,58 @@ def test_a_pull_never_writes_through_a_link_planted_under_the_workspace(remote, 
     assert cli.main(['sync']) == 1  # the pull stops at the link and names the file it was writing, with no traceback
     assert (err := capsys.readouterr().err).startswith('wuwei sync: ') and '.wuwei/verdicts/x/quality-abc1234.md' in err
     assert sorted(p.name for p in (b / ws.DIR / 'ledger').iterdir()) == [f'{ws.clone(b)}.jsonl']
+
+
+SCORES = {'value': 1, 'time': 1, 'risk': 1, 'size': 1}
+
+
+def test_two_clones_that_each_add_an_item_both_keep_both(remote, tmp_path):
+    a = workspace(clone(remote, tmp_path / 'a'))
+    plan.add(a, 'I-1', 'first', 'G-1', 'acme/app', 'light', SCORES)
+    sync.push(a)
+    b = clone(remote, tmp_path / 'b')
+    sync.restore(b)
+    plan.add(a, 'A-2', 'from a', 'G-1', 'acme/app', 'light', SCORES)
+    plan.add(b, 'B-2', 'from b', 'G-1', 'acme/app', 'light', SCORES)
+    plan.mark(b, 'I-1', 'parked', 'b parks it')
+    sync.push(a)
+    assert sync.push(b).startswith('pushed')  # b never pulled a's item: the push merges it in, never drops it
+    assert {i['id'] for i in plan.items(b)} == {'I-1', 'A-2', 'B-2'}
+    assert sync.pull(a).startswith('pulled') and {i['id'] for i in plan.items(a)} == {'I-1', 'A-2', 'B-2'}
+    assert plan.find(a, 'I-1')['status'] == 'parked'
+    shown = json.loads(git(a, 'show', 'origin/' + sync.BRANCH + ':plan.json'))['items']
+    assert {i['id'] for i in shown} == {'I-1', 'A-2', 'B-2'}
+
+
+def test_the_newest_change_to_an_item_wins_whichever_clone_syncs_last(remote, tmp_path):
+    a = workspace(clone(remote, tmp_path / 'a'))
+    plan.add(a, 'I-1', 'first', 'G-1', 'acme/app', 'light', SCORES)
+    sync.push(a)
+    b = clone(remote, tmp_path / 'b')
+    sync.restore(b)
+    plan.mark(b, 'I-1', 'parked', 'older change')
+    plan.mark(a, 'I-1', 'dropped', 'newer change')
+    sync.push(a)
+    assert 'kept local' not in sync.pull(b)  # changed here and there: merged by item, the newer change wins
+    assert plan.find(b, 'I-1')['reason'] == 'newer change'
+    sync.push(b)
+    assert json.loads(git(b, 'show', 'origin/' + sync.BRANCH + ':plan.json'))['items'][0]['reason'] == 'newer change'
+
+
+def test_a_plan_change_stamps_only_the_items_it_changed(root, monkeypatch):
+    import datetime
+    plan.add(root, 'I-1', 'one', 'G-1', 'acme/app', 'light', SCORES)
+    plan.add(root, 'I-2', 'two', 'G-1', 'acme/app', 'light', SCORES)
+    first = {i['id']: i['changed'] for i in plan.items(root)}
+    later = ws.now() + datetime.timedelta(minutes=5)
+    monkeypatch.setattr(ws, 'now', lambda: later)
+    plan.mark(root, 'I-2', 'parked', 'later')
+    assert {i['id']: i['changed'] for i in plan.items(root)} == {'I-1': first['I-1'], 'I-2': later.isoformat()}
+
+
+@pytest.mark.parametrize('theirs', [b'not json', b'{"items": ["I-1"]}', b'{"items": [{"title": "no id"}]}', b'[]',
+                                    b'{"items": [{"id": "I-1", "changed": 5}]}', b'{"items": {"id": "I-1"}}'])
+def test_a_plan_that_is_not_a_plan_is_never_merged(root, theirs):
+    plan.add(root, 'I-1', 'one', 'G-1', 'acme/app', 'light', SCORES)
+    before = (root / ws.DIR / 'plan.json').read_bytes()
+    assert not plan.merge(root, theirs) and (root / ws.DIR / 'plan.json').read_bytes() == before

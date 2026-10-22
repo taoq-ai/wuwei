@@ -427,14 +427,14 @@ def test_only_an_agent_launch_with_a_string_id_records_a_seat(root, tool, respon
                                              'tool_input': {'subagent_type': 'wuwei:builder'},
                                              'tool_response': response}) is None
     assert ws.rows(root, 'seat.started') == [] and ws.rows(root, 'hook.error') == []
-    assert board.running(root, 's1') == set()
+    assert board.running(root) == []
 
 
 def test_running_skips_rows_without_a_string_agent_id(root):
     ws.record(root, 'seat.started', {'role': 'builder', 'session': 's1'})
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': ['a1'], 'session': 's1'})
     ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': ['a1'], 'session': 's1'})
-    assert board.running(root, 's1') == set()
+    assert board.running(root) == []
 
 
 def test_running_counts_seats_by_agent_id_not_rows(root):
@@ -443,7 +443,7 @@ def test_running_counts_seats_by_agent_id_not_rows(root):
         ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1', 'session': 's1'})
     ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1', 'session': 's1'})
     ws.record(root, 'seat.started', {'role': 'planner', 'agent': 'a2', 'session': 's1'})
-    assert board.running(root, 's1') == {'planner'}
+    assert [s['role'] for s in board.running(root)] == ['planner']
 
 
 def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
@@ -1557,9 +1557,9 @@ def test_a_forged_seat_stop_records_no_stop_no_attestation_and_no_report(root, s
 
 def test_an_unconfirmed_seat_no_longer_counts_as_running(root):
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'aforged', 'session': 's1'})
-    assert board.running(root, 's1') == {'builder'}
+    assert [s['role'] for s in board.running(root)] == ['builder']
     hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'aforged', 'agent_type': 'builder', 'cwd': str(root)})
-    assert board.running(root, 's1') == set()
+    assert board.running(root) == []
 
 
 @pytest.mark.parametrize('variable', ['HOME', 'CLAUDE_CONFIG_DIR'])
