@@ -85,11 +85,6 @@ def add_from(root, path):
     return found
 
 
-def restore(root, item_id):
-    """Reopen a parked or dropped item as it was."""
-    return mark(root, item_id, 'open', 'restored')
-
-
 def mark(root, item_id, status, reason='', **fields):
     rows = items(root)
     if (item := next((row for row in rows if row['id'].lower() == item_id.lower()), None)) is None:
