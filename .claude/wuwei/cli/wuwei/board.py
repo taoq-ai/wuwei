@@ -3,6 +3,7 @@
 import concurrent.futures
 import datetime
 import os
+from pathlib import Path
 import re
 import sys
 import time
@@ -130,9 +131,12 @@ def compute(root, everything=False):
         evidence.gap(f'{s.get("role")} running in session {s["session"]}', actionable=False) for s in live if str(s.get('item') or '').lower() == str(r['item']).lower()]} for r in out]  # the holder of each item
 
 
-def limit(root, name, default):  # the owner's last '<name>: <n>' line in .wuwei/standards.md, else the planner's default
-    path = os.path.join(root, ws.DIR, 'standards.md')
-    return int(([default] + re.findall(rf'(?i)\b{name}:[ \t]*([0-9]+)', open(path, encoding='utf-8').read() if os.path.isfile(path) else ''))[-1])
+def limit(root, name, default):  # the owner's last '<name>: <n>' line in .wuwei/standards.md, a date before it allowed, else the planner's default
+    try:
+        text = (Path(root) / ws.DIR / 'standards.md').read_text(encoding='utf-8', errors='replace')
+    except OSError:  # missing or unreadable: the defaults hold
+        text = ''
+    return int(([default] + re.findall(rf'(?im)^[-*\s]*(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}[ \t]+)?{name}:[ \t]*([0-9]{{1,4}})\b', text))[-1])
 
 
 def queue(root, out, items):

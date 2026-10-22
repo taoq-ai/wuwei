@@ -581,6 +581,8 @@ def test_a_builder_seat_counts_only_while_live_and_under_four_hours(root, fake, 
     assert first(root) == {'X': 'no pull request yet', 'Y': 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'}
     ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'b1', 'session': 's2'})
     assert first(root)['Y'] == 'no pull request yet'
+    ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'h1', 'session': 's2', 'item': 'X'})
+    assert first(root)['Y'] == 'no pull request yet'  # only a builder seat starts an item
 
 
 def test_a_running_codex_job_counts_in_progress(root, fake, tmp_path):
@@ -597,6 +599,13 @@ def test_the_owners_last_wip_limit_line_holds(root, fake):
     wip(root, fake, 5, 'XY', Y={'score': 9})
     assert board.limit(root, 'WIP limit', 4) == 6
     assert first(root) == {'Y': 'no pull request yet', 'X': 'queued: 5 items in progress, WIP limit 6: finish one first [waiting]'}
+    (root / ws.DIR / 'standards.md').write_text('- 2026-10-22 WIP limit: 6\nWe do not set a WIP limit: 0 here.\n- WIP limit: 99999\n')
+    assert board.limit(root, 'WIP limit', 4) == 6  # a line that only mentions the key, or an overlong number, sets nothing
+    (root / ws.DIR / 'standards.md').write_bytes('Caf\u00e9 rules\nWIP limit: 5\n'.encode('cp1252'))
+    assert board.limit(root, 'WIP limit', 4) == 5 and board.limit(root, 'Seat ceiling', 8) == 8
+    (root / ws.DIR / 'standards.md').unlink()
+    (root / ws.DIR / 'standards.md').mkdir()  # unreadable: the defaults hold
+    assert board.limit(root, 'WIP limit', 4) == 4 and board.compute(root)
 
 
 def test_the_team_row_names_work_over_the_wip_limit_and_seats_over_the_ceiling(root, fake):

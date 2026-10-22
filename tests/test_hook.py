@@ -2514,6 +2514,9 @@ def test_a_launch_over_the_seat_ceiling_passes_with_a_note_and_one_under_it_has_
         'WUWEI: seat 9 running in this session, over the ceiling of 8: turns slow and rate limits come sooner. '
         'Tell the owner once; start it if the owner asked.')}
     assert go('s2') is None
+    codex = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': {
+        'subagent_type': 'codex:codex-rescue', 'description': 'codex builder'}})  # no brief: the table has nothing to say
+    assert codex['hookSpecificOutput']['additionalContext'].startswith('WUWEI: seat 9 running in this session, over the ceiling of 8')
     both = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:shepherd', 'description': 'shepherd', 'prompt': 'Watch the PRs.', 'model': 'opus'}})
     assert both['hookSpecificOutput']['additionalContext'].startswith('WUWEI: seat 9 running in this session') and \
