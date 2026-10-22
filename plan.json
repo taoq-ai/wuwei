@@ -25,7 +25,8 @@
    "prs": [],
    "status": "open",
    "added": "2026-10-22",
-   "approved": false
+   "approved": true,
+   "changed": "2026-10-22T17:09:00.374837+00:00"
   },
   {
    "id": "decisions-survive",
@@ -52,6 +53,37 @@
    "status": "open",
    "added": "2026-10-22",
    "approved": true
+  },
+  {
+   "id": "verdict-bind",
+   "title": "fix(evidence): a gate PASS counts only from the verdict its seat first attested, wuwei init imports day decisions only in a real 0.34 upgrade, and python3 -m wuwei hook is refused",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 13.0,
+   "why": "owner 2026-10-22 scope: answer 'Add it'. Security gate on #1244 (.wuwei/verdicts/handback-transcript/security-1022b82.md): on main a seat can rewrite a real FIX verdict to PASS and replay that gate's stop (hook.py:248, a second attest row for the same path), and can Write .wuwei/days/<date>/decisions/gate-quality-<item>.md then run wuwei init, which upgrade.verdicts (upgrade.py:107) imports as a quality PASS; guards.py:383 refuses wuwei hook only by program name, so python3 -m wuwei hook passes. Reproducers in the security seat's scratch folder (plant.py, attack.py).",
+   "promise": "An attest row counts only for the first verdict sha a seat attested for a path: a later sha for the same seat and path records verdict.rewritten and no attest row, and evidence keeps the first verdict. wuwei init imports .wuwei/days decision files only when the workspace is a real 0.34 layout being upgraded (no ledger yet), never into a workspace that already has a ledger. The guards refuse a hook call through python -m wuwei hook (any interpreter spelling) as they refuse wuwei hook. Files: cli/wuwei/hook.py, upgrade.py, guards.py, tests, vendored copy, SECURITY.md.",
+   "acceptance": [
+    "given a gate seat that attested a FIX verdict, when the verdict file is rewritten to PASS and the seat's real stop is replayed, then no second attest row is written and evidence still owes the gate",
+    "given a workspace with a ledger and a planted .wuwei/days/<date>/decisions/gate-quality-<item>.md, when wuwei init runs, then no attest row is imported and evidence still owes quality",
+    "given python3 -m wuwei hook SubagentStop (or python -m, py -3 -m, a path to python) in a Bash call, when the guards read it, then it is refused like wuwei hook"
+   ],
+   "prs": [],
+   "domain": "complicated: three known holes in attestation, each with a reproducer from the security gate",
+   "in_doubt": false,
+   "class": "expedite",
+   "after": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true,
+   "changed": "2026-10-22T17:10:19.935177+00:00"
   },
   {
    "id": "multi-session",
@@ -259,7 +291,8 @@
    "prs": [],
    "status": "open",
    "added": "2026-10-22",
-   "approved": false
+   "approved": true,
+   "changed": "2026-10-22T17:09:00.374904+00:00"
   },
   {
    "id": "flow-board",
