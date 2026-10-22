@@ -2135,6 +2135,22 @@ def test_a_working_install_keeps_its_hook_exit_codes(root, tmp_path):
     assert run('hook').returncode == 2 and run('nonesuch').returncode == 2  # argparse's own usage errors
 
 
+def test_a_session_id_holding_dot_dot_keeps_the_stop_entry_inside_the_cache(root, fake):
+    plan_one(root)
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    assert stop(root, session='x/../../../escape')['decision'] == 'block'
+    assert not list(root.rglob('escape.json')) and not (root.parent / 'escape.json').exists()
+
+
+@pytest.mark.parametrize('final', [False, True])
+def test_confirming_answers_never_deletes_through_a_linked_cache_folder(root, tmp_path_factory, final):
+    outside = tmp_path_factory.mktemp('outside')
+    (outside / 'answer-s--1.json').write_text(json.dumps({'id': 'x', 'path': None, 'questions': ['q']}))
+    (root / ws.DIR / 'cache').symlink_to(outside, target_is_directory=True)
+    assert hook._confirm(root, {'session_id': 's'}, final) == []
+    assert [p.name for p in outside.iterdir()] == ['answer-s--1.json']
+
+
 # decisions-survive: owner answers outlive compaction and new sessions
 
 SCOPE = 'scope: may I-1 also change the CLI help text?'

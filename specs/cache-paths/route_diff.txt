@@ -1,0 +1,6 @@
+corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (main) de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (head); 288 routes; 576 cases; 288 moved
+plain: 288 cases, 0 moved
+linked: 288 cases, 288 moved
+decision or door reason moved: 0
+linked, files in the outside folder after the call at main: 199 x [clone, hook-python.json, hook-seen.json]; 49 x [clone, default-o__r.json, hook-python.json, hook-seen.json]; 22 x [budget-o__r.json, clone, hook-python.json, hook-seen.json, login.json, pr-o__r-5-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-0cf6d953e16a21a3dccfb2630101bb5d.json, required-o__r-0d6e4079e36703eb.json, spec-o__r.json, template-o__r.json]; 8 x [budget-o__r.json, clone, default-o__r.json, hook-python.json, hook-seen.json]; 5 x [budget-o__r.json, clone, hook-python.json, hook-seen.json]; 4 x [clone, hook-python.json, hook-seen.json, notes-s1.json]; 1 x [budget-other__x.json, clone, hook-python.json, hook-seen.json, login.json, pr-other__x-5-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-0cf6d953e16a21a3dccfb2630101bb5d.json, required-other__x-0d6e4079e36703eb.json, spec-other__x.json, template-other__x.json]
+linked, files in the outside folder after the call at head: 288 x [answer-s1--x.json]

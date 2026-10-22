@@ -342,6 +342,8 @@ def _confirm(root, payload, final):
     PostToolUse returns; a Stop rereads for WAIT seconds), else answer.unconfirmed. A racing hook skips one claimed."""
     notes, end, session = [], time.monotonic() + WAIT * final, re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
+        if ws._cached(root, path.stem) != path:  # a linked cache folder or entry: never read or deleted through
+            continue
         kept = entry if isinstance(entry := ws.cache_get(root, path.stem, 7 * 86400), dict) else {}  # a planted [1] reads as nothing
         fresh = ws.cache_get(root, path.stem, BOUND) is not None  # kept less than BOUND seconds ago: a Stop waits for its row
         while (shown := _shown(kept)) is None and fresh and time.monotonic() < end:
