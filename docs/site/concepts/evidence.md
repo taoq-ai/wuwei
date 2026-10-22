@@ -183,6 +183,24 @@ The tier is a ceiling and the diff decides what runs under it:
 | a contract file or a spec contract (a file under a spec's `contracts/` folder) at any tier, or at standard more than 200 changed lines that are not prose (code, specs, `.txt` files, code under `docs/`, the files seats load) or 10 code files | + arch |
 | full tier | all four |
 
+### The smart tier
+
+`smart` is the default for new items. The lead classifies each item with Cynefin and records the
+domain with one line of evidence (`--domain "clear: <why>"`); the gates start from the standard
+rows above and the domain and the measured signals at the head only add to them:
+
+| Domain or signal | Gates |
+| --- | --- |
+| clear | the standard rows above |
+| complicated, on a trust path (auth, sessions, tokens, secrets, permissions, grants, policies) | + arch |
+| complex, or no domain recorded, or a domain in another spelling | quality, security and arch, a short `How this fails` and the spec engine's artifacts, which hold the merge |
+| a changed Python function whose decision nodes (if, loop, except, assert, boolean operator, comprehension, match case, conditional expression), read with `ast` at the base and the head and summed over functions of one name, rise to 10 or more (McCabe complexity over 10); a head that cannot be read or parsed counts as a rise | + security |
+| a code patch that names what a guard waives or refuses (deny, ask, allow, refuse, waive, excepted, exception, `permissionDecision`, `PROCESS`, `DUTY`), or a code file with no patch | + arch |
+| the promise marked in doubt (`--in-doubt`) | + goal |
+
+A model-written or seat-written field can only raise the set: a `clear` domain on an owner path
+still takes security, and on a guard change still takes arch.
+
 A one-line config flag costs one gate. After a fix round only the gate that found the problem
 re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
 the earlier passes; a larger one is re-read by the one gate it needs (security for risky paths,
@@ -191,7 +209,8 @@ base, not everything between the two heads. A merge of the base that leaves the 
 alone (line numbers aside) carries the passes, as does a change only to files the workspace
 declares generated with a dated line in `.wuwei/standards.md`, such as
 `- Generated (acme/app, 2026-10-22): guide/* src/version.py`. The line applies off risky, owner
-and contract paths: a file there still counts, whatever the line names. When the error budget is overrun, or a light item touches a
+and contract paths: a file there still counts, whatever the line names. When the error budget is overrun (smart rises to
+standard), or a light item touches a
 trust path (auth, sessions, tokens, secrets, permissions, grants, policies) outside docs, the raised
 tier takes its full gate set.
 

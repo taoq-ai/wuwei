@@ -1,5 +1,6 @@
 """What a pull request still lacks. One pure reading of the artifacts: it never asks how the work was done."""
 
+import ast
 import datetime
 import fnmatch
 import hashlib
@@ -44,7 +45,7 @@ CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.gr
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
 RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
                    r'|requirements[^/]*\.txt$|package\.json$|pyproject\.toml$|go\.mod$|Cargo\.toml$', re.I)
-RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
+RAISE = {'light': 'standard', 'smart': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
@@ -57,6 +58,11 @@ DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of t
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
 SHA = re.compile(r'[0-9a-f]{40}')
+# Smart: the lead's domain ("clear: <why>"; else complex), words of what a guard waives or refuses (Exception is Python's), McCabe's decision nodes.
+cynefin = lambda item: (re.match(r'(clear|complicated):', str((item or {}).get('domain'))) or ('', 'complex'))[1]  # noqa: E731
+NAMED = r'\b(permissionDecision|PROCESS|DUTY)\b'  # a guard's own names, read in context lines too
+WAIVE = re.compile(r'\b((?i:deny|denied|refuse[ds]?|ask|allow(ed|s)?|waive[ds]?|excepted)|exceptions?)\b|' + NAMED)
+DECIDE, MCCABE = (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.Assert, ast.BoolOp, ast.comprehension, ast.match_case), 10
 PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
 
 
@@ -287,18 +293,39 @@ def newer(root, repo, v, held, head):
         and ancestor(root, repo, v['head'], head)
 
 
-def needed(root, tier, files):
-    """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
-    security comes for risky or owner paths, arch for a contract or a wide change of all but prose; full all four."""
+def needed(root, tier, files, item=None, rose=bool):
+    """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none; security comes for risky or owner
+    paths, arch for a contract or a wide change of all but prose; full all four. At smart the domain sets a floor measured signals raise."""
     code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
             or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
     wide = [f for f in files if not PROSE.match(f['path']) or f['path'].startswith(('specs/', 'openspec/'))]
     risky = owned(root, code) or any(RISKY.search(p) for p in code)
     if tier == 'full' and code:
         return REQUIRED['full']
-    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in files)
-             or tier == 'standard' and (lines(wide) > WIDE or len(code) > 10)}
-    return tuple(g for g in REQUIRED['standard'] if wants[g])
+    std, smart, deep = tier in ('standard', 'smart'), tier == 'smart' and bool(code), cynefin(item) == 'complex'
+    wants = {'quality': code, 'security': std and risky or smart and (deep or rose()), 'arch': any(CONTRACT.search(f['path']) for f in files)
+             or std and (lines(wide) > WIDE or len(code) > 10) or smart and (deep or any(not isinstance(f.get('patch'), str) and lines([f])
+             or WAIVE.search(changed(f)) or re.search(TRUST, f['path'], re.I) and cynefin(item) != 'clear' for f in files if f['path'] in code)),
+             'goal': smart and bool((item or {}).get('in_doubt'))}
+    return tuple(g for g in REQUIRED['full'] if wants[g])
+
+
+def changed(f):  # a patch's changed lines and hunk headers, and context lines only where they name a guard
+    return '\n'.join(n for n in (f.get('patch') or '').splitlines() if n.startswith(('+', '-', '@@')) or re.search(NAMED, n))
+
+
+def rose(repo, pr, files):
+    """A function's decision nodes (summed by name, ast) rise to MCCABE or more from base to head; an unread head is a rise."""
+    def count(path, ref, found):  # '(' never parses: a ref that is no sha is never read (no default branch stands in)
+        try:
+            for f in [n for n in ast.walk(ast.parse(gh.file(repo, path, ref) if SHA.fullmatch(ref or '') else '(')) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+                found[f.name] = found.get(f.name, 0) + sum(isinstance(n, DECIDE) for n in ast.walk(f))
+            return found
+        except (gh.GhError, SyntaxError, ValueError, RecursionError):
+            return None
+    return any(now is None or any(n >= MCCABE and n > (was or {}).get(k, 0) for k, n in now.items()) for path in [f['path'] for f in files
+               if f['path'].endswith('.py') and f.get('additions') and not TEST.search(f['path'])]
+               for was, now in [(count(path, pr.get('baseRefOid'), {}), count(path, pr.get('headRefOid'), {}))])
 
 
 def lines(files):
@@ -317,7 +344,10 @@ def gates_for(root, repo, pr, files, item):
         tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
     elif tier == 'light' and any(re.search(TRUST, f['path'], re.I) and not DOCS.search(f['path']) for f in files):
         tier, why = 'standard', ' (tier raised to standard: the diff touches a trust path)'
-    gates = REQUIRED[tier] if why else needed(root, tier, files)  # an overrun budget trims nothing
+    cached = lambda: _cached(root, f'cc-{repo.replace("/", "__")}-{pr.get("baseRefOid")}-{pr.get("headRefOid")}', lambda: rose(repo, pr, files))  # noqa: E731
+    gates = REQUIRED[tier] if why else needed(root, tier, files, item, cached)  # an overrun budget trims nothing
+    if spent['raised']:  # and keeps every gate the unraised item owed
+        gates = tuple(g for g in REQUIRED['full'] if g in gates + tuple(needed(root, (item or {}).get('tier', 'standard'), files, item, cached)))
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
 
@@ -442,7 +472,7 @@ def gaps(root, repo, number, listed=None):
             found.append(gap('PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'))
         if missing := [s for s in template_sections(root, repo) if s.lower() not in body.lower()]:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
-        if tier != 'light':
+        if tier != 'light' and (tier != 'smart' or cynefin(item) == 'complex'):  # smart: complex only, and then they hold
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             # the artifacts at a head never change, CI or not; the file list does when the base is retargeted (a path may hold a newline)
             listing = hashlib.sha256(json.dumps(sorted(files)).encode()).hexdigest()[:32]
@@ -451,7 +481,7 @@ def gaps(root, repo, number, listed=None):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
                 if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
                     ws.cache_put(root, kept, spec)
-            found += [dict(g, kind='safety') if tier == 'full' else g for g in spec[key]]
+            found += [dict(g, kind='safety') if tier in ('full', 'smart') else g for g in spec[key]]
         code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))

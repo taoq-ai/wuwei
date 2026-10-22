@@ -197,6 +197,8 @@ class FakeGh:
                                **{k: f[k] for k in ('patch',) if k in f}} for f in files]}
         if args[0] == 'api' and '/contents/' in path:
             path = path.split('/contents/')[1]
+            if ref := re.search(r'(?:^|&)ref=([^&]+)', query):  # a file kept for one ref ('<path>@<ref>') answers at that ref only
+                path = f'{path}@{ref[1]}' if f'{path}@{ref[1]}' in self.files or any(k.startswith(path + '@') for k in self.files) else path
             children = sorted({key[len(path) + 1:].split('/')[0] for key in self.files if key.startswith(path + '/')})
             if children:
                 return [{'name': name, 'path': f'{path}/{name}',
