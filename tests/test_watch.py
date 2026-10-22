@@ -540,3 +540,72 @@ def test_a_seat_recorded_without_a_session_holds_nothing(root, fake):
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x1', 'item': 'I-1'})
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'x2', 'item': 'I-1', 'session': ''})
     assert refused(launch(root, 'B', 'Item: I-1')) is None and board.running(root) == []
+
+
+# flow-board: finish before starting. In progress counts across the workspace against the WIP limit; the rest queue.
+
+def wip(root, fake, busy, idle, **extra):
+    """busy items with an open PR each (P-1..), idle approved items with none (scores from extra, else 1)."""
+    write_plan(root, [{'id': i, 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', 'approved': True,
+                       'score': 1, **extra.get(i, {})} for i in [f'P-{n}' for n in range(1, busy + 1)] + list(idle)])
+    for n in range(1, busy + 1):
+        fake.prs[str(60 + n)] = make_pr(number=60 + n, head=f'{n}' * 40, body=f'WUWEI-Item: P-{n}')
+
+
+def first(root):
+    return {r['item']: r['gaps'][0]['text'] + ('' if r['gaps'][0]['actionable'] else ' [waiting]')
+            for r in board.compute(root) if r['item'] in ('X', 'Y')}
+
+
+def test_at_the_wip_limit_each_approved_item_with_no_pr_queues_and_the_stop_leaves_it_out(root, fake):
+    wip(root, fake, 4, 'XY')
+    queued = 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'
+    assert first(root) == {'X': queued, 'Y': queued}
+    reason = hook.handle(root, 'Stop', {'session_id': 's1', 'cwd': str(root)})['reason']
+    assert 'X' not in reason.split('Left out')[0] and 'Y' not in reason.split('Left out')[0]
+
+
+def test_under_the_limit_the_highest_score_fills_the_free_slot(root, fake):
+    wip(root, fake, 3, 'XY', Y={'score': 9})
+    assert first(root) == {'Y': 'no pull request yet', 'X': 'queued: 3 items in progress, WIP limit 4: finish one first [waiting]'}
+
+
+def test_a_builder_seat_counts_only_while_live_and_under_four_hours(root, fake, monkeypatch):
+    wip(root, fake, 3, 'XY', Y={'score': 9})
+    now = ws.now()
+    monkeypatch.setattr(ws, 'now', lambda: now - datetime.timedelta(hours=5))
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b0', 'session': 's1', 'item': 'X'})
+    monkeypatch.setattr(ws, 'now', lambda: now)
+    assert first(root)['Y'] == 'no pull request yet'  # X does not count: Y takes the one free slot
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b1', 'session': 's2', 'item': 'X'})
+    assert first(root) == {'X': 'no pull request yet', 'Y': 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'}
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'b1', 'session': 's2'})
+    assert first(root)['Y'] == 'no pull request yet'
+
+
+def test_a_running_codex_job_counts_in_progress(root, fake, tmp_path):
+    job = tmp_path / 'job.json'
+    job.write_text(json.dumps({'status': 'running'}))
+    wip(root, fake, 3, 'JY', J={'kind': 'run', 'job': str(job)})
+    assert first(root)['Y'] == 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'
+    job.write_text(json.dumps({'status': 'completed'}))
+    assert first(root)['Y'] == 'no pull request yet'
+
+
+def test_the_owners_last_wip_limit_line_holds(root, fake):
+    (root / ws.DIR / 'standards.md').write_text('- WIP limit: 2 (2026-10-01)\n- 2026-10-22 WIP limit: 6, the owner\n')
+    wip(root, fake, 5, 'XY', Y={'score': 9})
+    assert board.limit(root, 'WIP limit', 4) == 6
+    assert first(root) == {'Y': 'no pull request yet', 'X': 'queued: 5 items in progress, WIP limit 6: finish one first [waiting]'}
+
+
+def test_the_team_row_names_work_over_the_wip_limit_and_seats_over_the_ceiling(root, fake):
+    wip(root, fake, 5, '')
+    assert 'orchestration: 5 items in progress, over the WIP limit of 4: finish before starting' in team(root)
+    for n in range(9):
+        seat(root, 'shepherd' if n else 'sentinel-quality', agent=f'a{n}')
+    seat(root, 'builder', session='s2', agent='z')
+    assert team(root) == ['orchestration: 5 items in progress, over the WIP limit of 4: finish before starting',
+                          'orchestration: 9 seats running, over the ceiling of 8']
+    (root / ws.DIR / 'standards.md').write_text('Seat ceiling: 9\nWIP limit: 5\n')
+    assert team(root) == []

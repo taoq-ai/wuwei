@@ -62,7 +62,7 @@ def pre_tool(root, payload):
     found = {'decision': 'deny', 'reason': (problem + '\n' if problem else '') + (AWAY if away else 'Then hand back again.')} \
         if problem or away else guards.pre_tool(root, payload) or held
     if found is None:
-        return advise(root, payload.get('tool_input') or {}) if payload.get('tool_name') in ('Agent', 'Task') else None
+        return advise(root, payload.get('tool_input') or {}, crowded(root, payload)) if payload.get('tool_name') in ('Agent', 'Task') else None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
     try:  # the decision stands even when its record fails
         ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500], 'session': payload.get('session_id')})
@@ -81,11 +81,17 @@ def asked(data):
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 
-def advise(root, data):
-    """A note on a launch that departs from agents.TABLE or the owner's models rows; never a refusal or a rewrite."""
+def crowded(root, payload):  # advice on a launch past the seat ceiling, never a door
+    seats, ceiling = [s['session'] for s in board.running(root)].count(payload.get('session_id')), board.limit(root, 'Seat ceiling', 8)
+    return (f'WUWEI: seat {seats + 1} running in this session, over the ceiling of {ceiling}: turns slow and rate limits come sooner. '
+            'Tell the owner once; start it if the owner asked.') if seats >= ceiling else ''
+
+
+def advise(root, data, note=''):
+    """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
     if role not in agents.TABLE or not data.get('prompt'):  # a Codex spawn carries no brief and no model
-        return None
+        return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
     if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
@@ -98,8 +104,8 @@ def advise(root, data):
     floor = role.startswith('sentinel-') and (fam(model) == 'haiku' or 'haiku' in named.lower())  # a row, even one config() drops
     if not floor and (reason or any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
                                     (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed)):
-        return None
-    return context('PreToolUse', f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
+        return context('PreToolUse', note) if note else None
+    return context('PreToolUse', note + '\n' * bool(note) + f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
                    f"brief (asked: {model} {effort}" + ''.join(f'; the row also allows {s} {when}' for s, when in allowed[1:]) + ').' + (
                        " Haiku 5.5 never runs a gate on risky, owner or contract paths, and neither a reason nor a models row "
                        "covers that: it is an exception: for the owner." if floor else ''))
@@ -136,7 +142,7 @@ def stop(root, payload):
     shown = '\n'.join('- ' + line for line in new[:10])
     more = f'\nand {len(new) - 10} more (wuwei status lists all)' if len(new) > 10 else ''
     more += f'\n{len(open_work) - len(new)} more unchanged since {since} (wuwei status lists all)' if len(new) < len(open_work) else ''
-    held = f'\nLeft out: {waiting} waiting on CI, the owner, plan approval or an andon.' if waiting else ''
+    held = f'\nLeft out: {waiting} waiting on CI, the owner, plan approval, an andon or the WIP limit.' if waiting else ''
     return {'decision': 'block', 'reason': 'WUWEI: open work you can close now:\n' + shown + more + held +
             '\nThe plan is your mandate: do not ask the owner whether to continue. Close these, or say in '
         'one line why each waits, then stop.'}

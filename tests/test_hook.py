@@ -468,6 +468,7 @@ def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
     from conftest import write_plan as plan_rows
     plan_rows(root, [{'id': f'I-{n}', 'title': 't', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
                       'status': 'open', 'score': 1} for n in range(14)])
+    (root / ws.DIR / 'standards.md').write_text('WIP limit: 14\n')  # else ten of them queue at the WIP limit of 4
     reason = stop(root)['reason']
     assert reason.count('\n- ') == 10 and 'and 4 more' in reason
 
@@ -2498,3 +2499,24 @@ def test_many_answers_take_a_bounded_share_of_the_cap_and_name_what_was_cut(root
     text = start(root)
     assert len(text) < hook.SESSION_CAP and all(f'scope: question {n} ' in text for n in range(48, 60))
     assert not any(f'scope: question {n} ' in text for n in range(48)) and '48 older left out' in text and '- I-1 ' in text
+
+
+def test_a_launch_over_the_seat_ceiling_passes_with_a_note_and_one_under_it_has_none(root):
+    def go(session='s1'):
+        return hook.handle(root, 'PreToolUse', {'session_id': session, 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': {
+            'subagent_type': 'wuwei:shepherd', 'description': 'shepherd', 'prompt': 'Watch the PRs.'}})
+    for n in range(7):
+        ws.record(root, 'seat.started', {'role': 'builder', 'agent': f'a{n}', 'session': 's1'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b', 'session': 's2'})
+    assert go() is None
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'a7', 'session': 's1'})
+    assert go()['hookSpecificOutput'] == {'hookEventName': 'PreToolUse', 'additionalContext': (
+        'WUWEI: seat 9 running in this session, over the ceiling of 8: turns slow and rate limits come sooner. '
+        'Tell the owner once; start it if the owner asked.')}
+    assert go('s2') is None
+    both = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:shepherd', 'description': 'shepherd', 'prompt': 'Watch the PRs.', 'model': 'opus'}})
+    assert both['hookSpecificOutput']['additionalContext'].startswith('WUWEI: seat 9 running in this session') and \
+        '.\nWUWEI: table says ' in both['hookSpecificOutput']['additionalContext'] and 'permissionDecision' not in both['hookSpecificOutput']
+    (root / ws.DIR / 'standards.md').write_text('Seat ceiling: 10\n')
+    assert go() is None

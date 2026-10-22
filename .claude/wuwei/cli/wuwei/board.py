@@ -119,12 +119,34 @@ def compute(root, everything=False):
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
     out = answers + flow(root, out)  # owed replies stay first
-    live, prs = running(root), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
+    (busy, cap), live, prs = queue(root, out, open_items), running(root), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
+    crowd, ceiling = max([[s['session'] for s in live].count(s['session']) for s in live], default=0), limit(root, 'Seat ceiling', 8)
     owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith('CI failing') for g in r['gaps']) for r in prs)  # gates start at push (#1221)
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in [s.get('role') for s in live]) + [
-        evidence.gap('orchestration: gates owed with no gate seat running')] * (owed and not any(str(s.get('role')).startswith('sentinel-') for s in live))
+        evidence.gap('orchestration: gates owed with no gate seat running')] * (owed and not any(str(s.get('role')).startswith('sentinel-') for s in live)) + [
+        evidence.gap(f'orchestration: {busy} items in progress, over the WIP limit of {cap}: finish before starting')] * (busy > cap) + [
+        evidence.gap(f'orchestration: {crowd} seats running, over the ceiling of {ceiling}')] * (crowd > ceiling)
     return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + [{**r, 'gaps': r['gaps'] + [  # first: the Stop and session start cut from the end
         evidence.gap(f'{s.get("role")} running in session {s["session"]}', actionable=False) for s in live if str(s.get('item') or '').lower() == str(r['item']).lower()]} for r in out]  # the holder of each item
+
+
+def limit(root, name, default):  # the owner's last '<name>: <n>' line in .wuwei/standards.md, else the planner's default
+    path = os.path.join(root, ws.DIR, 'standards.md')
+    return int(([default] + re.findall(rf'(?i)\b{name}:[ \t]*([0-9]+)', open(path, encoding='utf-8').read() if os.path.isfile(path) else ''))[-1])
+
+
+def queue(root, out, items):
+    """Finish before starting: an open item is in progress with an open PR, a live builder seat under STALE_HOURS or a running
+    Codex job. Free slots under the WIP limit go to the highest-score items with no PR; the rest wait, queued."""
+    cap, found = limit(root, 'WIP limit', 4), {i['id'].lower(): i for i in items}
+    busy = found.keys() & ({r['item'].lower() for r in out if r['pr']} | {str(s.get('item')).lower() for s in running(root, STALE_HOURS) if s.get('role') == 'builder'}
+                           | {k for k, i in found.items() if i.get('job') and job(root, i['job']).startswith('job running')})
+    free = cap - len(busy)
+    for row in sorted((r for r in out if r['item'].lower() not in busy and r['gaps'][:1] and r['gaps'][0]['text'] == 'no pull request yet'), key=lambda r: r.get('score') if isinstance(r.get('score'), (int, float)) else 0, reverse=True):
+        if (free := free - 1) < 0:
+            row['gaps'] = [evidence.gap(f'queued: {len(busy)} items in progress, WIP limit {cap}: finish one first', actionable=False),
+                           *(dict(g, actionable=False) for g in row['gaps'][1:])]
+    return len(busy), cap
 
 
 def when(text):  # an ISO time or date as UTC; None when it is not one
