@@ -143,11 +143,11 @@ def stop(root, payload):
 
 
 def transcript_rows(path, key):  # the rows naming key in a regular file under ws.PROJECTS, links resolved (None: not one)
-    try:
+    try:  # split on newlines only: a JSON string may hold U+2028 and kin raw, and str.splitlines() splits there
         real = Path(path).resolve(strict=True)
-        return [json.loads(line) for line in real.read_text(encoding='utf-8').splitlines() if key in line] if real.is_relative_to(
+        return [json.loads(line) for line in real.read_bytes().splitlines() if key.encode() in line] if real.is_relative_to(
             ws.PROJECTS.resolve()) and real.is_file() else None
-    except (OSError, TypeError, ValueError, RuntimeError):
+    except (OSError, TypeError, ValueError, RuntimeError, AttributeError):  # AttributeError: a key that is no string
         return None
 
 
