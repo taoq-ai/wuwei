@@ -1,0 +1,26 @@
+Verdict: PASS
+Gate: quality
+Item: verdict-bind
+PR: taoq-ai/wuwei#1249
+Head: 63edbf9f1e3450d0aadb9b75c67ab0c352867eed
+Confidence: medium
+Breaking: no
+
+## Findings
+- [low] cli/wuwei/guards.py:383 blocks: no. `python3 -m runpy wuwei hook PreToolUse` and `python3 -m wuwei -- hook PreToolUse` pass the guard and, run in a head copy with a stub-free real interpreter, really reach hook.main (both printed the hook's deny JSON). Same class as the documented `-c`/script limit, so a note: the SECURITY.md wording "any interpreter spelling" covers only `-m wuwei[.__main__] hook`.
+- [low] cli/wuwei/hook.py:248 blocks: no. A seat resumed under the same agent_id that rewrites its already-attested verdict path gets its stop accepted with no message; the new verdict is dropped (verdict.rewritten) and the gate stays owed. Returning the `free(path)` hint, as the other-seat branch below does, would let it act; the test asserts None, so this is the builder's chosen shape. A new file name (`-2.md`) attests normally (probed).
+- [low] cli/wuwei/upgrade.py:124 blocks: no. `fresh = not ws.ledger(root)`: a 0.34 workspace whose plugin was upgraded and in which a hook already wrote any ledger row (stop.reminded, seat.started, hook.error, a denial) before the first `wuwei init` gets no verdict import, silently. Inside the promise ("no ledger yet"); a discriminator on the absence of a `workspace.init` row would keep the import for that case. Unmeasured how often it happens.
+
+## Probes
+- Acceptance tests fail on main: with the PR's three test files copied onto a git archive of origin/main, 10 fail (test_the_records_are_protected payload7-12 = 6, the multi-line `true\npython3 -m wuwei.__main__ hook` case = 1, test_a_rewritten_verdict_replayed... [stop] and [handback] = 2, test_init_imports_no_day_decision_into_a_workspace_that_already_has_a_ledger = 1). They pass at the head. tests/test_upgrade.py, test_hook.py, test_setup.py at head: 640 passed (includes the real 0.34 upgrade, imported 2 verdicts, idempotent second run). Vendored-copy and runtime-size tests pass (cli/wuwei is 3585 lines, budget 3600).
+- Mutants, one at a time, applied to both cli/wuwei and .claude/wuwei/cli/wuwei, all killed by a behavioural test: m1 `mine` branch disabled (test_a_rewritten_verdict_replayed...[stop]); m2 `agent ==` flipped to `!=` (test_a_seat_that_replaces_another_seats_verdict_is_sent_back); m3 `fresh` forced true (test_init_imports_no_day_decision...); m4 drop `(\.__main__)?` in the deny regex (test_the_records_are_protected[payload10]); m5 drop it from DOOR_WORDS (multi-line hint case); m6 disable the `-m` deny regex (payload7); m7 `m\0?wuwei` to `m\0wuwei` (payload11, the `-mwuwei` spelling); m8 `-[^\0-]*m` to `-m` (payload10, `-Im`).
+- Seat flows at head (scratch test, passed): a seat that attested FIX then writes a corrected verdict as quality-2.md is attested PASS with no verdict.rewritten row; a second seat (rev2) reading the same path at a new head is still sent back to the next free name, and no verdict.rewritten row is written for it.
+- Builder's combinatorial probe re-run from a copy at main and at the head: 664 door commands generated, 664 really ran the stub under bash, 12 refused at main, 664 refused at head, 0 holes at head (652 at main). 8 benign commands: 1 moves, `echo -m wuwei hook` (pass to deny); `git commit -m "wuwei hook"`, `python3 -m wuwei status`, `python3 -m wuwei plan show hook` still pass. 501 non-door commands (leak check, terraform and kubectl ask) unchanged: 160 refused at both trees. Rewrite scenario: main attests [FIX, PASS] for stop and hand-back, head attests [FIX] with one verdict.rewritten each and the gate still owed.
+- Route corpus differential, tests/fixtures/routes.json sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (identical at main and head): 288 routes read through guards.bash and PreToolUse for the planner and a sentinel seat at both trees, 0 verdicts or reasons moved. No refusal names a different PR or repository.
+- Over-refusal sweep of 28 hand-made shapes (my own): refused also `git commit -m wuwei hook` (unquoted, multi-word), `git log -m wuwei hook`, `ls -am wuwei hook`, `pytest -m wuwei hook`; passed `git commit -m "wuwei hook"`, `git commit -m wuwei hook-fix`, `grep -m 1 wuwei hook`, `python3 -m wuwei hooks`, `python3 -m wuwei.hook`. .wuwei/traces.jsonl (4612 rows): 0 uses of `-m wuwei` and no `wuwei hook` outside this review's own greps, so no day-to-day command in this repository is refused.
+- Confidence medium: the over-refusal is by design and unmeasured outside this repository's traces; the two bypass shapes above were found by hand rather than by a generated class.
+
+Simplicity: none to delete. The deny regex is one expression on the existing branch, the `fresh` flag is one line, the `mine` branch reuses the `earlier` list. The `-m` regex is program-agnostic, which is why `echo -m wuwei hook` is refused; tightening it to interpreter names would add a list for no safety gain.
+
+## Residual risk
+The hook can still be reached by `python3 -m runpy wuwei hook`, `python3 -m wuwei -- hook` and any `-c` or script body; the forged-record defence there rests on the transcript confirmation, not the guard. A same-agent rewrite and a pre-init ledger row are silent drops.
