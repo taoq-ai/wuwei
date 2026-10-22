@@ -616,5 +616,6 @@ def test_the_team_row_names_work_over_the_wip_limit_and_seats_over_the_ceiling(r
     seat(root, 'builder', session='s2', agent='z')
     assert team(root) == ['orchestration: 5 items in progress, over the WIP limit of 4: finish before starting',
                           'orchestration: 9 seats running, over the ceiling of 8']
+    assert [g['actionable'] for r in board.compute(root) if r['item'] == 'team' for g in r['gaps']] == [True, False]  # another session cannot stop these seats
     (root / ws.DIR / 'standards.md').write_text('Seat ceiling: 9\nWIP limit: 5\n')
     assert team(root) == []
