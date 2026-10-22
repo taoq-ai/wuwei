@@ -70,6 +70,32 @@ def test_a_complexity_rise_read_with_ast_raises_security_off_risky_paths(root, f
     assert owed(root) == [f'gates missing at head aaaaaaa: {gates}']
 
 
+@pytest.mark.parametrize('node', [
+    '    y = 1 if x == {i} else 0\n',
+    '    for _ in x:\n        pass\n',
+    '    async for _ in x:\n        pass\n',
+    '    while x == {i}:\n        break\n',
+    '    try:\n        pass\n    except E{i}:\n        pass\n',
+    '    assert x != {i}\n',
+    '    y = x and {i}\n',
+    '    y = [a for a in x]\n',
+    '    match x:\n        case {i}:\n            pass\n',
+])
+def test_every_decision_node_counts_toward_the_complexity_rise(root, fake, node):
+    smart(root)
+    pr_with(fake, {'src/app.py': (PLAIN, 'async def run(x):\n    return -1\n',
+                                  'async def run(x):\n' + ''.join(node.format(i=i) for i in range(10))), **TESTS})
+    assert owed(root) == ['gates missing at head aaaaaaa: quality, security']
+
+
+def test_a_head_too_deep_to_parse_counts_as_a_rise(root, fake, monkeypatch):
+    def deep(*args, **kwargs):
+        raise RecursionError('maximum recursion depth exceeded during compilation')
+    monkeypatch.setattr(evidence.ast, 'parse', deep)
+    smart(root)
+    pr_with(fake, {'src/app.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
+    assert owed(root) == ['gates missing at head aaaaaaa: quality, security']
+
 def test_a_complexity_read_without_a_head_sha_counts_as_a_rise(root, fake):
     smart(root)
     files = [{'path': 'src/app.py', 'additions': 2, 'deletions': 0, 'patch': PLAIN}]
@@ -90,6 +116,25 @@ def test_acceptance_3_a_complicated_item_that_changes_what_a_guard_waives_owes_a
     "@@ -3,2 +3,2 @@\n-        return {'decision': 'ask'}\n+        return {'decision': 'allow'}",
     '@@ -39,2 +39,2 @@\n PROCESS = re.compile(r"^(specs/|"\n-    r"|open [0-9]+ days")\n+    r"|open [0-9]+ days|CI")',
     '@@ -1,2 +1,2 @@\n-WAIVED = 1\n+WAIVED = 2',
+
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = deny',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = denied',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = refuse',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = refused',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = refuses',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = ask',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = allow',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = allowed',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = allows',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = waive',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = waived',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = waives',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = excepted',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = exception',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = exceptions',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = permissionDecision',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = PROCESS',
+    '@@ -1,1 +1,1 @@\n-x = 1\n+x = DUTY',
 ])
 def test_a_clear_classification_on_a_guard_change_still_owes_arch(root, fake, patch):
     """The lead says clear; the diff changes what a guard waives or refuses: the measured signal raises."""
