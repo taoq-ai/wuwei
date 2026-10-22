@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from conftest import make_pr, verdict_text, write_plan
+from conftest import footer, make_pr, verdict_text, write_plan
 from wuwei import guards, ws
 
 
@@ -184,10 +184,60 @@ def test_the_plan_question_reaches_the_owner(root):
     assert guards.pre_tool(root, ask('plan: approve this plan? 3 items on 2 goals, about 6 build hours.')) is None
 
 
-def test_an_exception_for_a_process_gap_goes_back_to_the_model(root):
-    decision = guards.pre_tool(root, ask('exception: acme/app#43 at e750645: specs/tin-258/tasks.md has no checklist '
-                                         'items. Accept the gap so it can merge?'))
+@pytest.mark.parametrize('gap', ["PR body misses the repository template's sections: Summary, Testing",
+                                 '600 changed lines: split it, or add a Size: <reason> line', 'open 5 days: finish, rebase or close'])
+def test_an_exception_for_a_process_gap_goes_back_to_the_model(root, gap):
+    decision = guards.pre_tool(root, ask(f'exception: acme/app#43 at e750645: {gap}. Accept the gap so it can merge?'))
     assert decision['decision'] == 'deny' and 'never block' in decision['reason']
+
+
+@pytest.mark.parametrize('gap', ['specs/tin-258/tasks.md has 17 unchecked items', 'specs/tin-258/tasks.md has no checklist items',
+                                 'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Plan says Y |',
+                                 'specs/7/spec.md has no ## Clarifications section: run clarify',
+                                 'specs/7/plan.md missing: run the spec engine step that writes it',
+                                 'openspec/changes/x/tasks.md has 1 unchecked item', 'no spec in the diff (the repository uses .specify)'])
+def test_an_exception_for_a_spec_gap_reaches_the_owner(root, gap):
+    """At full tier wuwei evidence prints the spec engine's steps as safety gaps, so the owner may accept one (#1223)."""
+    assert guards.pre_tool(root, ask(f'exception: acme/app#43 at e750645: {gap}. Accept?')) is None
+
+
+def spec_only_pr(root, fake, tasks='- [ ] T1\n' * 17, analysis='| C1 | LOW | wording |\n'):
+    """A full-tier spec-only PR with every gate passed and an approval: only its spec gaps can hold it."""
+    from test_evidence import SPEC, full_gates, speckit
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'full'}])
+    files = speckit(fake, **{f'{SPEC}/tasks.md': tasks, f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n' + analysis})
+    fake.prs['42'] = make_pr(files=files, body=footer() + '\nRollback: revert', reviews=(('alice', 'APPROVED'),))
+    full_gates(root)
+    return SPEC
+
+
+def test_an_accepted_spec_gap_opens_the_merge_door_and_is_recorded(root, fake, repo):
+    from conftest import answered
+    from wuwei import hook, plan
+    spec = spec_only_pr(root, fake)
+    assert f'{spec}/tasks.md has 17 unchecked items' in guards.merge_door(root, 'acme/app', 42)['reason']
+    question = f'exception: acme/app#42 at aaaaaaa: {spec}/tasks.md has 17 unchecked items. Accept?'
+    assert guards.pre_tool(root, ask(question)) is None
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Yes'}))
+    assert guards.merge_door(root, 'acme/app', 42) is None
+    rulings = [r['data'] for r in ws.rows(root, 'ruling')]
+    assert [(r['kind'], r['pr'], r['head'], r['gap'], r['approved']) for r in rulings] == [
+        ('exception', 'acme/app#42', 'aaaaaaa', f'{spec}/tasks.md has 17 unchecked items', True)]
+    assert [i['title'] for i in plan.items(root) if i['id'].startswith('X-')] == [
+        f'Close the exception on acme/app#42: {spec}/tasks.md has 17 unchecked items']
+
+
+@pytest.mark.parametrize('named, opens', [('| A08 | HIGH | Spec says X. Plan says Y |', True), ('| A08 | HIGH | Spec says X', False)])
+def test_an_accepted_finding_row_waives_only_the_whole_row(root, fake, repo, named, opens):
+    from conftest import answered
+    from wuwei import hook
+    spec = spec_only_pr(root, fake, tasks='- [x] T1\n', analysis='| A08 | HIGH | Spec says X. Plan says Y |\n')
+    printed = f'{spec}/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Plan says Y |'
+    assert printed in guards.merge_door(root, 'acme/app', 42)['reason']
+    question = f'exception: acme/app#42 at aaaaaaa: {spec}/analysis.md has an open CRITICAL or HIGH finding: {named}. Accept?'
+    assert guards.pre_tool(root, ask(question)) is None
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Yes'}))
+    assert (guards.merge_door(root, 'acme/app', 42) is None) is opens
 
 
 def test_a_merge_flows_past_process_gaps_and_records_them(root, fake, repo):

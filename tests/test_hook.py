@@ -305,6 +305,22 @@ def test_an_exception_answer_records_the_gap_after_the_refs(root):
         {'kind': 'exception', 'pr': 'o/r#1', 'head': 'abc1234', 'gap': 'gates missing at head abc1234: quality'}]
 
 
+ROW = 'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Plan says Y? |'
+
+
+@pytest.mark.parametrize('question, gap', [
+    (f'exception: o/r#1 at abc1234: {ROW}. Accept?', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}. I recommend it. Accept?', ROW),
+    (f'exception: o/r#1 at abc1234: {ROW}? Accept', ROW),
+    ('exception: o/r#1 at abc1234: specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X. Accept?',
+     'specs/7/analysis.md has an open CRITICAL or HIGH finding: | A08 | HIGH | Spec says X'),
+    ('exception: o/r#1 at abc1234: no test in the diff. I recommend it. Accept?', 'no test in the diff')])
+def test_an_exception_gap_keeps_the_sentence_breaks_of_a_finding_row(question, gap):
+    """A finding row is the gap up to its last cell; a sentence break inside it is not the question's (#1223)."""
+    assert hook.exception_refs(question) == ([('o/r', '1', 'abc1234')], gap)
+
+
 def test_every_exception_the_guard_passes_is_one_the_hook_records_as_written(root):
     """Generated: prefixes x refs x separators x gaps x tails. A pass the hook reads as nothing, as other refs
     than the chain names, or as another gap than the one written, is a hole."""

@@ -394,7 +394,7 @@ AWAY = ('This session is not in auto mode, so the harness refuses SubagentHandba
 
 
 def exception_refs(question):
-    """([(repo, number, head)], gap) from "exception: owner/repo#n at <sha> [and #m at <sha>]: <gap>. ..."."""
+    """([(repo, number, head)], gap) from "exception: owner/repo#n at <sha> [and #m at <sha>]: <gap>. ..."; a gap runs to its last | (a finding row)."""
     if not question.lower().startswith('exception:'):
         return [], ''
     refs, repo = [], ''
@@ -404,7 +404,7 @@ def exception_refs(question):
         if repo:
             refs.append((repo, match[2], match[3]))
     tail = question[matches[-1].end():].lstrip(' :') if matches else ''
-    return refs, re.split(r'\.\s|\?', tail, maxsplit=1)[0].strip().rstrip('.')
+    return refs, (tail[:(cut := tail.rfind('|') + 1)] + re.split(r'\.\s|\?', tail[cut:], maxsplit=1)[0]).strip().rstrip('.')
 
 
 def _goal(root, ref, repo):

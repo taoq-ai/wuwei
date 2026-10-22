@@ -74,6 +74,9 @@ accepted gap must equal the printed gap text (case, spacing, end marks and a pri
 aside), or equal the gates a gate gap names (`security` for `gates missing at head <sha7>:
 security`); a part of either waives nothing. `wuwei evidence`, the merge door and the ready door read
 exceptions alike, and the `verdict ... not counted` lines under an accepted gate gap go with it.
+The question door sends back an `exception:` that names a template, size or age gap (process fit);
+one that names a spec engine gap reaches the owner, since at full tier that gap is safety. The hook
+reads the gap up to the first `. ` or `?` after its last `|`, so a finding row keeps its sentences.
 
 ## 6. The evidence contract
 
