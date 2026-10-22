@@ -213,10 +213,21 @@ def traces(root, day=None):
             if day is None or row.get('ts', '').startswith(day)]
 
 
+def _cached(root, name):
+    """The entry for name, or None when the name or a link would leave the workspace's own .wuwei/cache."""
+    folder = Path(root) / DIR / 'cache'
+    path = folder / f'{name}.json'
+    with contextlib.suppress(OSError, RuntimeError):  # a link loop: RuntimeError before Python 3.13, unresolved after
+        same = folder.resolve() == Path(root).resolve() / DIR / 'cache' and not folder.is_symlink()  # resolve sees a junction
+        if same and path.parent == folder and not path.is_symlink():
+            return path
+    return None
+
+
 def cache_get(root, name, max_age):
-    path = Path(root) / DIR / 'cache' / f'{name}.json'
+    path = _cached(root, name)
     with contextlib.suppress(OSError, ValueError):
-        if now().timestamp() - path.stat().st_mtime <= max_age:
+        if path and path.is_file() and now().timestamp() - path.stat().st_mtime <= max_age:
             return json.loads(path.read_text(encoding='utf-8'))
     return None
 
@@ -230,11 +241,12 @@ def read_json(path):  # None for a file that is missing or not JSON, including o
 
 def cache_prune(root, max_age, *patterns):
     for path in (p for pattern in patterns for p in (Path(root) / DIR / 'cache').glob(f'{pattern}.json')):
-        with contextlib.suppress(OSError):
-            if now().timestamp() - path.stat().st_mtime > max_age:
+        with contextlib.suppress(OSError):  # only a regular file that is itself the entry for its name: never a link or a path out
+            if _cached(root, path.stem) == path and path.is_file() and now().timestamp() - path.stat().st_mtime > max_age:
                 path.unlink()
 
 
 def cache_put(root, name, value):
-    atomic_write(Path(root) / DIR / 'cache' / f'{name}.json', json.dumps(value))
+    if path := _cached(root, name):  # a name or link leaving the cache is never written
+        atomic_write(path, json.dumps(value))
     return value

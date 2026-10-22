@@ -2133,3 +2133,10 @@ def test_a_working_install_keeps_its_hook_exit_codes(root, tmp_path):
     assert run('hook', 'PreToolUse', payload={'tool_name': 'Read', 'tool_input': {'file_path': 'x'}}).returncode == 0
     assert run('hook', 'PreToolUse', payload={}).returncode == 0
     assert run('hook').returncode == 2 and run('nonesuch').returncode == 2  # argparse's own usage errors
+
+
+def test_a_session_id_holding_dot_dot_keeps_the_stop_entry_inside_the_cache(root, fake):
+    plan_one(root)
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    assert stop(root, session='x/../../../escape')['decision'] == 'block'
+    assert not list(root.rglob('escape.json')) and not (root.parent / 'escape.json').exists()

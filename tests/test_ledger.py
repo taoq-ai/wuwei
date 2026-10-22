@@ -1,4 +1,7 @@
+import contextlib
 import json
+
+import pytest
 
 from wuwei import ws
 
@@ -94,3 +97,39 @@ def test_traces_skip_lines_that_are_not_rows(root):
     path.write_text('[1]\n{"ts": 5}\nnot json\n{"ts": "2020-01-01T00:00:00+00:00", "tool": "Bash"}\n')
     assert ws.traces(root) == ws.traces(root, '2020-01-01') == [{'ts': '2020-01-01T00:00:00+00:00', 'tool': 'Bash'}]
     assert ws.traces(root, '2021-01-01') == []
+
+
+def test_a_linked_cache_folder_is_never_read_written_or_pruned(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp('outside')
+    (outside / 'pr-x.json').write_text('{"kept": 1}')
+    (root / ws.DIR / 'cache').symlink_to(outside, target_is_directory=True)
+    assert ws.cache_get(root, 'pr-x', float('inf')) is None
+    ws.cache_prune(root, -1, 'pr-*')
+    assert ws.cache_put(root, 'board', 1) == 1
+    assert sorted(path.name for path in outside.iterdir()) == ['pr-x.json']
+
+
+def test_a_linked_cache_entry_reads_as_absent_and_is_never_pruned_through(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp('outside') / 'secret.json'
+    outside.write_text('{"secret": 1}')
+    ws.cache_put(root, 'board', None)
+    (root / ws.DIR / 'cache' / 'pr-x.json').symlink_to(outside)
+    assert ws.cache_get(root, 'pr-x', float('inf')) is None
+    ws.cache_prune(root, -1, 'pr-*')
+    assert outside.read_text() == '{"secret": 1}'
+
+
+@pytest.mark.parametrize('name', ['../esc', 'a/../../esc', '..//esc', 'a/./../../esc', 'a/b/../../../esc', '%2e%2e/esc', '/esc'])
+def test_a_name_never_leaves_the_cache_folder(root, name):
+    (root / ws.DIR / 'esc.json').write_text('1')
+    assert ws.cache_put(root, name, 2) == 2 and ws.cache_get(root, name, float('inf')) is None
+    with contextlib.suppress(NotImplementedError):  # glob refuses an absolute pattern: nothing is deleted
+        ws.cache_prune(root, -1, name)
+    assert (root / ws.DIR / 'esc.json').read_text() == '1' and [p.name for p in root.rglob('esc.json')] == ['esc.json']
+    assert not list((root / ws.DIR / 'cache').glob('**/esc.json')) and not (root.parent / 'esc.json').exists()
+
+
+def test_a_cache_folder_linked_to_itself_reads_as_empty(root):
+    (root / ws.DIR / 'cache').symlink_to('cache')
+    assert ws.cache_put(root, 'board', 1) == 1 and ws.cache_get(root, 'board', float('inf')) is None
+    ws.cache_prune(root, -1, '*')
