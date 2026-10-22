@@ -105,6 +105,30 @@
    "approved": true
   },
   {
+   "id": "free-lines-7",
+   "title": "refactor: free at least 15 runtime lines with no behaviour change, so the smart tier fits the budget",
+   "goal": "G-4",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 10.5,
+   "why": "owner approved the smart tier on 2026-10-22 (scope: answer); it needs about 10 to 15 runtime lines, and after the in-flight items (1211-confirm +10, 1230 +8, 1223-followup +2) the runtime sits near 3,393 of 3,400",
+   "promise": "at least 15 runtime lines freed with no behaviour change, proven by the full suite and a differential probe on both trees, outside files the in-flight items edit",
+   "acceptance": [
+    "given the runtime after this item merges, when wc -l cli/wuwei/*.py runs, then it is at least 15 lines below the count before it, and the suite and differential probe read the same on both trees"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
+  },
+  {
    "id": "1230",
    "title": "fix(evidence): a base merge into an open PR is measured on the PR's own diff, so passes carry when the PR's own change did not move",
    "goal": "G-2",
@@ -182,6 +206,33 @@
    "status": "open",
    "added": "2026-10-22",
    "approved": true
+  },
+  {
+   "id": "smart-tier",
+   "title": "feat(tiers): a smart tier, the default, picks each item's gates from its Cynefin domain and raises them on measured diff signals",
+   "goal": "G-4",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 8.2,
+   "why": "owner 2026-10-22: standard is too slow sometimes and full even worse; adjust the tier to the item's complexity with a formal framework; approved scope: Cynefin plus measured signals. Today's evidence: blocking findings by gate were quality 4, security 5, arch 2 (both changes to a trust rule), goal 0",
+   "promise": "a new tier smart, the default for new items: the lead records a Cynefin domain (clear, complicated, complex) with one line of evidence per item; clear takes quality, plus security on owner or risky paths; complicated adds arch when the item changes a trust or contract rule; complex takes quality, security and arch and a short How this fails; goal runs only when the promise is marked in doubt; measured signals at the head (owner, risky or contract paths, a cyclomatic complexity rise in changed functions read with stdlib ast, over 200 non-prose lines, a change to what a guard waives or refuses) raise the gate set and never lower it; the spec engine artifacts are required only for complex; light, standard and full keep working",
+   "acceptance": [
+    "given a clear item whose diff touches only non-risky code, when wuwei evidence reads its PR, then only quality is owed",
+    "given a clear item whose diff adds a branch that raises a changed function's cyclomatic complexity on a risky path, when evidence reads it, then security is owed as well",
+    "given a complicated item whose diff changes what a guard waives, when evidence reads it, then arch is owed",
+    "given an item with tier full, when evidence reads it, then its gates are as before"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
   },
   {
    "id": "door-words-text",
