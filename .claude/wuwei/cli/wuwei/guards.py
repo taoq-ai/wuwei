@@ -326,10 +326,11 @@ def ready_door(root, repo, number):
         pr = gh.pr(repo, number)
     except gh.GhError as exc:
         return deny(f'cannot read {repo}#{number} ({exc}): a draft {READY}.')
-    red = pr['isDraft'] and evidence.excepted(root, f'{repo}#{number}', pr['headRefOid'], [  # gates start at push; a red check holds (#1221)
-        g for g in evidence.ci_gaps(pr.get('statusCheckRollup')) if g['text'].startswith('CI failing')])
-    return deny(f'{repo}#{number} {READY}, and with no failing check at its head:\n- ' + red[0]['text']) if red else \
-        create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}') if pr['isDraft'] else None
+    if not pr['isDraft']:
+        return None
+    ci = [g for g in evidence.gaps(root, repo, number) if g['text'].startswith(('CI ', 'required check', 'evidence unreadable'))]
+    return deny(f'{repo}#{number} {READY}, and with green CI at its head (#1221):\n' + '\n'.join('- ' + g['text'] for g in ci)) if ci \
+        else create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}')
 
 
 def merge_door(root, repo, number, auto=False):

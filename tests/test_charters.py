@@ -506,6 +506,7 @@ def test_gates_start_at_push_in_parallel_with_ci_and_green_ci_still_holds_ready(
     flat = lambda *parts: ' '.join((PLUGIN.joinpath(*parts)).read_text(encoding='utf-8').split())  # noqa: E731
     builder, planner, shepherd = (flat('charters', f'{name}.md') for name in ('builder', 'planner', 'shepherd'))
     assert 'Hand back as soon as the push lands, without waiting for CI' in builder and 'CI as unread' in builder
+    assert 'refuses `gh pr ready` until both hold' in builder and 'waits for green CI and the gates' in planner
     assert 'once CI has run' not in planner and 'in parallel, while CI runs: do not wait for CI' in planner
     assert 'A check red after the gates pass goes back to the builder' in planner
     assert 'read the draft head while CI runs' in flat('charters', '_way.md')

@@ -1,6 +1,6 @@
-corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (main) de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (head); 288 routes; 1152 cases; 91 moved
+corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (main) de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (head); 288 routes; 1152 cases; 112 moved
 green: 288 cases, 17 moved
-running: 288 cases, 17 moved
+running: 288 cases, 38 moved
 red: 288 cases, 38 moved
 excepted: 288 cases, 19 moved
 - excepted cd sub && gh api -X POST repos/o/r/pulls --input d.json: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
@@ -80,12 +80,23 @@ excepted: 288 cases, 19 moved
 - running cd sub && gh api -X POST repos/o/r/pulls --input d.json: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running env -C sub gh api -X POST repos/o/r/pulls --input d.json: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api 'repos/{owner}/{repo}/pulls' -f head=i-1-change -f base=main: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
+- running gh api -X POST repos/o//r/pulls/7/requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/./pulls/7/ccr/ready_for_review: main pass (no gap), head ready (CI running)
 - running gh api -X POST repos/o/r/pulls --input ~/d.json: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api -X POST repos/o/r/pulls --input={,sub/}d.json: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api -X POST repos/o/r/pulls -f head=i-1-change -f base=main: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api -X POST repos/o/r/pulls -f head=i-1-change -f base=main -F draft=true: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api -X POST repos/o/r/pulls -f head=i-1-change -f base=main -f title=x -F body=@body.md: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api -X POST repos/o/r/pulls -f head=i-1-change -f base=main -f title=x -F body=@body.md -F draft=true: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
+- running gh api -X POST repos/o/r/pulls/7%D9%A3/requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7.0/ccr/ready_for_review: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7/./requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7//requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7/ccr/ready_for_review: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7/requested%5Freviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7/requested_reviewers/. -f reviewers[]=bob: main pass (no gap), head ready (CI running)
+- running gh api -X POST repos/o/r/pulls/7abc/requested_reviewers -f reviewers[]=bob: main pass (no gap), head ready (CI running)
 - running gh api -q= repos/o/r/pulls -f head=i-1-change -f base=main: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh api repos/o/r/pulls -f head=i-1-change -f base=main: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh pr create: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
@@ -93,4 +104,14 @@ excepted: 288 cases, 19 moved
 - running gh pr create --draft -t t -F body.md: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh pr create --title "feat: x" --body-file body.md: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
 - running gh pr create -t t -F body.md: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
+- running gh pr edit --add-reviewer 5 7: main pass (no gap), head ready (CI running)
+- running gh pr edit --milestone 5 7 --add-reviewer bob: main pass (no gap), head ready (CI running)
+- running gh pr edit -t 5 7 --add-reviewer bob: main pass (no gap), head ready (CI running)
+- running gh pr edit 7 --add-reviewer bob: main pass (no gap), head ready (CI running)
 - running gh pr new -t t -b b: main pass (no gap), head pass (no gap) [same verdict, note text moved: the PR standard (charters/_pr.md)]
+- running gh pr ready --repo=o/r 7: main pass (no gap), head ready (CI running)
+- running gh pr ready -R a/b -R o/r 7: main pass (no gap), head ready (CI running)
+- running gh pr ready -R o/r https://github.com/other/x/pull/7: main ready (gates missing at head aaaaaaa: quality), head ready (CI running)
+- running gh pr ready -Ro/r 7: main pass (no gap), head ready (CI running)
+- running gh pr ready 7: main pass (no gap), head ready (CI running)
+- running gh pr ready https://github.com/other/x/pull/7: main ready (gates missing at head aaaaaaa: quality), head ready (CI running)

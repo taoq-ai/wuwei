@@ -1327,26 +1327,70 @@ def test_a_draft_leaves_draft_or_asks_reviewers_only_once_its_gates_pass(root, d
     assert guards.bash(root, command, str(root), 's1') is None, command
 
 
-@pytest.mark.parametrize('command', READY)
-def test_a_draft_whose_gates_passed_stays_draft_while_a_check_fails_and_names_it(root, drafts, command):
+def gated_draft(root, drafts, rollup):
+    """o/r#7, a draft at its own head (so the checks read are its own) whose quality gate passed there."""
     from test_evidence import attest
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
-    drafts.prs['7']['headRefOid'] = 'c' * 40  # its own head, so the checks read are its own
+    drafts.prs['7'].update(headRefOid='c' * 40, statusCheckRollup=rollup)
     attest(root, 'quality', head='c' * 40, pr='o/r#7')
-    drafts.prs['7']['statusCheckRollup'] = [{'name': 'lint', 'conclusion': 'FAILURE', 'status': 'COMPLETED'},
-                                            {'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'},
-                                            {'context': 'ci/build', 'state': 'ERROR'}]
+
+
+@pytest.mark.parametrize('command', READY)
+def test_a_draft_whose_gates_passed_stays_draft_until_ci_is_green_and_names_what_holds_it(root, drafts, command):
+    gated_draft(root, drafts, [{'name': 'lint', 'conclusion': 'FAILURE', 'status': 'COMPLETED'},
+                               {'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}, {'context': 'ci/build', 'state': 'ERROR'}])
     decision = guards.bash(root, command, str(root), 's1')
     assert door_reached(decision) == 'ready' and '- CI failing: lint, ci/build' in decision['reason'], command
     except_gap(root, 'CI failing: lint, ci/build', head='bbbbbbb')  # another head
     except_gap(root, 'CI failing: lint, ci/build', head='ccccccc', approved=False)
+    except_gap(root, 'CI failing: lint', head='ccccccc')  # a part of the gap waives nothing
     assert door_reached(guards.bash(root, command, str(root), 's1')) == 'ready', command
     except_gap(root, 'CI failing: lint, ci/build', head='ccccccc')  # the owner carries the red check at this head, as at the merge door
     assert guards.bash(root, command, str(root), 's1') is None, command
     drafts.prs['7']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
-    assert guards.bash(root, command, str(root), 's1') is None, command  # running is no failing check
+    decision = guards.bash(root, command, str(root), 's1')  # green CI holds ready: running is not green (#1221)
+    assert door_reached(decision) == 'ready' and '- CI running' in decision['reason'], command
+    drafts.runs, drafts.prs['7']['statusCheckRollup'] = {'1': ('.github/workflows/ci.yml', 'pull_request')}, []
+    decision = guards.bash(root, command, str(root), 's1')
+    assert door_reached(decision) == 'ready' and '- CI not started at ccccccc' in decision['reason'], command
     drafts.prs['7']['statusCheckRollup'] = [{'name': 'test', 'conclusion': 'SUCCESS', 'status': 'COMPLETED'}]
     assert guards.bash(root, command, str(root), 's1') is None, command
+
+
+def test_an_accepted_running_gap_opens_the_ready_door_at_its_head(root, drafts):
+    gated_draft(root, drafts, [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}])
+    assert door_reached(guards.bash(root, 'gh pr ready 7', str(root), 's1')) == 'ready'
+    except_gap(root, 'CI running', head='ccccccc')
+    assert guards.bash(root, 'gh pr ready 7', str(root), 's1') is None
+
+
+def test_a_required_check_not_run_or_unreadable_evidence_holds_the_ready_door(root, drafts, monkeypatch):
+    gated_draft(root, drafts, [{'name': 'test', 'conclusion': 'SUCCESS', 'status': 'COMPLETED'}])
+    drafts.protection['main'] = ['build']  # the base requires a check that never ran at the head
+    decision = guards.bash(root, 'gh pr ready 7', str(root), 's1')
+    assert door_reached(decision) == 'ready' and '- required check not run at ccccccc: build' in decision['reason']
+    drafts.prs['7']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    decision = guards.bash(root, 'gh pr ready 7', str(root), 's1')  # each CI gap is named
+    assert '- CI running\n- required check not run yet at ccccccc: build' in decision['reason']
+    monkeypatch.setattr(guards.evidence, 'gaps', lambda *a, **k: [{'text': 'evidence unreadable: HTTP 502', 'kind': 'safety'}])
+    decision = guards.bash(root, 'gh pr ready 7', str(root), 's1')
+    assert door_reached(decision) == 'ready' and '- evidence unreadable: HTTP 502' in decision['reason']
+
+
+@pytest.mark.parametrize('state', ['FAILURE', 'PENDING'])
+@pytest.mark.parametrize('command', ['gh pr ready 7', 'gh pr edit 7 --add-reviewer bob'])
+def test_a_review_triggered_status_is_review_evidence_and_never_holds_the_ready_door(root, drafts, state, command):
+    gated_draft(root, drafts, [{'name': 'test', 'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+                               {'context': 'Review Gate', 'state': state, 'url': 'https://github.com/o/r/actions/runs/7'}])
+    drafts.runs.update({'7': ('.github/workflows/review-gate.yml', 'pull_request'),
+                        '8': ('.github/workflows/review-gate.yml', 'pull_request_review')})
+    assert guards.bash(root, command, str(root), 's1') is None, (state, command)  # the reviewer request is what clears it
+
+
+def test_a_ready_pr_with_a_red_check_still_takes_a_reviewer_request(root, drafts):
+    drafts.prs['5'].update(headRefOid='e' * 40, statusCheckRollup=[{'name': 'test', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}])
+    for command in ('gh pr edit 5 --add-reviewer bob', 'gh api -X POST repos/o/r/pulls/5/requested_reviewers -f reviewers[]=bob'):
+        assert guards.bash(root, command, str(root), 's1') is None, command  # a re-request at the head is the red-check duty
 
 
 def test_a_merge_with_its_gates_passed_and_a_failing_check_is_refused_naming_it(root, fake):

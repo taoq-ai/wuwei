@@ -142,7 +142,8 @@ You own open PRs until they merge or the owner parks them.
    non-blocking findings, and ends with the WUWEI footer naming its item.
 2. Once CI is green and the gates the diff needs passed at the draft head, mark it ready with
    `gh pr ready <n>` (in a cloud session `gh api -X POST repos/<owner>/<repo>/pulls/<n>/ccr/ready_for_review`).
-   WUWEI refuses the flip and reviewer requests on a draft before. Then request reviewers: the top
+   WUWEI refuses the flip and reviewer requests on a draft before both hold, naming what is
+   missing. Then request reviewers: the top
    two authors of the changed source files over the past 90 days (widen to 180 days, then all
    time), excluding the PR author and bots. In a cloud session:
    `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=<login>'`.

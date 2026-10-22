@@ -172,8 +172,8 @@ review for nothing, so a fix of a documented rule ships as a patch, with release
 
 The gates run before review: the PR opens as a draft, the gates read its head while CI runs, and
 `gh pr ready` and reviewer requests are refused until the gates pass at its head, so reviewers and
-the merge only ever see gated code. They are also refused while a check fails at the head, naming
-it; a red check found after the gates pass goes back to the builder, and its fix is a new head.
+the merge only ever see gated code. They also wait for green CI at the head, naming what holds it
+(a review-triggered status is review evidence, not CI); a red check found after the gates pass goes back to the builder, and its fix is a new head.
 
 The tier is a ceiling and the diff decides what runs under it:
 

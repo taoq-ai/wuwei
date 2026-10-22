@@ -207,9 +207,11 @@ CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_f
 --add-reviewer`, a REST POST on `pulls/<n>/requested_reviewers`, MCP `reviewers` or
 `request_copilot_review`) before the gates pass at the PR head, so review starts at a gated head
 (#1050, #1074), unless the owner accepted the gate gap for that PR at that head (#1168); the same
-flip and reviewer request while a check fails at the PR head, naming the failing checks, unless the
-owner accepted that `CI failing` gap there: gates start at push, in parallel with CI, and a red
-check found after they pass goes back to the builder, its fix a new head under the delta rule (#1221);
+flip and reviewer request on a draft until CI is green at the PR head, naming each CI gap (`CI
+failing`, `CI running`, `CI not started`, a required check not run) unless the owner accepted that
+exact gap there; a review-triggered status is review evidence, never CI, and a ready PR's reviewer
+request is not read: gates start at push, in parallel with CI, and a red check found after they
+pass goes back to the builder, its fix a new head under the delta rule (#1221);
 `--admin` (and `--admin=true` in any spelling pflag reads as true; `--auto` counts only where pflag
 reads it as the flag); a `gh api` write to an endpoint under `repositories/<id>` (spell it
 `repos/<owner>/<repo>`); a `gh api graphql` query WUWEI cannot read (`--input -`, `-F query=@-`, a
