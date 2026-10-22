@@ -235,6 +235,31 @@
    "approved": true
   },
   {
+   "id": "handback-transcript",
+   "title": "fix(hook): a gate attestation is recorded only from the seat's own transcript, on SubagentHandback and on SubagentStop",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 5,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 10.33,
+   "why": "hook-transcript gates (#1172, goal-018548a.md finding 2, security-018548a.md): PreToolUse on a sentinel's SubagentHandback still attests from the payload with no transcript read, and a replayed real SubagentStop attests the report text of last_assistant_message, so a forged payload was counted as a quality PASS. In auto mode the handback is the main attestation path, and gate attestation is what G-1 measures.",
+   "promise": "Both attestation paths read the report from the seat's agent transcript (agent_transcript_path resolved and confined under the harness projects folder, its launch confirmed as hook-transcript does), never from the payload; a report the transcript does not hold records seat.unconfirmed and no attest row. Files: cli/wuwei/hook.py, tests, the vendored copy, SECURITY.md, design.md section 12. Runtime estimate +12, budget 16. After hook-transcript. AGENTS.md Testing the guards in full.",
+   "acceptance": [
+    "given a forged PreToolUse SubagentHandback payload from a sentinel naming a PASS verdict file, when hook.handle runs, then no attest row is written and evidence does not count the gate",
+    "given a real recorded sentinel flow (payload, session and agent transcript fixtures), then the attestation is recorded as today"
+   ],
+   "status": "open",
+   "added": "2026-10-19",
+   "approved": true,
+   "reason": "restored"
+  },
+  {
    "id": "1222",
    "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
    "goal": "G-2",
@@ -2419,31 +2444,6 @@
    "added": "2026-10-22",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1229"
-  },
-  {
-   "id": "handback-transcript",
-   "title": "fix(hook): a gate attestation is recorded only from the seat's own transcript, on SubagentHandback and on SubagentStop",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 5,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 10.33,
-   "why": "hook-transcript gates (#1172, goal-018548a.md finding 2, security-018548a.md): PreToolUse on a sentinel's SubagentHandback still attests from the payload with no transcript read, and a replayed real SubagentStop attests the report text of last_assistant_message, so a forged payload was counted as a quality PASS. In auto mode the handback is the main attestation path, and gate attestation is what G-1 measures.",
-   "promise": "Both attestation paths read the report from the seat's agent transcript (agent_transcript_path resolved and confined under the harness projects folder, its launch confirmed as hook-transcript does), never from the payload; a report the transcript does not hold records seat.unconfirmed and no attest row. Files: cli/wuwei/hook.py, tests, the vendored copy, SECURITY.md, design.md section 12. Runtime estimate +12, budget 16. After hook-transcript. AGENTS.md Testing the guards in full.",
-   "acceptance": [
-    "given a forged PreToolUse SubagentHandback payload from a sentinel naming a PASS verdict file, when hook.handle runs, then no attest row is written and evidence does not count the gate",
-    "given a real recorded sentinel flow (payload, session and agent transcript fixtures), then the attestation is recorded as today"
-   ],
-   "status": "parked",
-   "added": "2026-10-19",
-   "approved": true,
-   "reason": "until 2026-10-24: WIP limit 4 and no runtime lines until free-lines-6 merges"
   },
   {
    "id": "shell-doors",
