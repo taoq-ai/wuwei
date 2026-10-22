@@ -1,6 +1,56 @@
 {
  "items": [
   {
+   "id": "1223-followup",
+   "title": "fix(evidence): finding rows that differ only in case or spacing print apart, and a spec-gap result cached before #1228 is never read",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 39.0,
+   "why": "security re-read of #1228 at 08dc011 (2026-10-22, .wuwei/verdicts/1223/security-08dc011.md) returned FIX with two medium findings; the owner merged #1228 before the re-read, so both are on main. (1) evidence.py:208 counts cut collisions by exact text while evidence.excepted matches lowercased, whitespace-collapsed text, so '| HIGH | spec.md | ...' and '| High | spec.md | ...' print one gap and one yes waives both unseen. (2) evidence.py:435 keys the spec-gap cache on ws.version(), which stays 5.1.1 until the release, so a result cached by the old code shows only the first row for up to 24 hours and one yes waives a hidden CRITICAL row (reproduced through merge_door)",
+   "promise": "two finding rows whose printed cuts are equal once lowercased and whitespace-collapsed print whole, so an exception names each; the spec-gap cache key changes with this fix, so no result written by older code is read",
+   "acceptance": [
+    "given rows '| HIGH | spec.md | <90 a> |' and '| High | spec.md | <90 b> |', when evidence prints them, then each is its own gap and one yes holds the merge on the other",
+    "given a spec-gap cache entry written by the pre-#1228 code at the same version, when evidence reads the PR, then it re-reads the artifacts and prints every open row"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
+   "id": "free-lines-7",
+   "title": "chore(constitution): the runtime budget is 3,600 lines, _common.md has room under the agent word ceiling, and only clean lines are freed",
+   "goal": "G-4",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 13,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 29.0,
+   "why": "owner 2026-10-22 (goal: answer) raised the runtime budget from 3,400 to 3,600, done inside this item; main is near 3,394 after the in-flight PRs and decisions-survive, multi-session, smart-tier and flow-order need about 30 to 40 lines; sentinel-arch sits at exactly its 2,250-word ceiling, so no _common.md rule fits; arch asked for the Done wording 'a delta off risky paths of docs, generated files or at most 20 lines'",
+   "promise": "the constitution (VI, Version and amendment line), AGENTS.md and the size test say 3,600 runtime lines; _common.md is trimmed with no rule lost so the generated agents have at least 100 words of headroom under their ceiling; the Done delta sentence reads 'a delta off risky paths of docs, generated files or at most 20 lines'; any runtime lines freed are freed only where the change is plainly clearer, with no behaviour change",
+   "acceptance": [
+    "given the size test, when the runtime is 3,500 lines, then it passes, and at 3,601 it fails",
+    "given bin/wuwei agents build, when it runs, then every generated agent is at least 100 words under its ceiling and agents match the charters"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
    "id": "launcher-python",
    "title": "fix(bin): the hook launcher finds a Python 3.11 or later on Windows, macOS and Linux, honours WUWEI_PYTHON, and says which version it found when none fits",
    "goal": "G-2",
@@ -26,6 +76,33 @@
    "status": "open",
    "added": "2026-10-22",
    "approved": false
+  },
+  {
+   "id": "1223",
+   "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "taoq-ai/wuwei#1223: the question guard calls the spec artifacts process fit while the merge door holds on them as safety at full tier (_common.md Done lists them as safety). Option 1 of the issue, the one Done already states. Lands before door-words-text and exception-parser, which edit the same guard branch.",
+   "promise": "The question guard stops sending back an exception: question that names a spec engine gap (specs/..., openspec/..., no spec in the diff): at full tier wuwei evidence prints those as safety gaps, so the owner may accept them as _common.md Done says. Template, size and age gaps are still sent back as process fit. The hook records an accepted gap whole, including a gap text that holds a sentence break (an analysis.md finding row such as '| A08 | HIGH | Spec says X. Plan says Y |'), so the merge door waives exactly that gap at that head and records the exception with its follow-up item; a shorter text still waives nothing. Outside: reading unchecked tasks on a spec-only PR as expected (a scope change for the owner), and any change to which gaps are safety. Files: cli/wuwei/guards.py (AskUserQuestion branch), cli/wuwei/hook.py (exception_refs), the vendored copies under .claude/wuwei/cli/wuwei/, tests/test_guards.py, tests/test_hook.py, docs/design.md where it names the question door. AGENTS.md Testing the guards applies: route corpus at main and head with its sha256, each moved route a row, and a generated question probe (gap kinds x tiers x question tails) written by code. Assumption: below full tier the planner never sees spec gaps (evidence.visible hides process fit), so an exception asked there is harmless. Runtime: estimate +1, budget 2. Rollback: revert.",
+   "acceptance": [
+    "Given a full-tier spec-only PR whose tasks.md has unchecked items, gates passed and an approval, when the planner asks 'exception: o/r#n at <sha7>: specs/<f>/tasks.md has 17 unchecked items. Accept?', then the question guard passes it",
+    "Given the owner answers Yes and the session transcript shows it, when the merge door reads the PR at that head, then the spec gap is waived, the merge passes, and the exception and its follow-up item are on the record",
+    "Given an analysis.md gap whose finding row holds a sentence break, when the owner accepts it, then the recorded gap equals the printed gap and waives it, and a question naming only its first sentence waives nothing",
+    "Given an exception: question naming the template's sections, a changed-lines count or an open-days age, when asked, then it is still sent back as process fit"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
   },
   {
    "id": "decisions-survive",
@@ -54,6 +131,58 @@
    "approved": true
   },
   {
+   "id": "reply-thread-ts",
+   "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "owner 2026-10-22: R-12 to Omer was answered in his thread, but stays owed. hook._replied (cli/wuwei/hook.py:304) keys a Slack link on its p<ts>, the linked message's own ts; a link copied from a reply inside a thread carries ?thread_ts=<root ts>, and a send into the thread names the root ts, so the keys never match",
+   "promise": "an owed reply recorded with a Slack link to a message inside a thread (p<ts>?thread_ts=<root>) closes when a send names that channel and either the root thread ts or the linked message ts; a link with no thread_ts closes as today",
+   "acceptance": [
+    "given an owe on https://x.slack.com/archives/C1/p1729590000123456?thread_ts=1729580000.000100&cid=C1, when a send to channel C1 names thread_ts 1729580000.000100, then the reply is marked done",
+    "given an owe on a top-level message link with no thread_ts, when a send names its channel and ts, then it closes as today"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
+   "id": "1211-confirm",
+   "title": "fix(hook): an owner answer the transcript shows late, or beside a differing answer in a batch, is still recorded, and an unrecorded one says why",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 13.0,
+   "why": "taoq-ai/wuwei#1211 comments 2 and 3 and the 2026-10-22 Re-scope report share one source: _shown compares the whole answers dict and _confirm gives up for good at a Stop after 1.5 s. #1219 only showed the parse is sound. The riskiest item: its first step captures a real free-text answer row. Merges after free-lines-6 unless the headroom at its merge holds its lines; yes-word (same _answers code) waits for it.",
+   "promise": "An owner answer the session transcript shows is recorded even when the harness writes it late or a batch holds an answer that differs. (1) A Stop that does not yet find the tool_result row keeps the answer pending, and later hook calls re-read it; answer.unconfirmed is recorded only when the transcript holds the tool_result row with different answers, or after a named bounded age (about 10 minutes) with no row. (2) Each question in a batch is confirmed and recorded on its own: a labelled answer the transcript shows is recorded even when another answer in the same call is not. (3) answer.unconfirmed and its note say which case held: no tool_result row yet, or which question's answer differs, with both values truncated. First step, before code: capture one real free-text (Other) answer, the PostToolUse payload (its answer.pending row) and the transcript's toolUseResult row, from this pass's plan question or the next owner answer, and add it as tests/fixtures/payloads/claude-ask-post-free-text.json; if none exists when the build starts, record the assumed shape under Assumptions. Security holds: an answer counts only when the transcript holds that tool_use id and that question's exact answer, and a replay records nothing more. Files: cli/wuwei/hook.py (_shown, _confirm, _unconfirmed) and the vendored copy, tests/test_hook.py, the new fixture, docs/design.md section 8 (the 1.5 s rule). AGENTS.md Testing the guards: route corpus at main and head with sha256, and a generated answer probe (labels, free text, option notes, trailing text, batch mixes x row present, late, differing) written by code. Runtime: estimate +3, budget 5. Rollback: revert.",
+   "acceptance": [
+    "Given a plan answer whose tool_result row the harness writes after the planner's Stop waited 1.5 s, when the next hook call runs, then prompt and plan.approved are recorded and no answer.unconfirmed row precedes them",
+    "Given a batch of a one-way: question answered in free text and a plan: question answered Approve, where the transcript's free-text value differs from the payload's, when confirmed, then the plan approval is recorded and the note names only the one-way question as differing",
+    "Given no tool_result row ever, when the bound passes, then answer.unconfirmed records 'no tool_result row' once and the answer is not recorded",
+    "Given a payload whose answers the transcript does not hold, when any hook call runs, then nothing is recorded, as on main"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
    "id": "multi-session",
    "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
    "goal": "G-1",
@@ -73,6 +202,59 @@
     "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
     "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
     "given two clones that each add a different plan item, when both sync, then the plan holds both"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
+   "id": "1230",
+   "title": "fix(evidence): a base merge into an open PR is measured on the PR's own diff, so passes carry when the PR's own change did not move",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 10.33,
+   "why": "owner 2026-10-22: 'also fix this' (taoq-ai/wuwei#1230). evidence.gate_gaps measures the delta as compare(last gated head, head), so a main merge brings main's lines and risky paths into it; on ai-stacks 2026-10-22 three approved PRs (#3374, #3377, #3523) each held 2 to 12 seat-minutes behind a delta gate that found only renumbers; the main queue on a busy day",
+   "promise": "the delta a gate re-reads after a pass is the change in the PR's own diff (its diff against its base at the gated head versus at the new head); lines and files a base merge brought in are not the PR's delta; a PR-own delta over 20 non-prose lines or on a risky path is still re-read by the one gate wuwei evidence names",
+   "acceptance": [
+    "given a PR with all gates passed, when main is merged in and the PR's own diff is unchanged, then wuwei evidence shows no owed gate and the merge door accepts it",
+    "given a main merge where the PR's own diff gains a 30-line code change in conflict resolution, then the gate wuwei evidence names is owed",
+    "given a main merge where only files the workspace declares generated change in the PR's own diff, then the passes carry"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
+   "id": "1222",
+   "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 3,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "taoq-ai/wuwei#1222. What reproduces on main is the Stop pointer and the charter's Gap line; the handback-send-enforce hook is not WUWEI's (hooks/hooks.json registers none), so proposal 1 is the harness's, and proposal 2 is main's behaviour since #1217: say both on the issue.",
+   "promise": "Outside auto mode, a kept seat report whose task notification the session transcript shows enqueued, and not removed, is never given again: the planner's Stop does not block on its pointer (a pointer may still ride a PreToolUse note). A notification whose queue row was removed (cleared_on_cancel) is no delivery: that report is given in full, once. charters/_common.md Report drops the rule that a refused hand-back goes under Gap: and says that outside auto mode the refusal is expected, a reminder to call SubagentHandback again comes from the harness, not WUWEI, and the seat ends with its plain-text report. Outside: the harness's handback-send-enforce hook and proposal 2 of the issue (main since #1217). Files: cli/wuwei/hook.py (deliver) and the vendored copy, charters/_common.md, agents/*.md and vendored agents rebuilt with bin/wuwei agents build, tests/test_hook.py (the queue-dropped test moves from a pointer to the full report), docs/design.md hooks table where it names the pointer. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +2, budget 3. Rollback: revert.",
+   "acceptance": [
+    "Given a kept report whose notification the transcript shows enqueued, when the planner's first hook event after it is a Stop, then the Stop does not block on it",
+    "Given a notification enqueued and then removed with cleared_on_cancel, when the planner's next call or Stop runs, then the report is given in full once",
+    "Given a report with no notification, when the planner stops, then it is given in full once, as on main",
+    "Given the rebuilt agents, when a seat reads its charter, then no line asks it to report a refused hand-back under Gap:"
    ],
    "prs": [],
    "status": "open",
@@ -265,32 +447,6 @@
    "approved": true
   },
   {
-   "id": "1223-followup",
-   "title": "fix(evidence): finding rows that differ only in case or spacing print apart, and a spec-gap result cached before #1228 is never read",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 13,
-    "size": 1
-   },
-   "score": 39.0,
-   "why": "security re-read of #1228 at 08dc011 (2026-10-22, .wuwei/verdicts/1223/security-08dc011.md) returned FIX with two medium findings; the owner merged #1228 before the re-read, so both are on main. (1) evidence.py:208 counts cut collisions by exact text while evidence.excepted matches lowercased, whitespace-collapsed text, so '| HIGH | spec.md | ...' and '| High | spec.md | ...' print one gap and one yes waives both unseen. (2) evidence.py:435 keys the spec-gap cache on ws.version(), which stays 5.1.1 until the release, so a result cached by the old code shows only the first row for up to 24 hours and one yes waives a hidden CRITICAL row (reproduced through merge_door)",
-   "promise": "two finding rows whose printed cuts are equal once lowercased and whitespace-collapsed print whole, so an exception names each; the spec-gap cache key changes with this fix, so no result written by older code is read",
-   "acceptance": [
-    "given rows '| HIGH | spec.md | <90 a> |' and '| High | spec.md | <90 b> |', when evidence prints them, then each is its own gap and one yes holds the merge on the other",
-    "given a spec-gap cache entry written by the pre-#1228 code at the same version, when evidence reads the PR, then it re-reads the artifacts and prints every open row"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1235"
-  },
-  {
    "id": "git-globals",
    "title": "fix(guards): git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door",
    "goal": "G-2",
@@ -391,32 +547,6 @@
    "added": "2026-10-18",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1134"
-  },
-  {
-   "id": "free-lines-7",
-   "title": "chore(constitution): the runtime budget is 3,600 lines, _common.md has room under the agent word ceiling, and only clean lines are freed",
-   "goal": "G-4",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 13,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 29.0,
-   "why": "owner 2026-10-22 (goal: answer) raised the runtime budget from 3,400 to 3,600, done inside this item; main is near 3,394 after the in-flight PRs and decisions-survive, multi-session, smart-tier and flow-order need about 30 to 40 lines; sentinel-arch sits at exactly its 2,250-word ceiling, so no _common.md rule fits; arch asked for the Done wording 'a delta off risky paths of docs, generated files or at most 20 lines'",
-   "promise": "the constitution (VI, Version and amendment line), AGENTS.md and the size test say 3,600 runtime lines; _common.md is trimmed with no rule lost so the generated agents have at least 100 words of headroom under their ceiling; the Done delta sentence reads 'a delta off risky paths of docs, generated files or at most 20 lines'; any runtime lines freed are freed only where the change is plainly clearer, with no behaviour change",
-   "acceptance": [
-    "given the size test, when the runtime is 3,500 lines, then it passes, and at 3,601 it fails",
-    "given bin/wuwei agents build, when it runs, then every generated agent is at least 100 words under its ceiling and agents match the charters"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1237"
   },
   {
    "id": "tests-offline",
@@ -1020,34 +1150,6 @@
    "reason": "owner ruling 2026-10-19 (scope: Park #1158, do hook-transcript next): command-string guard did not converge across gate rounds and builder turns hit safety classifiers; #1158 closed unmerged; its probe and verdicts feed hook-transcript"
   },
   {
-   "id": "1223",
-   "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "taoq-ai/wuwei#1223: the question guard calls the spec artifacts process fit while the merge door holds on them as safety at full tier (_common.md Done lists them as safety). Option 1 of the issue, the one Done already states. Lands before door-words-text and exception-parser, which edit the same guard branch.",
-   "promise": "The question guard stops sending back an exception: question that names a spec engine gap (specs/..., openspec/..., no spec in the diff): at full tier wuwei evidence prints those as safety gaps, so the owner may accept them as _common.md Done says. Template, size and age gaps are still sent back as process fit. The hook records an accepted gap whole, including a gap text that holds a sentence break (an analysis.md finding row such as '| A08 | HIGH | Spec says X. Plan says Y |'), so the merge door waives exactly that gap at that head and records the exception with its follow-up item; a shorter text still waives nothing. Outside: reading unchecked tasks on a spec-only PR as expected (a scope change for the owner), and any change to which gaps are safety. Files: cli/wuwei/guards.py (AskUserQuestion branch), cli/wuwei/hook.py (exception_refs), the vendored copies under .claude/wuwei/cli/wuwei/, tests/test_guards.py, tests/test_hook.py, docs/design.md where it names the question door. AGENTS.md Testing the guards applies: route corpus at main and head with its sha256, each moved route a row, and a generated question probe (gap kinds x tiers x question tails) written by code. Assumption: below full tier the planner never sees spec gaps (evidence.visible hides process fit), so an exception asked there is harmless. Runtime: estimate +1, budget 2. Rollback: revert.",
-   "acceptance": [
-    "Given a full-tier spec-only PR whose tasks.md has unchecked items, gates passed and an approval, when the planner asks 'exception: o/r#n at <sha7>: specs/<f>/tasks.md has 17 unchecked items. Accept?', then the question guard passes it",
-    "Given the owner answers Yes and the session transcript shows it, when the merge door reads the PR at that head, then the spec gap is waived, the merge passes, and the exception and its follow-up item are on the record",
-    "Given an analysis.md gap whose finding row holds a sentence break, when the owner accepts it, then the recorded gap equals the printed gap and waives it, and a question naming only its first sentence waives nothing",
-    "Given an exception: question naming the template's sections, a changed-lines count or an open-days age, when asked, then it is still sent back as process fit"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1228"
-  },
-  {
    "id": "stale-work",
    "title": "feat(board): in-progress work that has not moved for hours shows as stale, so the Stop reminder and every session start name it until someone acts",
    "goal": "G-1",
@@ -1231,32 +1333,6 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
-  },
-  {
-   "id": "reply-thread-ts",
-   "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 8,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 16.0,
-   "why": "owner 2026-10-22: R-12 to Omer was answered in his thread, but stays owed. hook._replied (cli/wuwei/hook.py:304) keys a Slack link on its p<ts>, the linked message's own ts; a link copied from a reply inside a thread carries ?thread_ts=<root ts>, and a send into the thread names the root ts, so the keys never match",
-   "promise": "an owed reply recorded with a Slack link to a message inside a thread (p<ts>?thread_ts=<root>) closes when a send names that channel and either the root thread ts or the linked message ts; a link with no thread_ts closes as today",
-   "acceptance": [
-    "given an owe on https://x.slack.com/archives/C1/p1729590000123456?thread_ts=1729580000.000100&cid=C1, when a send to channel C1 names thread_ts 1729580000.000100, then the reply is marked done",
-    "given an owe on a top-level message link with no thread_ts, when a send names its channel and ts, then it closes as today"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1232"
   },
   {
    "id": "1209",
@@ -1540,34 +1616,6 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
-  },
-  {
-   "id": "1211-confirm",
-   "title": "fix(hook): an owner answer the transcript shows late, or beside a differing answer in a batch, is still recorded, and an unrecorded one says why",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 13.0,
-   "why": "taoq-ai/wuwei#1211 comments 2 and 3 and the 2026-10-22 Re-scope report share one source: _shown compares the whole answers dict and _confirm gives up for good at a Stop after 1.5 s. #1219 only showed the parse is sound. The riskiest item: its first step captures a real free-text answer row. Merges after free-lines-6 unless the headroom at its merge holds its lines; yes-word (same _answers code) waits for it.",
-   "promise": "An owner answer the session transcript shows is recorded even when the harness writes it late or a batch holds an answer that differs. (1) A Stop that does not yet find the tool_result row keeps the answer pending, and later hook calls re-read it; answer.unconfirmed is recorded only when the transcript holds the tool_result row with different answers, or after a named bounded age (about 10 minutes) with no row. (2) Each question in a batch is confirmed and recorded on its own: a labelled answer the transcript shows is recorded even when another answer in the same call is not. (3) answer.unconfirmed and its note say which case held: no tool_result row yet, or which question's answer differs, with both values truncated. First step, before code: capture one real free-text (Other) answer, the PostToolUse payload (its answer.pending row) and the transcript's toolUseResult row, from this pass's plan question or the next owner answer, and add it as tests/fixtures/payloads/claude-ask-post-free-text.json; if none exists when the build starts, record the assumed shape under Assumptions. Security holds: an answer counts only when the transcript holds that tool_use id and that question's exact answer, and a replay records nothing more. Files: cli/wuwei/hook.py (_shown, _confirm, _unconfirmed) and the vendored copy, tests/test_hook.py, the new fixture, docs/design.md section 8 (the 1.5 s rule). AGENTS.md Testing the guards: route corpus at main and head with sha256, and a generated answer probe (labels, free text, option notes, trailing text, batch mixes x row present, late, differing) written by code. Runtime: estimate +3, budget 5. Rollback: revert.",
-   "acceptance": [
-    "Given a plan answer whose tool_result row the harness writes after the planner's Stop waited 1.5 s, when the next hook call runs, then prompt and plan.approved are recorded and no answer.unconfirmed row precedes them",
-    "Given a batch of a one-way: question answered in free text and a plan: question answered Approve, where the transcript's free-text value differs from the payload's, when confirmed, then the plan approval is recorded and the note names only the one-way question as differing",
-    "Given no tool_result row ever, when the bound passes, then answer.unconfirmed records 'no tool_result row' once and the answer is not recorded",
-    "Given a payload whose answers the transcript does not hold, when any hook call runs, then nothing is recorded, as on main"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1233"
   },
   {
    "id": "push-git-runs",
@@ -2346,33 +2394,6 @@
    "reason": "merged as taoq-ai/wuwei#1091"
   },
   {
-   "id": "1230",
-   "title": "fix(evidence): a base merge into an open PR is measured on the PR's own diff, so passes carry when the PR's own change did not move",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 10.33,
-   "why": "owner 2026-10-22: 'also fix this' (taoq-ai/wuwei#1230). evidence.gate_gaps measures the delta as compare(last gated head, head), so a main merge brings main's lines and risky paths into it; on ai-stacks 2026-10-22 three approved PRs (#3374, #3377, #3523) each held 2 to 12 seat-minutes behind a delta gate that found only renumbers; the main queue on a busy day",
-   "promise": "the delta a gate re-reads after a pass is the change in the PR's own diff (its diff against its base at the gated head versus at the new head); lines and files a base merge brought in are not the PR's delta; a PR-own delta over 20 non-prose lines or on a risky path is still re-read by the one gate wuwei evidence names",
-   "acceptance": [
-    "given a PR with all gates passed, when main is merged in and the PR's own diff is unchanged, then wuwei evidence shows no owed gate and the merge door accepts it",
-    "given a main merge where the PR's own diff gains a 30-line code change in conflict resolution, then the gate wuwei evidence names is owed",
-    "given a main merge where only files the workspace declares generated change in the PR's own diff, then the passes carry"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1234"
-  },
-  {
    "id": "free-lines-6",
    "title": "refactor: free at least 16 runtime lines outside the guard, hook, board and evidence modules, with no behaviour change",
    "goal": "G-2",
@@ -2474,34 +2495,6 @@
    "added": "2026-10-19",
    "approved": true,
    "reason": "until 2026-10-24: WIP limit 4 and no runtime lines until free-lines-6 merges"
-  },
-  {
-   "id": "1222",
-   "title": "fix(hook): a seat report the harness already notified never blocks the planner's stop, and a refused hand-back is not reported as a gap",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 3,
-    "size": 2
-   },
-   "score": 9.5,
-   "why": "taoq-ai/wuwei#1222. What reproduces on main is the Stop pointer and the charter's Gap line; the handback-send-enforce hook is not WUWEI's (hooks/hooks.json registers none), so proposal 1 is the harness's, and proposal 2 is main's behaviour since #1217: say both on the issue.",
-   "promise": "Outside auto mode, a kept seat report whose task notification the session transcript shows enqueued, and not removed, is never given again: the planner's Stop does not block on its pointer (a pointer may still ride a PreToolUse note). A notification whose queue row was removed (cleared_on_cancel) is no delivery: that report is given in full, once. charters/_common.md Report drops the rule that a refused hand-back goes under Gap: and says that outside auto mode the refusal is expected, a reminder to call SubagentHandback again comes from the harness, not WUWEI, and the seat ends with its plain-text report. Outside: the harness's handback-send-enforce hook and proposal 2 of the issue (main since #1217). Files: cli/wuwei/hook.py (deliver) and the vendored copy, charters/_common.md, agents/*.md and vendored agents rebuilt with bin/wuwei agents build, tests/test_hook.py (the queue-dropped test moves from a pointer to the full report), docs/design.md hooks table where it names the pointer. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +2, budget 3. Rollback: revert.",
-   "acceptance": [
-    "Given a kept report whose notification the transcript shows enqueued, when the planner's first hook event after it is a Stop, then the Stop does not block on it",
-    "Given a notification enqueued and then removed with cleared_on_cancel, when the planner's next call or Stop runs, then the report is given in full once",
-    "Given a report with no notification, when the planner stops, then it is given in full once, as on main",
-    "Given the rebuilt agents, when a seat reads its charter, then no line asks it to report a refused hand-back under Gap:"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1236"
   },
   {
    "id": "merge-ref",
