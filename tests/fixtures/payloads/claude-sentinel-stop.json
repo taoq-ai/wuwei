@@ -1,0 +1,12 @@
+{
+  "session_id": "3c3b5210-f1f3-5623-83c3-a701461b643a",
+  "transcript_path": "~/.claude/projects/-repo/3c3b5210-f1f3-5623-83c3-a701461b643a.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "agent_id": "a03dc7ca27072549b",
+  "agent_type": "sentinel-arch",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "~/.claude/projects/-repo/3c3b5210-f1f3-5623-83c3-a701461b643a/subagents/agent-a03dc7ca27072549b.jsonl",
+  "last_assistant_message": ""
+}

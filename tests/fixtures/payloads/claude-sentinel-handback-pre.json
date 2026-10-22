@@ -1,0 +1,14 @@
+{
+  "session_id": "3c3b5210-f1f3-5623-83c3-a701461b643a",
+  "transcript_path": "~/.claude/projects/-repo/3c3b5210-f1f3-5623-83c3-a701461b643a.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "agent_id": "a03dc7ca27072549b",
+  "agent_type": "sentinel-arch",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "SubagentHandback",
+  "tool_input": {
+    "message": "Arch gate on acme/app#42 at aaaaaaa: PASS.\n\nVerdict file: .wuwei/verdicts/I-1/arch-aaaaaaa.md\n\nConfidence: high\nBlocked: none\nGap: none\nChange: none"
+  },
+  "tool_use_id": "toolu_019dn3WqNemkR3tkZfkXz9WH"
+}

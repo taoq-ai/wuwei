@@ -66,7 +66,8 @@ def answered(root, questions, answers, session='s1', data=None):
 def launched(payload):
     """A SubagentStop payload for a seat the harness launched: its meta file and the Agent tool_use in the session
     transcript under ws.PROJECTS, laid out as tests/fixtures/transcripts holds a real launch. A seat transcript the
-    payload names is linked beside the meta file."""
+    payload names is hard-linked beside the meta file; else, unless the payload names none (None), the seat transcript
+    holds the payload's message, as the harness writes it."""
     session, agent = payload.get('session_id') or 's1', payload['agent_id']
     seats, use = ws.PROJECTS / '-repo' / session / 'subagents', f'toolu_launch_{agent}'
     seats.mkdir(parents=True, exist_ok=True)
@@ -74,9 +75,13 @@ def launched(payload):
     with (seats.parent.parent / f'{session}.jsonl').open('a', encoding='utf-8') as out:
         out.write(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': use, 'name': 'Agent',
                                                                            'input': {'subagent_type': payload.get('agent_type')}}]}}) + '\n')
+    seat = seats / f'agent-{agent}.jsonl'
     if (given := payload.get('agent_transcript_path')) and Path(given).is_file():
-        (seats / f'agent-{agent}.jsonl').unlink(missing_ok=True)
-        (seats / f'agent-{agent}.jsonl').symlink_to(Path(given).resolve())  # the seat may still be writing it
+        seat.unlink(missing_ok=True)
+        os.link(Path(given).resolve(), seat)  # the seat may still be writing it; a symlink out of the folder is no transcript
+    elif payload.get('agent_transcript_path', '') is not None and isinstance(said := payload.get('last_assistant_message'), str) \
+            and said.strip():
+        seat.write_text(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': said}]}}) + '\n')
     return {**payload, 'transcript_path': str(seats.parent.parent / f'{session}.jsonl'),
             'agent_transcript_path': str(seats / f'agent-{agent}.jsonl')}
 

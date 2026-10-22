@@ -277,7 +277,10 @@ transcript path outside the projects folder, no AskUserQuestion tool_use with th
 named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer.pending` row that no
 `prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
 call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
-type and Agent tool_use and the session transcript holds that tool_use. Codex answers and stops, a
+type and Agent tool_use and the session transcript holds that tool_use, and a gate's report, at its
+hand-back and its stop, counts only as that seat transcript holds it: the payload's text when the
+transcript holds it, else the transcript's last report (a PreToolUse payload names no seat transcript,
+so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Codex answers and stops, a
 moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
 recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
 transcript itself stays open (SECURITY.md).
@@ -321,9 +324,6 @@ Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
-- Attestations read from the seat's own transcript (#962): a sentinel's SubagentHandback at
-  PreToolUse still attests from its payload, and a SubagentStop that replays a real launch attests
-  and keeps the report text its payload carries.
 - A shared standards repository for teams; auditing human PRs as first-class items.
 
 ## 13. From 0.x
