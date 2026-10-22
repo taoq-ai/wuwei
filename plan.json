@@ -53,6 +53,58 @@
    "approved": true
   },
   {
+   "id": "decisions-survive",
+   "title": "fix(hook): owner answers survive compaction and new sessions: every session start shows the recorded answers, and a question already answered is sent back with its answer",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "owner 2026-10-22: in a long session, compaction loses decisions and the owner is asked again; WUWEI state should hold regardless. hook.session_start (cli/wuwei/hook.py:418) re-injects charters and the board after compaction but no owner answers; scope:, trust:, one-way: answers live only as ledger prompt rows; the question guard does not check for an answer already given",
+   "promise": "every SessionStart (startup, resume, clear, compact) adds the owner answers recorded in the last 7 days as compact question-and-answer lines within the context cap; an AskUserQuestion whose question matches one answered in that window (same class, normalised text) is sent back with the recorded answer and its date, unless it names a new head or PR",
+   "acceptance": [
+    "given a scope: answer recorded today, when the session is compacted and restarts, then its session context lists that question and answer",
+    "given that answer, when the planner asks the same scope: question again, then the guard sends it back with the recorded answer",
+    "given a plan: question after new items were added, when it is asked, then it reaches the owner"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
+   "id": "stale-work",
+   "title": "feat(board): in-progress work that has not moved for hours shows as stale, so the Stop reminder and every session start name it until someone acts",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "owner 2026-10-22: A-Teams-Network/ai-stacks#3386 stalled third in one helper's serial queue of four PRs; the planner worked from the last event and never looked at a quiet draft again; WUWEI shows no ageing: a PR open three days is process fit, which evidence.visible hides, and the team row checks only that a shepherd seat runs, not that each PR moves. A standards line is advice that compaction and new sessions lose",
+   "promise": "an item in progress whose PR has had no new head, gate verdict, CI result or review event for 4 hours, and no live seat names it, shows on the board as an actionable 'stale since <time>: <last event>' line; the Stop reminder and the session start name it; it still counts toward the WIP limit until finished or parked with a reason; it never blocks a merge (process fit stays process fit)",
+   "acceptance": [
+    "given a draft PR whose last head, verdict and CI are 5 hours old and no seat names its item, when the board is read, then the item shows stale since that time with its last event",
+    "given the same PR with a live shepherd seat whose brief names its item, when the board is read, then it is not stale",
+    "given a stale item, when the planner stops, then the Stop reminder lists it"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
+  },
+  {
    "id": "reply-thread-ts",
    "title": "fix(hook): an owed reply whose Slack link names a message inside a thread closes on a send into that thread",
    "goal": "G-2",
@@ -105,6 +157,32 @@
    "approved": true
   },
   {
+   "id": "multi-session",
+   "title": "feat(board): several sessions share one workspace: the board counts every live session's seats, an item held by another live session is not started twice, and the plan merges by item in sync",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "owner 2026-10-22: run WUWEI across several sessions; today it is tangled. board.running (cli/wuwei/board.py:65) counts only this session's seats, so WIP, the seat ceiling and the team row are blind to other sessions and a second session can start a builder on the same item; sync.py makes plan.json last-writer-wins across cloud clones, so concurrent plan changes drop each other",
+   "promise": "the board counts live seats from every session today and names the session holding each item; the WIP limit and seat ceiling count all sessions; an Agent launch for an item another live session holds is sent back naming that session; a cloud state sync merges plan.json by item id, newest change per item wins, instead of last writer wins",
+   "acceptance": [
+    "given a builder for item X started in session A and still live, when session B reads the board, then X shows as running in session A",
+    "given that, when session B launches a builder brief naming Item: X, then the guard sends it back naming session A",
+    "given two clones that each add a different plan item, when both sync, then the plan holds both"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
    "id": "free-lines-7",
    "title": "refactor: free at least 15 runtime lines with no behaviour change, so the smart tier fits the budget",
    "goal": "G-4",
@@ -126,7 +204,7 @@
    "prs": [],
    "status": "open",
    "added": "2026-10-22",
-   "approved": false
+   "approved": true
   },
   {
    "id": "1230",
@@ -232,7 +310,7 @@
    "prs": [],
    "status": "open",
    "added": "2026-10-22",
-   "approved": false
+   "approved": true
   },
   {
    "id": "door-words-text",
