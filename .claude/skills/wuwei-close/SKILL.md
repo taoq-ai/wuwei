@@ -14,9 +14,18 @@ description: Checkpoint the WUWEI day with the report and the steward's retro. U
    each). A proposal for a repository's `CLAUDE.md`, `AGENTS.md`, skills or a charter becomes a
    light plan item, built and reviewed like any change. A goal change waits for the owner's next
    plan pass.
-4. Send the owner a short summary where the owner reads it (the session, or a DM through the
+4. Housekeeping: advise, and act only on what this session started.
+   - Worktrees whose item is done, parked or dropped: read `git worktree list` against the plan.
+     Remove a clean one with `git worktree remove`; name a dirty one and leave it.
+   - Background shells and tasks this session started that still run: stop them with the
+     harness's own task tools.
+   - Scratch folders of seats that finished: remove them.
+   - Sizes: report the size of `.wuwei/cache` and of test temp folders.
+   - A process this session did not start: name it to the owner once and never kill it.
+5. Send the owner a short summary where the owner reads it (the session, or a DM through the
    connected tools). Order: what needs the owner first, then done, open gaps, escapes, exceptions,
-   andon, decisions taken under Assumptions, the weekly sample PR and the retro's proposals.
-5. Run `wuwei sync` so the state survives this machine or session (it pushes `.wuwei/` to the
+   andon, decisions taken under Assumptions, housekeeping, the weekly sample PR and the retro's
+   proposals.
+6. Run `wuwei sync` so the state survives this machine or session (it pushes `.wuwei/` to the
    `wuwei/state` branch; outside a git repository it says the state stays local).
-6. Open items carry to the next pass as they are. Do not ask whether to continue tomorrow.
+7. Open items carry to the next pass as they are. Do not ask whether to continue tomorrow.
