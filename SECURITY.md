@@ -137,10 +137,11 @@ for PreToolUse the one beside the session transcript, resolved under the project
 meta file that confirms the launch. A report the payload carries that the transcript does not hold
 records `seat.unconfirmed` and no attestation, stop or kept report. A replayed real stop or hand-back
 still re-reads the verdict file the seat's own report names, and the guards do not hold
-`.wuwei/verdicts`, so a seat attests one verdict: once it has an attestation, a report naming any
-other verdict (a rewrite of that file, or an earlier report naming another path) records
-`verdict.rewritten` and no attestation, and evidence keeps the first. A correction comes from a new
-gate seat. A rewrite before the seat's first attestation is still attested. `wuwei init` imports
+`.wuwei/verdicts`, so two rules bind it. Only the seat's last report counts: a payload carrying an
+earlier report from its transcript (one naming a path it later replaced) records `seat.unconfirmed`
+as a replay. And a later sha for a path the seat already attested records `verdict.rewritten` and no
+attestation, so evidence keeps the first. A resumed seat that writes a new verdict file in a new
+last report attests it. A rewrite before the seat attests a path is still attested. `wuwei init` imports
 0.34 decision files (`.wuwei/days/<date>/decisions/gate-*.md`) only into a workspace with no ledger
 yet, so a decision file a seat writes later is never imported. The guards refuse literal spellings
 of a hook call: `wuwei hook`, `wuwei -- hook`, and an interpreter's `-m wuwei hook`, `-m

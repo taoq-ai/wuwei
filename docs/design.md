@@ -175,9 +175,8 @@ when the environment name holds prod or production as a word not led by pre or n
 be read, the reverts alone count. Time to restore runs from the first failed deployment of a run to
 the green one. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A seat
-attests one verdict: once it has an attestation, a report naming another verdict (a rewrite, or
-another path) records `verdict.rewritten`, no attestation, and is sent back; a correction comes from
-a new gate seat. A gate's
+attests a path once: a later version of a file it attested records `verdict.rewritten`, no
+attestation, and is sent back to write a new file. A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
@@ -295,8 +294,8 @@ named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer
 `prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
 call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its
 type and Agent tool_use and the session transcript holds that tool_use, and a gate's report, at its
-hand-back and its stop, counts only as that seat transcript holds it: the payload's text when the
-transcript holds it, else the transcript's last report (a PreToolUse payload names no seat transcript,
+hand-back and its stop, counts only as that seat transcript holds it: the payload's text when it is the
+transcript's last report (an earlier one is a replay), else the transcript's last report (a PreToolUse payload names no seat transcript,
 so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Codex answers and stops, a
 moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
 recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
