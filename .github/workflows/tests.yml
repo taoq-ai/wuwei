@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   test:
+    # Linux keeps the names branch protection requires (test (3.11), test (3.12)); macOS and Windows name their OS.
+    name: ${{ matrix.os == 'ubuntu-latest' && format('test ({0})', matrix.python-version) || format('test ({0}, {1})', matrix.os, matrix.python-version) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
