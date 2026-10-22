@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from conftest import footer, make_pr, verdict_text, write_plan
+from conftest import BASH, footer, make_pr, verdict_text, write_plan
 from wuwei import guards, ws
 
 
@@ -397,7 +397,8 @@ def test_an_exception_in_the_shape_reaches_the_owner(root, question):
 
 @pytest.mark.parametrize('question', ['exception: ' + 'a' * 36000, 'exception: o/r#1 at abc1234:' + ' ' * 36000 + '.',
                                       'exception: o/r#1 at abc1234:' + '\n' * 36000 + '.', 'exception: ' + 'o/r#1 at abc1234: .' * 1900,
-                                      'exception: ' + 'o/r#1 at abc1234: ' * 2000, 'exception: ' + 'o/r#1 at abc1234 and ' * 1700])
+                                      'exception: ' + 'o/r#1 at abc1234: ' * 2000, 'exception: ' + 'o/r#1 at abc1234 and ' * 1700],
+                         ids=['letters', 'spaces', 'newlines', 'dots', 'colons', 'ands'])  # Windows caps the test id pytest puts in the env
 def test_a_long_exception_question_is_read_in_linear_time(root, question):
     started = time.perf_counter()
     guards.pre_tool(root, ask(question))
@@ -614,7 +615,7 @@ CLEANS = ["git clean -fd --exc='!*'", "git clean -fd --excl '!*'", 'git clean -n
           'X=\'!*\'; git clean -fd -e "$X"', 'git clean -fdx --ex src', '/usr/lib/git-core/git-clean -fdx']  # security and arch gates at 4f99d48
 
 
-@pytest.mark.skipif(not shutil.which('bash') or not shutil.which('git'), reason='needs bash and git')
+@pytest.mark.skipif(not shutil.which(BASH) or not shutil.which('git'), reason='needs bash and git')
 @pytest.mark.parametrize('command', RECORDS + HOLES + CLEANS)
 def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo, command):
     """Item records acceptance 1: real bash in a fresh folder changes the ledger row or the cache value; the guard refuses it."""
@@ -625,7 +626,7 @@ def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo,
         (tmp_path / '.wuwei' / name).write_text(text)
     if command.startswith('/') and not Path(command.split()[0]).exists():
         pytest.skip('no ' + command.split()[0])
-    subprocess.run(['bash', '-c', command], cwd=tmp_path, stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+    subprocess.run([BASH, '-c', command], cwd=tmp_path, stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
     row, value = (tmp_path / '.wuwei' / 'ledger' / 'a.jsonl'), (tmp_path / '.wuwei' / 'cache' / 'c.json')
     assert not row.is_file() or row.read_text() != 'row\n' or value.read_text() != 'true', command
     assert guards.bash(root, command, str(tmp_path), 's1')['decision'] == 'deny', command
@@ -801,11 +802,11 @@ def test_a_named_fd_redirect_hides_neither_infra_nor_a_leak(root, repo, command,
     assert guards.pre_tool(root, bash(command))['decision'] == decision, command
 
 
-BASH_MAJOR = int(re.sub(r'\D', '', subprocess.run(['bash', '-c', 'echo ${BASH_VERSINFO[0]}'], capture_output=True).stdout.decode(
-    errors='replace')) or 0) if shutil.which('bash') else 0
+BASH_MAJOR = int(re.sub(r'\D', '', subprocess.run([BASH, '-c', 'echo ${BASH_VERSINFO[0]}'], capture_output=True).stdout.decode(
+    errors='replace')) or 0) if shutil.which(BASH) else 0
 
 
-@pytest.mark.skipif(not shutil.which('bash'), reason='needs bash')
+@pytest.mark.skipif(not shutil.which(BASH), reason='needs bash')
 @pytest.mark.parametrize('command', NAMED_FD[:2] + STDIN_SHELLS[:4])
 def test_bash_runs_the_push_in_each_refused_shape(tmp_path, command):
     """Acceptance comes from real execution: a stub git on PATH logs its argv when bash runs the shape."""
@@ -814,7 +815,7 @@ def test_bash_runs_the_push_in_each_refused_shape(tmp_path, command):
     (tmp_path / 'git').write_text(f'#!/bin/sh\necho "$*" >> {tmp_path}/log\n')
     (tmp_path / 'git').chmod(0o755)
     (tmp_path / 'x').write_text('')
-    subprocess.run(['bash', '-c', command], cwd=tmp_path, env={**os.environ, 'PATH': f'{tmp_path}:{os.environ["PATH"]}'},
+    subprocess.run([BASH, '-c', command], cwd=tmp_path, env={**os.environ, 'PATH': f'{tmp_path}{os.pathsep}{os.environ["PATH"]}'},
                    stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
     assert 'push origin main' in (tmp_path / 'log').read_text(), command
 
@@ -1264,6 +1265,8 @@ def drafts(root, cloud):
     (root / 'sub').mkdir()
     (root / 'sub' / 'd.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     for planted in ('~/d.json', '$HOME/d.json', 'd*.json', '{,sub/}d.json', '`printf', '$(echo d.json)'):  # literal paths
+        if os.name == 'nt' and '*' in planted:
+            continue  # Windows holds no file named d*.json
         (root / planted).parent.mkdir(exist_ok=True)
         (root / planted).write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     cloud.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True, 'headRefName': 'x'}
@@ -1701,7 +1704,7 @@ def landed(remote):
     return subprocess.run(['git', '--git-dir', str(remote), 'rev-parse', '-q', '--verify', 'refs/heads/main'], capture_output=True).returncode == 0
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('command, at, remote', [
     ('git push ../r.git main', 'c', 'r.git'), ('git push origin main', 'c', 's.git'), ('git push ../r.git main', 'c/sub', 'r.git'),
     ('git push {s}/r.git main', 'c', 'r.git'), ('git push file://{s}/r.git main', 'c', 'r.git'), ('git -C c push ../r.git main', '.', 'r.git'),
@@ -1712,7 +1715,7 @@ def test_a_push_to_a_scratch_bare_remote_passes_the_door_and_lands(root, scratch
     """Item scratch-remotes: the door passes a push whose remote is a local repository in a scratch folder, and real git pushes it."""
     command = command.format(s=scratch)
     assert guards.bash(root, command, str(scratch / at), 's1') is None, command
-    subprocess.run(['bash', '-c', command], cwd=scratch / at, check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=scratch / at, check=True, capture_output=True, timeout=30)
     assert landed(scratch / remote), command
 
 
@@ -1741,7 +1744,8 @@ def test_a_push_the_scratch_rule_cannot_read_as_local_meets_the_push_door(root, 
     git = lambda *a, at='c': subprocess.run(['git', *a], cwd=scratch / at, check=True, capture_output=True)  # noqa: E731
     subprocess.run(['git', 'init', '-q', str(root)], check=True, capture_output=True)
     for planted in ('c/-u', f'%2e%2e/{root.name}/.git', f'c/localhost{root}/.git', 'p.git'):
-        git('init', '-q', '--bare', planted, at='.')
+        if os.name != 'nt' or 'localhost' not in planted:  # a Windows root has a drive: no folder c/localhostC:\\ exists there
+            git('init', '-q', '--bare', planted, at='.')
     (scratch / 'r.git' / 'q').mkdir()
     (scratch / 'r.git' / 'q.git').symlink_to(root / '.git')
     (scratch / 'p.git' / '.git').symlink_to(root / '.git')
@@ -1846,38 +1850,38 @@ REFSPECS_TO_MAIN = ['git push origin feature:heads/main', 'git push origin :', '
                     "git push origin 'refs/*:refs/*'"]
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('command', REFSPECS_TO_MAIN)
 def test_a_refspec_that_moves_main_under_real_git_meets_the_push_door(root, ahead, monkeypatch, command):
     """Item push-refspecs: git 2.43 expands a destination with its ref rules, pushes matching branches for : and every branch
     for --all (any unique prefix) or a glob, and splits a refspec at its last colon. Real git moves main; the door refuses it."""
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / 'c', capture_output=True, timeout=30)
     assert main_at(ahead / 's.git') != before, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))  # the same remote outside the scratch folders, as the real origin is
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', command
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('command', ['git push origin feature', 'git push origin feature:feature', 'git push --tags origin',
                                      "git push origin 'refs/heads/f/*:refs/heads/f/*'", 'git push origin feature:refs/heads/f/main',
                                      'git push origin HEAD:refs/f/main', 'git push origin feature:heads/f', 'git push origin tag v1'])
 def test_a_refspec_that_cannot_reach_main_passes_the_push_door(root, ahead, monkeypatch, command):
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     assert main_at(ahead / 's.git') == before, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     assert guards.bash(root, command, str(ahead / 'c'), 's1') is None, command
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('command, moves', [('git push origin @', True), ('git push origin feature @', True),
                                             ('git push --tags origin', False), ('git push origin --ta', False)])
 def test_a_push_from_main_reads_at_and_tags_as_git_does(root, ahead, monkeypatch, command, moves):
     """Probe at the head: git reads @ as HEAD, and --tags with no refspec pushes tags alone, not the current branch."""
     subprocess.run(['git', 'switch', '-q', 'main'], cwd=ahead / 'c', check=True, capture_output=True)
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     assert (main_at(ahead / 's.git') != before) == moves, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
@@ -1909,7 +1913,7 @@ VALUES_FROM_MAIN = ['git push --repo --tags origin', 'git push -o --tags origin'
                     'git push origin --recurse-submodules on-demand']
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('command, moves', [(c, True) for c in VALUES_FROM_MAIN] + [
     ('git push --repo=x --tags origin', False), ('git push -o --all origin feature', False), ('git push --repo --mirror origin feature', False),
     ('git push --tags -n origin', False)])
@@ -1922,7 +1926,7 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     run('fetch', '-q', 'origin')
     run('branch', '-q', '--set-upstream-to=origin/main', 'main')
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     assert (main_at(ahead / 's.git') != before) == moves, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
@@ -1931,7 +1935,7 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
 WT_DASHES = "git worktree add -q -b w ../w && printf 'ref: refs/heads/main\\n' > .git/worktrees/w/--"  # w's own root ref named --
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('setup, at, command', [
     ('git update-ref refs/heads/-x HEAD', 'c', 'git push origin -- -x:main'),
     ('git update-ref refs/heads/-x HEAD', 'c', 'git push -- origin -x:main'),
@@ -1985,15 +1989,15 @@ def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeyp
     a word rev-parse cannot read (tag, ^x, a glob, a colon) stays out of its batch. Gates at 457f6a8: git reads a root ref named --
     per worktree, so a push of a ref named -- meets the door wherever it runs. Real git moves main; the door refuses it."""
     command = command.replace('{w}', str(ahead / 'w'))
-    subprocess.run(['bash', '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
     assert main_at(ahead / 's.git') != before, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     assert door_reached(guards.bash(root, command, str(ahead / at), 's1')) == 'push', command
 
 
-@pytest.mark.skipif(not shutil.which('git') or not shutil.which('bash'), reason='needs git and bash')
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
 @pytest.mark.parametrize('setup, at, command', [
     ('git switch -q main && git worktree add -q ../w feature', 'w', 'git push origin HEAD'),
     ('git switch -q main && git worktree add -q ../w feature', 'w', 'git push origin @'),
@@ -2002,9 +2006,9 @@ def test_a_refspec_git_resolves_to_main_meets_the_push_door(root, ahead, monkeyp
     ('git symbolic-ref ORIG_HEAD refs/heads/feature', 'c', 'git push origin ORIG_HEAD')])
 def test_a_source_alone_git_sends_elsewhere_passes_the_push_door(root, ahead, monkeypatch, setup, at, command):
     """Round 2 reads each HEAD file: a linked worktree's own HEAD is the one HEAD and @ name there, not the main clone's main."""
-    subprocess.run(['bash', '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', setup], cwd=ahead / 'c', check=True, capture_output=True, timeout=30)
     before = main_at(ahead / 's.git')
-    subprocess.run(['bash', '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
+    subprocess.run([BASH, '-c', command], cwd=ahead / at, check=True, capture_output=True, timeout=30)
     assert main_at(ahead / 's.git') == before, command
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     assert guards.bash(root, command, str(ahead / at), 's1') is None, command

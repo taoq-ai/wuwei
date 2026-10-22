@@ -44,7 +44,7 @@ jobs:
               key = re.sub(r'\S*[\\/]\S*', '<path>', (f.get('message') or '').split('\n')[0])
               groups.setdefault(re.sub(r'[0-9a-f]{6,}|[0-9]+', '#', key)[:160], []).append((name, f))
           ranked = sorted(groups.items(), key=lambda g: -len(g[1]))
-          say(f'{len(bad)} failed in {len(groups)} groups:\n' + '\n'.join(f'{len(v)} x {k} (e.g. {v[0][0]})' for k, v in ranked)[:20000])
+          say(f'{len(bad)} failed in {len(groups)} groups:\n' + '\n'.join(f'{len(v)} x {k} (e.g. {v[0][0][:150]})' for k, v in ranked)[:20000])
           for _, [(name, f), *_] in ranked[:9]:
               say(name + '\n' + (f.get('message') or '')[:500] + '\n' + (f.text or '')[-1500:])
           PY

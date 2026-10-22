@@ -36,7 +36,9 @@ def launch(tmp_path, shims, shell='sh', python=None, payload=None):
     """Runs the hook entry with only the shims (and dirname) on PATH, as a harness with a short PATH would."""
     tools = tmp_path / 'tools'
     tools.mkdir(exist_ok=True)
-    if not (tools / 'dirname').exists():
+    if os.name == 'nt':  # Git's dirname.exe loads its DLLs from its own folder, which holds no Python
+        tools = Path(shutil.which('dirname')).parent
+    elif not (tools / 'dirname').exists():
         (tools / 'dirname').symlink_to(shutil.which('dirname'))
     env = {k: v for k, v in os.environ.items() if k not in ('WUWEI_PYTHON', 'CLAUDE_CODE_REMOTE')}
     env['PATH'] = os.pathsep.join([str(shims), str(tools)])

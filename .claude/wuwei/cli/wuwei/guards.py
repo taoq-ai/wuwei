@@ -4,6 +4,7 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
+import os
 from os.path import realpath
 from pathlib import Path, PurePosixPath
 from posixpath import join, normpath  # a command reads the same on every OS
@@ -83,7 +84,7 @@ def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or w
 
 
 def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: Path.home().as_posix(), path.replace('\\', '/'))  # keep: a file in <project>/memory, as a literal path
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: (os.environ.get('HOME') or str(Path.home())).replace('\\', '/'), path.replace('\\', '/'))  # keep: a file in <project>/memory, as a literal path
     return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*', full) and (  # resolves, links read
         real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
 

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -10,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'cli'))
 from wuwei import gh, ws  # noqa: E402
 
 HEAD = 'a' * 40
+# The bash a test runs: Git Bash on Windows, as Claude Code runs it there, never the WSL bash.exe Windows finds first
+BASH = str(Path(shutil.which('git') or '.').parents[1] / 'bin' / 'bash.exe') if os.name == 'nt' else 'bash'
 OLD = 'b' * 40
 
 
