@@ -32,6 +32,13 @@ def test_config_set_parses_lists_and_switches(root):
     assert data['owner_paths'] == ['infra/**', '.github/**'] and data['telemetry'] is False
 
 
+def test_ledger_rows_end_with_lf_on_every_platform(root):
+    ws.record(root, 'note', {})
+    ws.record(root, 'note', {})
+    assert (root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl').read_bytes().count(b'\n') == 2 and ws.verify(root) == []
+    assert b'\r' not in (root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl').read_bytes()
+
+
 def test_ledger_rows_carry_their_format_version(root):
     assert ws.record(root, 'note', {})['v'] == ws.FORMAT
 

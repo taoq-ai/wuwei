@@ -101,7 +101,7 @@ def _kernel():
 def _hold(folder):  # Windows: a handle that shares no delete, so the folder is never renamed or swapped for a link while held
     if os.name != 'nt':
         return None
-    handle = _kernel().CreateFileW(str(folder), 0x80, 3, None, 3, 0x02200000, None)  # the reparse point itself, never its target
+    handle = _kernel().CreateFileW(str(folder), 0x81, 3, None, 3, 0x02200000, None)  # list access, so its share mode binds; the link itself
     if handle in (None, ctypes.c_void_p(-1).value):
         raise ctypes.WinError(ctypes.get_last_error())
     return handle
@@ -236,7 +236,7 @@ def record(root, kind, data):
     """Append one row to this clone's file; each row carries the hash of the one before it there."""
     path = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a+', encoding='utf-8') as handle, _locked(handle):  # seats starting at once append in turn (#1057)
+    with open(path, 'a+', encoding='utf-8', newline='') as handle, _locked(handle):  # in turn (#1057), \n on every OS
         handle.seek(0)
         mine = _parse(handle.read())
         row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
