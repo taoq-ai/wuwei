@@ -295,15 +295,15 @@ def post_tool(root, payload):
 
 
 def _replied(root, tool, sent):
-    """Close every owed reply whose place this send landed in: a Slack thread link names its channel
-    and thread ts; any other place must appear as given."""
+    """Close every owed reply whose place this send landed in: a Slack link names its channel and its
+    message ts, or the thread_ts of the thread it sits in; any other place must appear as given."""
     closed = []
     for item in plan.items(root):
         if item.get('kind') != 'reply' or item.get('status') != 'open':
             continue
-        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})', item['where'])
+        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})(?:\?\S*?\bthread_ts=([0-9]{10}\.[0-9]{6}))?', item['where'])
         keys = [thread[1], f'{thread[2]}.{thread[3]}'] if thread else [item['where']]
-        if all(key in sent for key in keys):
+        if all(key in sent for key in keys) or thread and thread[4] and thread[1] in sent and thread[4] in sent:
             plan.mark(root, item['id'], 'done', f'replied via {tool}')
             ws.record(root, 'reply.sent', {'id': item['id'], 'tool': tool})
             closed.append(item['id'])

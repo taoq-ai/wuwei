@@ -31,6 +31,36 @@ def test_a_send_into_the_thread_closes_the_reply_by_itself(root, fake):
     assert 'R-1' in out['hookSpecificOutput']['additionalContext']
 
 
+IN_THREAD = 'https://x.slack.com/archives/C1/p1729590000123456?thread_ts=1729580000.000100&cid=C1'
+
+
+def _send(root, **fields):
+    return hook.handle(root, 'PostToolUse', {
+        'session_id': 's1', 'tool_name': 'mcp__slack__slack_send_message', 'cwd': str(root),
+        'tool_input': {**fields, 'text': 'Answered in the thread.'}, 'tool_response': {'ok': True}})
+
+
+def test_a_send_into_the_thread_closes_a_reply_owed_on_a_message_inside_it(root, fake):
+    plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+    out = _send(root, channel_id='C1', thread_ts='1729580000.000100')
+    assert plan.find(root, 'R-1')['status'] == 'done'
+    assert 'R-1' in out['hookSpecificOutput']['additionalContext']
+
+
+def test_a_send_naming_the_linked_message_inside_a_thread_closes_it_too(root, fake):
+    plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+    _send(root, channel='C1', thread_ts='1729590000.123456')
+    assert plan.find(root, 'R-1')['status'] == 'done'
+
+
+def test_a_thread_reply_stays_owed_on_another_channel_or_thread(root, fake):
+    plan.owe(root, IN_THREAD, 'Omer asks about the rollout', 'Omer')
+    _send(root, channel_id='C2', thread_ts='1729580000.000100')
+    _send(root, channel_id='C1', thread_ts='1729580000.000200')
+    _send(root, channel_id='C1')
+    assert plan.find(root, 'R-1')['status'] == 'open'
+
+
 def test_a_send_elsewhere_leaves_the_reply_open(root, fake):
     plan.owe(root, THREAD, 'filter question', 'Dade')
     hook.handle(root, 'PostToolUse', {
