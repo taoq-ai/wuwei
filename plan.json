@@ -51,6 +51,33 @@
    "approved": true
   },
   {
+   "id": "launcher-python",
+   "title": "fix(bin): the hook launcher finds a Python 3.11 or later on Windows, macOS and Linux, honours WUWEI_PYTHON, and says which version it found when none fits",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 20,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 20.5,
+   "why": "Eugenio Galioto 2026-10-22 (Codex user): the hooks used the wrong Python interpreter, one missing the -P flag, which blocks his Codex sessions. bin/wuwei checks only that some python3 exists, then runs python3 -I -P -S; -P exists from Python 3.11, so an older first python3 on the hook PATH (macOS /usr/bin/python3 3.9, Ubuntu 22.04 3.10) fails with an unknown option, and PreToolUse exits 2, which blocks every tool call. Codex can run hooks with a different PATH than the user's shell",
+   "promise": "the hook entry point runs WUWEI with WUWEI_PYTHON when set and at least 3.11, else the first interpreter at 3.11 or later among: on Windows the py launcher (py -3) and python.exe; on macOS and Linux python3.13, python3.12, python3.11, python3; the -P flag is passed only to an interpreter that has it (always, given 3.11+); when none fits it exits 2 with one line naming each interpreter tried and its version and saying WUWEI needs Python 3.11 or later; the entry point works whether the harness runs hooks through sh/bash (Claude Code, Git Bash on Windows) or directly on Windows (a .cmd or PowerShell entry beside bin/wuwei if the harness needs one); wuwei doctor names the interpreter the hooks use",
+   "acceptance": [
+    "given python3 on PATH is 3.9 and python3.12 is also on PATH, when a hook runs, then it runs under python3.12 and the call is judged as usual",
+    "given only a 3.9 python3, when a hook runs, then it exits 2 with a line naming python3 3.9 and Python 3.11 or later",
+    "given WUWEI_PYTHON names a 3.11 or later interpreter, when a hook runs, then that interpreter is used",
+    "given Windows with only the py launcher, when a hook runs, then py -3 runs WUWEI"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
+  },
+  {
    "id": "1223",
    "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
    "goal": "G-2",
@@ -365,6 +392,31 @@
    "status": "open",
    "added": "2026-10-22",
    "approved": true
+  },
+  {
+   "id": "cross-platform",
+   "title": "ci: the suite runs on Windows, macOS and Linux, and WUWEI works on all three",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 5
+   },
+   "score": 6.8,
+   "why": "owner 2026-10-22: make the plugin cross platform; it must work on Windows, macOS and Linux. CI runs Linux only today; the launcher is POSIX sh; paths, symlinks and sh assumptions are untested elsewhere",
+   "promise": "CI runs the full suite on ubuntu-latest, macos-latest and windows-latest; every failure is fixed in the runtime or, for a test that asserts POSIX-only behaviour, the test states the platform it covers; the docs' install page states the supported platforms and the Python requirement",
+   "acceptance": [
+    "given the CI matrix, when a PR runs, then the suite passes on Linux, macOS and Windows",
+    "given a Windows machine with Python 3.11+, when WUWEI's hooks run in Claude Code, then the doors judge as on Linux"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": false
   },
   {
    "id": "flow-board",
