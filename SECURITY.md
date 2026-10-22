@@ -131,10 +131,14 @@ to a transcript included), or a command that sets `HOME` before its `~` expands.
 Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
 (`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
 transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
-since each answer id is recorded once. Attestation still reads payload text on two paths: a
-sentinel's SubagentHandback at PreToolUse attests from its payload with no transcript check, and a
-SubagentStop that replays a real launch (its agent id, meta file and session transcript) attests and
-keeps the report text the payload carries, not the seat's own transcript. A harness that keeps
+since each answer id is recorded once. A gate's attestation, at its SubagentHandback (PreToolUse) and
+at its SubagentStop, reads the report from the seat's own transcript: the one the payload names, or
+for PreToolUse the one beside the session transcript, resolved under the projects folder, beside the
+meta file that confirms the launch. A report the payload carries that the transcript does not hold
+records `seat.unconfirmed` and no attestation, stop or kept report. A replayed real stop or hand-back
+still re-reads the verdict file the seat's own report names, and the guards do not hold
+`.wuwei/verdicts`: a verdict rewritten after its seat named it is attested as rewritten when a real
+report naming it is replayed. A harness that keeps
 transcripts elsewhere (`CLAUDE_CONFIG_DIR`, Codex), or an account with no password-database entry,
 gets every answer and stop recorded as unconfirmed while the guards keep running. An answer the
 planner session never confirms (it ends before another hook call) leaves its `answer.pending` row.
@@ -187,7 +191,7 @@ The doors and what they leave to the code host are in section 6 of the
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
   `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
   shut; every other hook fails open and records why.
-- Runtime: Python 3.11+ standard library only, at most 3,600 lines.
+- Runtime: Python 3.11+ standard library only, at most 3,800 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
 - Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
   other network call. Telemetry is local traces only.
