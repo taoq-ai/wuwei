@@ -1,5 +1,6 @@
 """The plan: goal-linked items, ranked by WSJF or RICE. The plan file is the day's contract."""
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -36,8 +37,15 @@ def score(framework, scores):
 
 
 def save(root, rows):
+    old = {o.get('id'): o for o in items(root)}  # a changed item is stamped, unless it brings another clone's stamp (merge)
+    [r.update(changed=ws.now().isoformat()) for r in rows if r != (was := old.get(r.get('id'), {})) and r.get('changed') == was.get('changed')]
     rows.sort(key=lambda item: (item.get('status') != 'open', -item.get('score', 0)))
     ws.atomic_write(_path(root), json.dumps({'items': rows}, indent=1) + '\n')
+
+
+def merge(root, data):  # another clone's plan.json merged into this one by item id: the newer change to each item wins, this clone's on a tie
+    with contextlib.suppress(OSError, ValueError, TypeError, KeyError, AttributeError):  # None for a file that is not a plan: last writer wins, as before
+        return save(root, list({r['id']: r for r in sorted(json.loads(data)['items'] + json.loads(_path(root).read_bytes())['items'], key=lambda r: r.get('changed') or '')}.values())) or True
 
 
 # The names a lead may give its scores, mapped to the framework's own.
