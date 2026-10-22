@@ -271,7 +271,7 @@ def post_tool(root, payload):
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
-                'questions': [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]}
+                'questions': [s for q in data.get('questions') or () if isinstance(q, dict) and isinstance(s := q.get('question'), str)]}
         if transcript_rows(kept['path'], kept['id'] or '\0') is None:
             return context('PostToolUse', _unconfirmed(root, kept, _shown(kept)[1]))
         ws.record(root, 'answer.pending', kept)  # never a silent drop: with no later prompt or answer.unconfirmed it reads as unconfirmed
@@ -316,18 +316,16 @@ def _replied(root, tool, sent):
 def _shown(kept):  # (the answers the transcript shows for this AskUserQuestion id, why the rest are not), or None before its tool_result
     if (rows := transcript_rows(kept.get('path'), tid := str(kept.get('id') or '\0'))) is None:
         return {}, f'{kept.get("path")} is not a transcript under {ws.PROJECTS}'
-    if not (use := [p for p in parts(rows, 'tool_use') if p.get('id') == tid and p.get('name') == 'AskUserQuestion']):
+    if not any(p.get('id') == tid and p.get('name') == 'AskUserQuestion' for p in parts(rows, 'tool_use')):
         return {}, f'the transcript holds no AskUserQuestion tool_use {tid}'
-    if not (done := [(r.get('toolUseResult'), json.dumps(p.get('content'))) for r in rows for p in parts([r], 'tool_result') if p.get('tool_use_id') == tid]):
+    if not (done := [r.get('toolUseResult') for r in rows if any(p.get('tool_use_id') == tid for p in parts([r], 'tool_result'))]):
         return None
-    asked = [q.get('question') for p in use for q in (p.get('input') or {}).get('questions') or () if isinstance(q, dict)]
-    (result, text), after = done[-1], dict(zip(asked, [f', "{q}"=' for q in asked[1:]] + ['.']))  # its text: "<q>"="<answer>", "<next q>"=... .
-    mine, own = a if isinstance(a := kept.get('answers'), dict) else {}, isinstance(result, dict) and isinstance(result.get('answers'), dict)
-    said = result['answers'] if own else {q: a for q, a in mine.items() if q in after and json.dumps(f'"{q}"="{a}"{after[q]}')[1:-1] in text}
+    if not isinstance(said := done[-1].get('answers') if isinstance(done[-1], dict) else None, dict):  # never the row's text: model-written
+        return {}, f'the tool_result has no toolUseResult answers ({type(done[-1]).__name__})'  # questions, labels and deny reasons fill it
+    mine = a if isinstance(a := kept.get('answers'), dict) else {}
     same = {q: a for q, a in mine.items() if q in said and said[q] == a}  # each question on its own: one differing answer voids no other
     why = '; '.join(f'the transcript answers {q[:60]!r} with {str(said.get(q))[:60]!r}, not {str(a)[:60]!r}' for q, a in mine.items() if q not in same)
-    return same, (why and f'its tool_result row holds no toolUseResult answers ({type(result).__name__}), and its text does not match: ' * (not own) + why) or (
-        '' if same else 'the payload holds no answer')
+    return same, why or ('' if same else 'the payload holds no answer')
 
 
 def _unconfirmed(root, kept, why, same=()):
@@ -341,10 +339,11 @@ def _confirm(root, payload, final):
     notes, end, session = [], time.monotonic() + WAIT * final, re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
     for path in sorted((Path(root) / ws.DIR / 'cache').glob(f'answer-{session}--*.json')):
         kept = entry if isinstance(entry := ws.cache_get(root, path.stem, 7 * 86400), dict) else {}  # a planted [1] reads as nothing
-        while (shown := _shown(kept)) is None and time.monotonic() < end:
+        fresh = ws.cache_get(root, path.stem, BOUND) is not None  # kept less than BOUND seconds ago: a Stop waits for its row
+        while (shown := _shown(kept)) is None and fresh and time.monotonic() < end:
             time.sleep(0.1)
         same, why = shown or ({}, f'no tool_result row in {BOUND // 60} minutes')
-        if why and (final or shown is None and ws.cache_get(root, path.stem, BOUND) is not None):  # with no row a later call rereads it;
+        if why and (final or shown is None and fresh):  # with no row a later call rereads it;
             continue  # a Stop leaves an unrecorded answer to the next call, so its note never blocks the stop (#1231)
         try:
             path.unlink()

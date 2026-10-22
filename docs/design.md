@@ -248,16 +248,16 @@ An owner answer and a seat stop count only when the harness wrote them (#962). T
 each session's transcript under the projects folder (`.claude/projects` in the account's home,
 read from the password database, never from `HOME`). An answer counts when that transcript holds the
 AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
-the same answer to that question; each question in a batch counts on its own. The row's
-`toolUseResult.answers` holds the answers; a row without that dict is read by its own text, where each
-`"<question>"="<answer>"` pair must sit between the tool_use's questions in their order. Claude Code
+the same answer to that question; each question in a batch counts on its own. Only the row's
+`toolUseResult.answers` counts, never its text: model-written questions and labels and WUWEI's own deny
+reasons fill that text, so a pair in it proves nothing. Claude Code
 writes that row after PostToolUse returns, so PostToolUse records `answer.pending` and keeps the first
 answer for its ids, and the planner's next hook call records it before any door reads the ledger. An
 error in that step records `hook.error` and the doors still judge the call. A Stop rereads for up to
-1.5 s and records what it finds; an answer it cannot record waits for the next call, so it never blocks
-the Stop (#1231). `answer.unconfirmed` records what is not recorded, with the check that failed: a
+1.5 s for a row (not once the answer is 10 minutes old) and records an entry it can record whole; any other
+entry waits for the next call, so it never blocks the Stop (#1231). `answer.unconfirmed` records what is not recorded, with the check that failed: a
 transcript path outside the projects folder, no AskUserQuestion tool_use with the id, no
-`toolUseResult` answers with text that does not match, a question whose answer differs (both values
+`toolUseResult` answers in the row, a question whose answer differs (both values
 named, cut to 60 characters), or no tool_result row after 10 minutes. An `answer.pending` row that no
 `prompt` or `answer.unconfirmed` row with its id follows (a session that ended before another hook
 call) reads as unconfirmed. Each answer id is recorded once: a replay records nothing more. A seat stop counts when the meta file beside the seat's transcript names its

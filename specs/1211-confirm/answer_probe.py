@@ -1,14 +1,16 @@
 """The generated answer probe for 1211-confirm (AGENTS.md, "Testing the guards"): owner answers through hook.handle.
 
 Classes: batches of one or two questions (plan, one-way, goal, trust, and a breaking question with trailing text after
-"Proceed?"), each answered by its label, by free text, or by its label with an option note; times nine timings and
+"Proceed?"), each answered by its label, by free text, or by its label with an option note; times eight timings and
 shapes of the tool_result row (present at PostToolUse, late after a Stop, never, differing for the answers that are not
-a bare label, forged first, replayed, only the harness text with no toolUseResult, that text against forged pairs that
-stretch over a neighbour, and no tool_use row). A Stop that blocks on an unrecorded answer is a hole (#1231). The rows are the real 2.1.308 shapes of tests/fixtures/transcripts/ask-late.jsonl.
+a bare label, forged first, replayed, a row with no toolUseResult answers whose text holds every pair, and no tool_use
+row). The rows are the real 2.1.308 shapes of tests/fixtures/transcripts/ask-late.jsonl.
 
-The oracle: a question is recorded (in a prompt row) only when its tool_result row is written and holds the same
-answer, an answer with no row is recorded unconfirmed once its bound passes, every recorded answer is the
-transcript's, and an id is recorded at most once. A row that breaks the oracle is a hole.
+The oracle: a question is recorded (in a prompt row) only when its tool_result row is written and its toolUseResult
+answers hold the same answer (the row's text is never a source: model-written strings fill it), an answer with no row
+is recorded unconfirmed once its bound passes, every recorded answer is the transcript's, and an id is recorded at most
+once. A row that breaks the oracle is a hole, in one of two columns: an answer mis-recorded (recorded, not recorded, or
+unconfirmed when it should not be), or a Stop blocked on an unrecorded answer (#1231).
 
 Run once per tree from this worktree, with case folders under the seat's scratch folder:
     python3 -I specs/1211-confirm/answer_probe.py <tree> <scratch> > <out>.json
@@ -26,12 +28,17 @@ from pathlib import Path
 if sys.argv[1] == 'compare':
     main, head = (json.loads(Path(name).read_text(encoding='utf-8')) for name in sys.argv[2:4])
     moved = [key for key in main['cases'] if main['cases'][key] != head['cases'][key]]
+    stopped = 'a Stop blocked on an unrecorded answer'
+
+    def columns(holes, timing=''):  # (cases with an answer mis-recorded, cases with a Stop blocked)
+        keys = [k for k in holes if k.endswith(' x ' + timing) or not timing]
+        return sum(1 for k in keys if set(holes[k]) - {stopped}), sum(1 for k in keys if stopped in holes[k])
     print(f"{len(head['cases'])} cases generated; ran without a hook.error: main {main['clean']}, head {head['clean']}; "
-          f"moved {len(moved)}; holes: main {len(main['holes'])}, head {len(head['holes'])}")
+          f"moved {len(moved)}; holes (answers mis-recorded, Stop blocked): main {columns(main['holes'])}, head {columns(head['holes'])}")
     for timing in main['timings']:
         keys = [k for k in main['cases'] if k.endswith(' x ' + timing)]
         print(f"- {timing}: {len(keys)} cases, moved {sum(1 for k in keys if k in moved)}, holes main "
-              f"{sum(1 for k in main['holes'] if k.endswith(' x ' + timing))}, head {sum(1 for k in head['holes'] if k.endswith(' x ' + timing))}")
+              f"{columns(main['holes'], timing)}, head {columns(head['holes'], timing)}")
     for key in head['holes']:
         print(f'  head hole: {key}: {head["holes"][key]}')
     sys.exit(0)
@@ -55,7 +62,7 @@ QUESTIONS = {'plan': ('plan: approve this plan? 2 items on 1 goal; the plan is s
                                    '(It merges after the release.)', 'Proceed')}
 ANSWERS = {'label': lambda label: label, 'free text': lambda label: f'{label.split(",")[0]}, but finish the docs first',
            'label+note': lambda label: f'{label}\n\nNote: start tomorrow'}
-TIMINGS = ['present', 'late', 'never', 'differing', 'forged first', 'replayed', 'text only', 'text, forged pairs', 'no tool_use']
+TIMINGS = ['present', 'late', 'never', 'differing', 'forged first', 'replayed', 'no answers dict', 'no tool_use']
 TEXT = 'Your questions have been answered: {}. You can now continue with these answers in mind.'  # the real 2.1.308 text
 BOUND = getattr(hook, 'BOUND', 600)
 hook.WAIT = 0  # a Stop's wait has run out
@@ -64,8 +71,8 @@ STOP = {'session_id': 's1', 'stop_hook_active': True}  # answers are confirmed b
 
 
 def rows(tid, questions, answers, text_only=False):
-    """The real rows for this batch; text_only drops toolUseResult and leaves the harness's tool_result text (assumed
-    joined by ', ' for a batch, as the single-question rows show '"<q>"="<label>"')."""
+    """The real rows for this batch; text_only drops toolUseResult and leaves the harness's tool_result text, every pair
+    in it (joined by ', ' for a batch, as the single-question rows show '"<q>"="<label>"')."""
     use, done = (json.loads(line) for line in LATE[:2])
     use['message']['content'][0] |= {'id': tid, 'input': {'questions': questions}}
     done['message']['content'][0] |= {'tool_use_id': tid, 'content': TEXT.format(', '.join(f'"{q}"="{a}"' for q, a in answers.items()))}
@@ -90,10 +97,7 @@ def case(batch, timing):
         if timing == 'differing':  # the harness writes another value for every answer that is not a bare label
             said = {q: (v if v in [x[1] for x in QUESTIONS.values()] else v + ' [as the transcript holds it]') for q, v in paid.items()}
             said = said if said != paid else {**said, next(iter(said)): 'Other'}
-        use, done = rows(tid, questions, said, timing.startswith('text'))
-        if timing == 'text, forged pairs':  # each pair stretched over its neighbour in the harness text, or a label that is not the owner's
-            names = list(paid)
-            paid = {f'{names[0]}"="{paid[names[0]]}", "{names[1]}': paid[names[1]]} if len(names) > 1 else {names[0]: paid[names[0]] + ' x'}
+        use, done = rows(tid, questions, said, timing == 'no answers dict')
         transcript.write_text(('' if timing == 'no tool_use' else use) + ('' if timing in ('late', 'never') else done))
         payload = {'session_id': 's1', 'cwd': str(root), 'hook_event_name': 'PostToolUse', 'tool_name': 'AskUserQuestion',
                    'transcript_path': str(transcript), 'tool_use_id': tid, 'tool_input': {'questions': questions},
@@ -116,8 +120,8 @@ def case(batch, timing):
         stops.append(hook.handle(root, 'Stop', {**STOP, 'cwd': str(root)}))
         found = {kind: [r['data'] for r in ws.rows(root, kind)] for kind in ('prompt', 'answer.unconfirmed', 'plan.approved', 'hook.error')}
     recorded = {q: a for row in found['prompt'] for q, a in row['answers'].items()}
-    written = timing not in ('never', 'no tool_use')
-    expect = {q: a for q, a in paid.items() if written and timing not in ('forged first', 'text, forged pairs') and said.get(q) == a}
+    written = timing not in ('never', 'no tool_use', 'no answers dict')  # a row with toolUseResult answers
+    expect = {q: a for q, a in paid.items() if written and timing != 'forged first' and said.get(q) == a}
     holes = [f'recorded {q!r} as {a!r}, which the transcript does not hold' for q, a in recorded.items() if said.get(q) != a or not written]
     holes += ['recorded twice'] * (len(found['prompt']) > 1)
     holes += [f'not recorded: {sorted(set(expect) - set(recorded))}'] * bool(set(expect) - set(recorded))
