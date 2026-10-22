@@ -26,13 +26,24 @@ def projects(monkeypatch, tmp_path_factory):
     return path
 
 
-@pytest.fixture(autouse=True)
-def offline(monkeypatch, tmp_path_factory):
-    """A gh stub that exits 1 first on PATH for every test: in-process gh.run and hook subprocesses reach no network."""
+@pytest.fixture(scope='session')
+def stub(tmp_path_factory):
+    """One folder for the run: a gh that exits 1, and an empty gh config folder."""
     stub = tmp_path_factory.mktemp('stub')
     (stub / 'gh').write_text('#!/bin/sh\n# wuwei-test-stub\necho "gh is offline in tests" >&2\nexit 1\n')
     (stub / 'gh').chmod(0o755)
+    (stub / 'config').mkdir()
+    return stub
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch, stub):
+    """The stub gh first on PATH for every test, and no gh credentials, so even a gh found past the stub (a login
+    shell that rewrites PATH) has no token: in-process gh.run and hook subprocesses reach no network."""
     monkeypatch.setenv('PATH', os.pathsep.join([str(stub), os.environ.get('PATH', '')]))
+    monkeypatch.delenv('GH_TOKEN', raising=False)
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    monkeypatch.setenv('GH_CONFIG_DIR', str(stub / 'config'))
 
 
 ASKED = iter(range(1, 10 ** 6))  # one tool_use id per answer

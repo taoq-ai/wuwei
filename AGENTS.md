@@ -6,8 +6,9 @@ Instructions for coding agents working in this repository.
 - Test first. Write the failing test, run it, see it fail, then implement.
 - Runtime code is stdlib-only Python 3.11+ under `cli/wuwei/`, at most 3,400 lines. Run the suite
   with `python3 -m pytest -q` from the repository root, or `pytest -q` where python3 lacks the
-  module. An autouse fixture in `tests/conftest.py` puts a stub `gh` that exits 1 first on PATH, so the suite
-  makes no real GitHub call; a test that needs answers uses the `fake` fixture.
+  module. An autouse fixture in `tests/conftest.py` puts a stub `gh` that exits 1 first on PATH
+  and clears gh credentials, so the suite makes no real GitHub call; a test that needs answers
+  uses the `fake` fixture.
 - Charters in `charters/` are the one source for `agents/`. After changing a charter, run
   `bin/wuwei agents build`; a test fails when they drift.
 - Keep it simple: reuse what exists, no speculative abstractions, shortest working diff.
