@@ -15,13 +15,21 @@ from wuwei import __main__ as cli, board, evidence, ws
 DELAY = 0.05
 
 
-def _slow(fake, monkeypatch):
-    calls = []
+def _slow(fake, monkeypatch, live=None):
+    """Each gh call takes DELAY; live, when given, holds [calls running now, the most at once]."""
+    calls, live, lock = [], live if live is not None else [0, 0], threading.Lock()
 
     def slow(args, timeout=30):
-        calls.append(args)
-        time.sleep(DELAY)
-        return fake(args, timeout)
+        with lock:
+            calls.append(args)
+            live[0] += 1
+            live[1] = max(live)
+        try:
+            time.sleep(DELAY)
+            return fake(args, timeout)
+        finally:
+            with lock:
+                live[0] -= 1
     monkeypatch.setattr('wuwei.gh.run', slow)
     return calls
 
@@ -35,13 +43,13 @@ def _eighteen(root, fake):
 
 def test_a_cold_board_reads_linked_prs_in_parallel_with_rows_in_plan_order(root, fake, monkeypatch):
     _eighteen(root, fake)
-    calls = _slow(fake, monkeypatch)
+    calls = _slow(fake, monkeypatch, live := [0, 0])
     started = time.monotonic()
     rows = board.compute(root)
     elapsed = time.monotonic() - started
     assert [(r['item'], r['pr']) for r in rows] == [('team', None)] + [(f'I-{n}', f'acme/app#{100 + n}') for n in range(1, 19)]
     serial = len(calls) * DELAY  # every gh call one after another, as at efcd9e7
-    assert elapsed < serial / 3, (elapsed, serial, len(calls))
+    assert live[1] >= 4 and elapsed < serial, (live, elapsed, serial, len(calls))  # a slow runner (macOS CI) stretches each sleep
 
 
 def test_two_threads_writing_one_cache_key_never_share_a_temp_file(root):

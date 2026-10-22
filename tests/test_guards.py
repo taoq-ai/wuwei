@@ -779,10 +779,16 @@ def test_a_named_fd_redirect_hides_neither_infra_nor_a_leak(root, repo, command,
     assert guards.pre_tool(root, bash(command))['decision'] == decision, command
 
 
+BASH_MAJOR = int(re.sub(r'\D', '', subprocess.run(['bash', '-c', 'echo ${BASH_VERSINFO[0]}'], capture_output=True).stdout.decode(
+    errors='replace')) or 0) if shutil.which('bash') else 0
+
+
 @pytest.mark.skipif(not shutil.which('bash'), reason='needs bash')
 @pytest.mark.parametrize('command', NAMED_FD[:2] + STDIN_SHELLS[:4])
 def test_bash_runs_the_push_in_each_refused_shape(tmp_path, command):
     """Acceptance comes from real execution: a stub git on PATH logs its argv when bash runs the shape."""
+    if ('}' in command or '|&' in command) and BASH_MAJOR < 4:
+        pytest.skip(f'bash {BASH_MAJOR} (macOS /bin/bash is 3.2) has no named fd or |&: covered on bash 4 and later')
     (tmp_path / 'git').write_text(f'#!/bin/sh\necho "$*" >> {tmp_path}/log\n')
     (tmp_path / 'git').chmod(0o755)
     (tmp_path / 'x').write_text('')
