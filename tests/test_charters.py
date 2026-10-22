@@ -73,7 +73,7 @@ def test_decisions_and_done_are_stated_once_in_common():
     common = (PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8')
     assert '## Done' in common and '| Hard to undo | act, with a `Rollback:` line | ask the owner |' in common
     days = {3: 'three'}[evidence.STALE_DAYS]
-    for threshold in (f'a delta off risky paths of docs, generated files or at most {evidence.TRIVIAL} lines carries', f'28-day change failure rate is over {evidence.BUDGET:.0%}'.replace('%', ' percent'),
+    for threshold in (f'a delta of docs, or of generated files or at most {evidence.TRIVIAL} lines off risky paths, carries', f'28-day change failure rate is over {evidence.BUDGET:.0%}'.replace('%', ' percent'),
                       f'about {evidence.MAX_LINES} changed lines', f'{days} days or more', f'at `standard`, risky or owner paths add security and a wide change (over {evidence.WIDE} lines that are not prose, or 10 code files) adds arch',
                       "a spec contract (a file under a spec's `contracts/` folder) takes arch at any tier"):
         assert threshold in ' '.join(common.split()), threshold

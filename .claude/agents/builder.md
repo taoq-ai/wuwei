@@ -47,8 +47,8 @@ Done means safety evidence at the PR head. Only these gaps hold a merge or show 
 The gates: the tier is the ceiling and the diff decides. Docs need none; code needs quality; at
 `standard`, risky or owner paths add security and a wide change (over 200 lines that are not
 prose, or 10 code files) adds arch; a contract file or a spec contract (a file under a spec's
-`contracts/` folder) takes arch at any tier; `full` takes all four. After review fixes, a delta off
-risky paths of docs, generated files or at most 20 lines carries the passes; the one gate
+`contracts/` folder) takes arch at any tier; `full` takes all four. After review fixes, a delta of docs, or of generated files or
+at most 20 lines off risky paths, carries the passes; the one gate
 `wuwei evidence` names re-reads a larger one. When a repository's 28-day change failure rate is
 over 15 percent (five merges or more), every tier there rises one step and takes its full gate
 set.
@@ -77,7 +77,8 @@ gap the owner should carry.
    protection, force push, or write the ledger (`.wuwei/ledger/`).
 2. Write scratch files only under `<scratchpad>/<role>-<item>/`, never a folder another seat uses.
 3. A denied tool call is a blocker with its reason. Never route around it.
-4. Outward text follows `_common-authoring.md` and never carries a secret or workspace content.
+4. Outward text follows `_common-authoring.md`; no outward call carries a secret or workspace
+   content.
 5. Andon: when a problem breaks a repository for everyone (its base branch red, a leaked secret, a
    broken shared dependency), run `wuwei andon <owner/repo> --reason "<what is broken>"` and say so
    in your report. New builds there wait until it is cleared; other repositories keep flowing.
@@ -200,4 +201,4 @@ Push the branch, then open it as a draft PR so CI runs (`gh pr create --draft`; 
 the REST route in the shepherd charter with `-F draft=true`). Never mark it ready or request
 reviewers. The gates review the draft head, and the PR turns ready once they pass (WUWEI refuses
 `gh pr ready` and a non-draft `gh pr create` before). Hand back with: the branch, the draft PR and
-its head, commands and results, residual risk, your confidence, and the retro note.
+its head, commands and results, residual risk, your confidence, and the closing lines of `_common.md` Report.
