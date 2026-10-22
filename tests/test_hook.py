@@ -482,10 +482,34 @@ def test_a_rewritten_verdict_replayed_by_its_own_seat_is_recorded_as_rewritten_a
     say = (lambda: reviewer_stop(root, message)) if via == 'stop' else (lambda: handback(root, message))
     assert say() is None
     path.write_text(verdict_text())
-    assert say() is None
+    assert 'verdict.rewritten' in json.dumps(say())  # the seat is told, not dropped silently
     assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX']
-    assert [(r['data']['path'], r['data']['agent']) for r in ws.rows(root, 'verdict.rewritten')] == [('.wuwei/verdicts/I-1/quality.md', 'rev1')]
+    assert [(r['data']['path'], r['data']['agent']) for r in ws.rows(root, 'verdict.rewritten')][:1] == [('.wuwei/verdicts/I-1/quality.md', 'rev1')]
     assert any('quality' in g['text'] for g in evidence.gaps(root, 'acme/app', 42))
+
+
+@pytest.mark.parametrize('via', ['stop', 'handback'])
+def test_a_seat_that_attested_a_fix_cannot_replay_an_earlier_report_naming_another_path(root, fake, via):
+    """Security gate on #1249: the seat first named arch-ccccccc.md (refused for its shape), then attested a FIX elsewhere;
+    a PASS written to the first path and the earlier real report replayed was attested. A seat attests one verdict."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    first, fixed = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-ccccccc.md', root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    first.parent.mkdir(parents=True)
+    say = lambda path, agent='rev1': (reviewer_stop(root, f'Verdict file: {path.relative_to(root)}', agent=agent) if via == 'stop'
+                                      else handback(root, f'Verdict file: {path.relative_to(root)}', agent=agent))
+    first.write_text('Verdict: FIX\n')
+    assert 'Head:' in json.dumps(say(first))
+    fixed.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    assert say(fixed) is None
+    first.write_text(verdict_text())
+    assert 'verdict.rewritten' in json.dumps(say(first))
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX'] and ws.rows(root, 'verdict.rewritten')
+    assert any('quality' in g['text'] for g in evidence.gaps(root, 'acme/app', 42))
+    corrected = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa-2.md'  # a correction comes from a new gate seat
+    corrected.write_text(verdict_text().replace('Confidence: high\n', 'Confidence: high\nSupersedes: I-1/quality-aaaaaaa.md\n'))
+    assert say(corrected, agent='rev2') is None
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX', 'PASS'] and evidence.gaps(root, 'acme/app', 42) == []
 
 
 VERDICT_1067 = '.wuwei/verdicts/1067/quality-3fb3f40.md'

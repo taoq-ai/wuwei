@@ -174,9 +174,10 @@ when the environment name holds prod or production as a word not led by pre or n
 100 production deployments in the window are read, one status read each. When the deployments cannot
 be read, the reverts alone count. Time to restore runs from the first failed deployment of a run to
 the green one. Verdicts count only when attested at
-the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A seat's
-first attested verdict for a path binds it: a later version of that file from the same seat records
-`verdict.rewritten` and no attestation. A gate's
+the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). A seat
+attests one verdict: once it has an attestation, a report naming another verdict (a rewrite, or
+another path) records `verdict.rewritten`, no attestation, and is sent back; a correction comes from
+a new gate seat. A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
@@ -236,7 +237,7 @@ sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-
 after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, or `.claude` itself) in the
 same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
-`-m wuwei hook` through any interpreter; an
+a literal `-m wuwei hook` through any interpreter; an
 owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own

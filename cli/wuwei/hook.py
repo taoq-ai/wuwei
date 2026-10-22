@@ -241,13 +241,15 @@ def _verdict_problem(root, payload, role):
         body = path.read_bytes()
     except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
-    rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
-    earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
+    rel, sha, attested = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest(), [r['data'] for r in ws.rows(root, 'attest')]
+    earlier = [row for row in attested if row.get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
         return None
-    if mine := [row for row in earlier if row.get('agent') == payload.get('agent_id')]:  # the first sha a seat attested binds it
-        ws.record(root, 'verdict.rewritten', {'path': rel, 'sha256': sha, 'first': mine[0].get('sha256'), 'role': role, 'agent': payload.get('agent_id')})
-        return None
+    if mine := [row for row in attested if payload.get('agent_id') and row.get('agent') == payload.get('agent_id')]:  # a seat attests one verdict
+        ws.record(root, 'verdict.rewritten', {'path': rel, 'sha256': sha, 'first': mine[0].get('path'), 'first_sha256': mine[0].get('sha256'),
+                                              'role': role, 'agent': payload.get('agent_id')})
+        return (f'you attested {mine[0].get("path")} first, and a seat attests one verdict: {rel} is recorded as verdict.rewritten and does '
+                f'not count. End with "Verdict file: {mine[0].get("path")}"; a correction is a new gate seat\'s, written to {free(path)}.')
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
                 f'counts as recorded. Write yours to {free(path)} and end with its Verdict file: line.')

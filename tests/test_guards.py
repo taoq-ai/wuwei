@@ -113,6 +113,10 @@ def test_merge_with_complete_evidence_passes(root, fake, repo):
     bash('/usr/bin/python3.11 -Im wuwei.__main__ hook SubagentStop'),
     bash('uv run python -mwuwei hook Stop'),
     bash('cd cli && env python3 -m wuwei hook SubagentStop'),
+    bash('python3 -m runpy wuwei hook SubagentStop'),
+    bash('python3 -m wuwei -- hook SubagentStop'),
+    bash('bin/wuwei -- hook SubagentStop'),
+    bash('PYTHONPATH=. python3 -m cli.wuwei.__main__ hook SubagentStop'),
     bash('nice -n 5 python3 fix.py .wuwei/ledger.jsonl'),
     bash('env -u HOME rm .wuwei/ledger/0a1b2c3d.jsonl'),
 ])

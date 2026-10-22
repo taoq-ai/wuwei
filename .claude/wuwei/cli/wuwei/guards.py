@@ -380,7 +380,7 @@ def bash(root, command, cwd, session):
             return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
-        if program == 'wuwei' and argv[1:2] == ['hook'] or re.search(r'\0-[^\0-]*m\0?wuwei(\.__main__)?\0hook(\0|$)', '\0'.join(argv)):  # any python -m
+        if re.search(r'(^wuwei|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0(--\0)?hook(\0|$)', '\0'.join([program, *argv[1:]])):  # literal spellings
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
