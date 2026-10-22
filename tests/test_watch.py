@@ -542,6 +542,23 @@ def test_a_seat_recorded_without_a_session_holds_nothing(root, fake):
     assert refused(launch(root, 'B', 'Item: I-1')) is None and board.running(root) == []
 
 
+def test_a_host_session_builder_counts_as_a_live_seat_from_its_record_and_names_its_session(root, fake, monkeypatch):
+    """builder-host: no seat.started row (create_session fires no subagent hook); the item's record is the seat."""
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 'P')
+    open_prs(root, fake)
+    plan.mark(root, 'I-2', 'open', '', host='session', session='session_01ABC')
+    plan.mark(root, 'I-3', 'open', '', host='agent', session='session_ignored')
+    assert [(s['role'], s['item'], s['session']) for s in board.running(root, hosted=True)] == [('builder', 'I-2', 'session_01ABC')]
+    assert board.running(root) == []  # the hook's held check: the planner's gate launches on I-2 stay free
+    assert [g['text'] for r in board.compute(root) if r['item'] == 'I-2' for g in r['gaps'] if 'running' in g['text']] == ['builder running in session session_01ABC']
+    assert refused(launch(root, 'P', 'Item: I-2\nGate it.', agent='g1', role='sentinel-quality')) is None  # gates stay here
+    assert hook.handle(root, 'Stop', {'session_id': 'session_01ABC', 'cwd': str(root)})['decision'] == 'block'  # its record quiets no Stop
+    plan.mark(root, 'I-1', 'open', '', host='session')  # added with --host session, no session recorded yet: no seat, no crash
+    assert [s['item'] for s in board.running(root, hosted=True) if s['agent'] != 'g1'] == ['I-2'] and len(board.compute(root)) == 4
+    plan.mark(root, 'I-2', 'done', 'merged')
+    assert [s['agent'] for s in board.running(root, hosted=True)] == ['g1']
+
+
 # flow-board: finish before starting. In progress counts across the workspace against the WIP limit; the rest queue.
 
 def wip(root, fake, busy, idle, **extra):
@@ -583,6 +600,8 @@ def test_a_builder_seat_counts_only_while_live_and_under_four_hours(root, fake, 
     assert first(root)['Y'] == 'no pull request yet'
     ws.record(root, 'seat.started', {'role': 'shepherd', 'agent': 'h1', 'session': 's2', 'item': 'X'})
     assert first(root)['Y'] == 'no pull request yet'  # only a builder seat starts an item
+    plan.mark(root, 'X', 'open', '', host='session', session='session_01ABC')  # builder-host: a recorded session builder is in progress
+    assert first(root)['Y'] == 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'
 
 
 def test_a_running_codex_job_counts_in_progress(root, fake, tmp_path):

@@ -95,12 +95,40 @@ def test_in_progress_work_idle_four_hours_with_no_live_seat_shows_stale_at_the_t
     assert 'last event 5h ago' in board.text(board.compute(root), root)
     ws.cache_put(root, 'board', None)
     with pytest.MonkeyPatch.context() as patch:  # a seat started on I-1 more than 4 hours ago, still running
-        patch.setattr(board, 'running', lambda root, hours=6: [{'role': 'builder', 'agent': 'b1', 'session': 's2', 'item': 'i-1'}])
+        patch.setattr(board, 'running', lambda root, hours=6, hosted=False: [{'role': 'builder', 'agent': 'b1', 'session': 's2', 'item': 'i-1'}])
         assert not any(g['text'].startswith('stale') for row in board.compute(root) for g in row['gaps'])
         assert order(root) == ['I-2', 'I-1']
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b1', 'session': 's9', 'item': 'i-1'})  # an event
     ws.cache_put(root, 'board', None)
     assert order(root) == ['I-2', 'I-1'] and 'last event 0h ago' in board.text(board.compute(root), root)
+
+
+def test_a_host_session_builder_keeps_its_idle_item_from_stale(root, fake):
+    """builder-host: a session builder writes no seat.started row; its recorded session is the live seat flow reads."""
+    items(root, 'I-1', I_1={'host': 'session', 'session': 'session_01ABC'})
+    fake.prs['41'] = pr(41, 'I-1', created=ago(hours=5), files=('src/app.py',))
+    assert not any(g['text'].startswith('stale') for row in board.compute(root) for g in row['gaps'])
+    items(root, 'I-1', I_1={'host': 'agent', 'session': 'session_01ABC'})  # an agent item's session field is no seat
+    ws.cache_put(root, 'board', None)
+    assert [g['text'] for row in board.compute(root) if row['item'] == 'I-1' for g in row['gaps']][0] == f'stale: no event since {ago(hours=5)[:16]}, no live seat'
+
+
+def test_a_session_builder_with_no_pr_after_four_hours_shows_stale_so_a_dead_session_surfaces(root, fake):
+    """builder-host arch FIX: a recorded session never holds its item unseen; idle STALE_HOURS with no PR, the row says so."""
+    items(root, 'I-1', 'I-2', 'I-3', I_1={'host': 'session', 'session': 's-old', 'added': ago(hours=5)[:10]}, I_2={'host': 'session', 'session': 's-new'},
+          I_3={'host': 'session', 'added': ago(hours=5)[:10]})  # I-3: queued, its session builder not started yet
+    first = lambda: {row['item']: row['gaps'][0]['text'] for row in board.compute(root) if row['item'] != 'team'}  # noqa: E731
+    with pytest.MonkeyPatch.context() as patch:  # the record was made five hours ago, and nothing since
+        patch.setattr(ws, 'now', lambda: datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=5))
+        ws.record(root, 'item.open', {'id': 'I-1', 'reason': 'builder session s-old'})
+        ws.record(root, 'item.open', {'id': 'I-3', 'reason': 'approved'})
+    ws.record(root, 'item.open', {'id': 'I-2', 'reason': 'builder session s-new'})
+    rows = first()
+    assert rows['I-1'].startswith('stale: no event since') and rows['I-1'].endswith(', no PR from builder session s-old')
+    assert rows['I-2'] == rows['I-3'] == 'no pull request yet' and order(root)[0] == 'I-1'
+    items(root, 'I-1', I_1={'host': 'agent', 'session': 's-old'})  # an agent item with no PR is a start, never stale
+    ws.cache_put(root, 'board', None)
+    assert first()['I-1'] == 'no pull request yet'
 
 
 def test_an_item_never_waits_on_itself(root):

@@ -64,10 +64,13 @@ def adopted(root, repo, prs, keep):
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 
-def running(root, hours=6):
-    """The live seats of every session: started within hours under a named session, with no stop or unconfirmed row. Past that bound a seat is dead: a session that ended without a stop row holds nothing (1180-probe)."""
+def running(root, hours=6, hosted=False):
+    """The live seats of every session: started within hours under a named session, with no stop or unconfirmed row. Past that bound a seat is dead: a session that ended without a stop row holds nothing (1180-probe).
+    hosted adds the builder of each open --host session item with a recorded session: its record is the seat (builder-host). The hook's held check leaves it out, so gates launch here."""
     gone, since = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k) if isinstance(a := r['data'].get('agent'), str)}, (ws.now() - datetime.timedelta(hours=hours)).isoformat(timespec='seconds')
-    return [d for r in ws.rows(root, 'seat.started') if r.get('ts', '') >= since and isinstance((d := r['data']).get('session'), str) and d['session'] and isinstance(a := d.get('agent'), str) and a not in gone]
+    return [d for r in ws.rows(root, 'seat.started') if r.get('ts', '') >= since and isinstance((d := r['data']).get('session'), str) and d['session'] and isinstance(a := d.get('agent'), str) and a not in gone] + [
+        {'role': 'builder', 'item': i['id'], 'session': i['session'], 'agent': 'session ' + i['session']} for i in (plan.items(root) if hosted else ())
+        if i.get('host') == 'session' and i.get('status', 'open') == 'open' and isinstance(i.get('session'), str) and i['session']]
 
 
 def names(root, pr, repo, item_id):
@@ -120,7 +123,7 @@ def compute(root, everything=False):
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
     out = answers + flow(root, out)  # owed replies stay first
-    (busy, cap), live, prs = queue(root, out, open_items), running(root), [r for r in out if r['pr']]  # a duty's text moves only with its count, so a Stop reminds again only then
+    (busy, cap), live, prs = queue(root, out, open_items), running(root, hosted=True), [r for r in out if r['pr']]  # a duty's text moves only with its count, so a Stop reminds again only then
     crowd, ceiling = max([[s['session'] for s in live].count(s['session']) for s in live], default=0), limit(root, 'Seat ceiling', 8)
     owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith('CI failing') for g in r['gaps']) for r in prs)  # gates start at push (#1221)
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in [s.get('role') for s in live]) + [
@@ -144,7 +147,7 @@ def queue(root, out, items):
     Codex job. Free slots under the WIP limit go to the highest-score items with no PR; the rest wait, queued."""
     cap, found = limit(root, 'WIP limit', 4), {i['id'].lower(): i for i in items}
     busy = found.keys() & ({r['item'].lower() for r in out if r['pr']}
-                           | {str(s.get('item')).lower() for s in running(root, STALE_HOURS) if s.get('role') == 'builder'}
+                           | {str(s.get('item')).lower() for s in running(root, STALE_HOURS, hosted=True) if s.get('role') == 'builder'}
                            | {k for k, i in found.items() if i.get('job') and job(root, i['job']).startswith('job running')})
     free = cap - len(busy)
     fresh = [r for r in out if r['item'].lower() not in busy and r['gaps'][:1] and r['gaps'][0]['text'] == 'no pull request yet']
@@ -167,7 +170,7 @@ def flow(root, out):
     """Kanban flow policy: class of service, stale first in its class, then right to left, then age (oldest first).
     A row waiting on an open item says so and asks nothing; one idle STALE_HOURS with no live seat on its item says stale."""
     rows, goals, last = plan.items(root), view.goals(root), {}
-    live = {str(s.get('item') or '').lower() for s in running(root)}  # a live seat in any session
+    live = {str(s.get('item') or '').lower() for s in running(root, hosted=True)}  # a live seat in any session
     found = {i['id']: i for i in rows}
     for r in ws.ledger(root):
         for key in (d.get('id'), d.get('item'), d.get('pr')) if isinstance(d := r.get('data'), dict) else ():
@@ -189,9 +192,10 @@ def flow(root, out):
         if waits := [a for a in item.get('after') or () if (found.get(a) or {}).get('status', 'open') == 'open']:
             row['gaps'] = [evidence.gap(f'waiting on {", ".join(waits)}', actionable=False),
                            *(dict(g, actionable=False) for g in row['gaps'])]
-        elif row['pr'] and seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and row['item'].lower() not in live:
-            row['stale'] = True
-            row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, no live seat'), *row['gaps']]
+        elif seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and (row['pr'] and row['item'].lower() not in live
+                                                                                   or not row['pr'] and item.get('host') == 'session' and item.get('session')):
+            row['stale'] = True  # a session builder with no PR: a dead session surfaces here (builder-host)
+            row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, ' + ('no live seat' if row['pr'] else f'no PR from builder session {item["session"]}')), *row['gaps']]
     return sorted(out, key=lambda r: (plan.CLASSES.index(r.get('class', 'standard')), not r.get('stale'), r['stage'],
                                       r.get('opened') or (found.get(r['item']) or {}).get('added') or ''))
 

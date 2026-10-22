@@ -514,3 +514,18 @@ def test_gates_start_at_push_in_parallel_with_ci_and_green_ci_still_holds_ready(
     assert 'once they pass and CI is green' in flat('charters', '_pr.md')
     assert 'Once CI is green and the gates the diff needs passed' in shepherd
     assert 'goes back to the builder, even after the gates passed' in shepherd
+
+
+def test_a_host_session_item_starts_its_builder_as_a_session_and_keeps_its_gates_here():
+    """builder-host: the builder of a --host session item runs in its own session; every gate stays an Agent-tool seat here."""
+    planner = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
+    assert 'For an item with host `session`, start its builder with `create_session`' in planner
+    assert '`wuwei plan session <id> <session id>`' in planner and 'Read its progress from the branch and the draft PR' in planner
+    for said in ('`source_revision` the default branch', '`outcome_branch` the item\'s branch', "the table's builder `model`",
+                 'answer a blocked one with `send_message`', 'replace a failed one, or one completed with no draft PR, and record the new id',
+                 'Send its fix rounds with `send_message`', '`archive_session` it once the item merges, parks or drops'):
+        assert said in planner, said
+    assert 'Never launch a gate in that session: every gate runs here as an Agent-tool seat' in planner
+    for path in (PLUGIN / 'charters' / 'builder.md', PLUGIN / 'agents' / 'builder.md'):
+        builder = ' '.join(path.read_text(encoding='utf-8').split())
+        assert 'Commit and push after every green step' in builder and 'hand back the pushed head' in builder
