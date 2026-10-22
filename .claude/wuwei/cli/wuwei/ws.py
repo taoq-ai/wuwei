@@ -211,7 +211,8 @@ def answers(root, days=7):
         if kind == 'answer.unconfirmed' or kind == 'answer.pending' and d.get('id') not in done:
             left.append(f'{ts[:10]} unrecorded, ask again: {d.get("questions")!s:.100} ({d.get("reason", "pending")!s:.100})')
         done.add(d.get('id'))
-    return found, left + [f'{ts:.10} {q:.120} -> {a:.120}' for ts, q, a in sorted(found.values(), reverse=True)]
+    said = left + [f'{ts:.10} {q:.120} -> {a:.120}' for ts, q, a in sorted(found.values(), reverse=True)]
+    return found, [' '.join(n.split()) for n in said]  # a line break in a question or answer adds no line
 
 
 def trace(root, row):
