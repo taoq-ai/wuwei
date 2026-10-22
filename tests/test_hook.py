@@ -1828,6 +1828,7 @@ def test_a_launch_id_on_another_tool_is_not_a_launch(root):
     assert ws.rows(root, 'seat.stopped') == [] and ws.rows(root, 'seat.unconfirmed')
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO')
 def test_a_fifo_under_the_projects_folder_is_not_a_transcript_and_never_blocks_the_hook(root):
     """mkfifo is no writer the guards list, so a seat could plant one; a hook that read it would wait for ever."""
     import os
