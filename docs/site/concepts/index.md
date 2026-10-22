@@ -33,3 +33,4 @@ says what each one is, why it is there, and where it lives.
 | [Running on Codex](codex.md) | One process whichever agent does the work | `wuwei init --codex`, `.codex/` |
 | [Cloud sessions](cloud.md) | A fresh clone starts where the last session stopped | `wuwei init --cloud`, `wuwei sync`, the `wuwei/state` branch |
 | [Work in progress](watch.md) | Nothing waits on your nudge: PRs and replies keep moving | `/wuwei-watch`, `wuwei owe` |
+| [Finish before starting](watch.md#flow-finish-before-starting) | Too much open at once and nothing closes | the WIP limit and seat ceiling, `/wuwei-close` housekeeping |

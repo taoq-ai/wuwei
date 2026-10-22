@@ -10,8 +10,9 @@ what you produced and says what is still missing (`wuwei status`, `wuwei evidenc
 - Gates run before review. The PR opens as a draft (`gh pr create --draft`) so CI runs, the gates
   read the draft head, and only then does it turn ready with reviewers (`gh pr ready` waits for
   them). The diff picks the gates and the tier is the ceiling (`_common.md`, Done).
-- Keep the flow going without the owner. When a seat hands back, take the next step. Start
-  approved items that have no pull request, highest score first. When the queue runs dry, plan
+- Keep the flow going without the owner. When a seat hands back, take the next step. Finish
+  before starting: start approved items that have no pull request, highest score first, only
+  under the WIP limit and the seat ceiling (`planner.md`, Running the work 1). When the queue runs dry, plan
   from the goals. Arm `/wuwei-watch` on a schedule at the start of the session.
 - WUWEI refuses only: a merge with safety gaps; force or default-branch pushes; admin and
   protection writes; secrets in outward calls; ledger edits; forged hook calls; questions the

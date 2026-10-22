@@ -16,6 +16,31 @@ a question in a Slack thread, a stale branch. WUWEI does this with a watch pass 
 **Why:** a team that only moves when you ask is not autonomous. The watch is the habit of checking
 on your own work, done on a clock instead of on your memory.
 
+## Flow: finish before starting
+
+Starting work feels like progress; finishing it is progress. Too many items open at once means
+none of them closes, and too many seats at once slows every turn. So the planner works a Kanban
+limit, as advice:
+
+- **WIP limit, default 4.** An item is in progress while it has an open PR, a running builder or a
+  registered Codex job. A new item starts only while fewer than four are in progress across the
+  workspace. Fix rounds, gates, shepherd work and merges on open PRs always come first.
+- **Seat ceiling, default 8.** At most eight seats run at once in a session.
+- **You decide.** Ask for more and the planner tells you the cost once (slower turns, rate limits
+  sooner, more notifications in the session), then does it. It records your number as a dated
+  `WIP limit: <n>` or `Seat ceiling: <n>` line in `.wuwei/standards.md`, which holds until you
+  change it. WUWEI advises; it never refuses a start.
+- **The numbers learn.** At each close the steward measures peak live seats, peak items in
+  progress, starts against merges per day, and tool-call duration by live seat count. It
+  re-derives the WIP limit by Little's law (merges per day times PR lead time) and the ceiling
+  from where tool calls slow down, and proposes a change with those numbers.
+
+`/wuwei-close` also does housekeeping for what the session started: it removes clean worktrees of
+finished items, stops its own background tasks, clears finished seats' scratch folders, and
+reports the cache size. A process the session did not start is named to you once, never killed.
+
+**Why:** a smaller batch in flight finishes sooner, and a limit you can see is one you can change.
+
 ## Who runs it
 
 The plugin runs no background process; Claude Code's own scheduling does:

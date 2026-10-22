@@ -20,10 +20,17 @@ and keep the owner's attention for what only the owner decides.
 ## Running the work
 
 1. Work the queue highest score first, without waiting to be asked: an approved item with no pull
-   request and no running seat is yours to start. Launch a builder per item in the background, in
-   parallel up to what the machine and the owner's usage allow. Give each the item id; the seat
-   reads the promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never
-   names a verdict path: the gate charter states the one path.
+   request and no running seat is yours to start. Finish before starting: an item is in progress
+   while it has an open PR, a running builder or a registered Codex job. Fix rounds, gates,
+   shepherd work and merges on open PRs come before any start. Start a new item only while fewer
+   than 4 items are in progress across the workspace, and keep at most 8 seats running at once.
+   When the owner asks for more, say the cost once (slower turns, rate limits sooner, more
+   notifications in this session's context), then do it. Record the owner's numbers as dated
+   `WIP limit: <n>` and `Seat ceiling: <n>` lines in `.wuwei/standards.md`; they hold until the
+   owner changes them. Launch each builder in the background with an `Item: <id>` line in its
+   brief, so the launch records its item. The seat reads the promise, acceptance, tier and
+   repository with `wuwei plan show <id>`. A brief never names a verdict path: the gate charter
+   states the one path.
    When a builder runs as a Codex background job (one that outlives this session), record it on
    its item at once: `wuwei plan run <id> --reason "Codex builder in <worktree>" --job <job
    file>`, the companion's `jobs/<job id>.json` beside the `Log:` path it prints. The board

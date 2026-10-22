@@ -469,3 +469,20 @@ def test_the_planner_keeps_gates_off_codex_with_no_condition_and_a_codex_brief_b
     assert 'A brief for a seat on Codex tells it not to use MCP tools' in text
     docs = ' '.join((PLUGIN / 'docs' / 'site' / 'concepts' / 'codex.md').read_text(encoding='utf-8').split())
     assert 'a Codex seat never counts' in docs and 'counts only once' not in docs
+
+
+def test_the_planner_finishes_before_starting_under_a_wip_limit_and_a_seat_ceiling():
+    flat = lambda *parts: ' '.join((PLUGIN.joinpath(*parts)).read_text(encoding='utf-8').split())  # noqa: E731
+    planner = flat('charters', 'planner.md').split('## Running the work', 1)[1].split('\n2. ', 1)[0]
+    planner = ' '.join(planner.split())
+    assert 'up to what the machine and the owner' not in planner
+    assert 'Finish before starting' in planner and 'fewer than 4 items are in progress' in planner
+    assert 'at most 8 seats running at once' in planner and 'say the cost once' in planner
+    assert '`WIP limit: <n>`' in planner and '`Seat ceiling: <n>`' in planner and '`Item: <id>`' in planner
+    assert 'under the WIP limit' in flat('charters', '_way.md')
+    assert 'under the WIP limit' in flat('skills', 'wuwei-watch', 'SKILL.md')
+    close = flat('skills', 'wuwei-close', 'SKILL.md')
+    assert 'Housekeeping' in close and '`git worktree remove`' in close and 'never kill' in close
+    steward = flat('charters', 'steward.md')
+    assert 'peak live seats' in steward and "Little's law" in steward and 'duration_ms' in steward
+    assert 'flow' in flat('docs', 'site', 'concepts', 'watch.md').lower() and 'WIP limit' in flat('docs', 'site', 'concepts', 'watch.md')
