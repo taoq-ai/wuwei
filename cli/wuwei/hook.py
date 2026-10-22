@@ -435,7 +435,9 @@ def session_start(root, payload):
              f'and the goals and standards in {Path(root) / ws.DIR}.']
     left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
     try:  # the owner's answers, the latest 12 (a bounded share: the board's items give way to them); then the board to the cap
-        parts += bool(said := ws.answers(root)[1]) * ['Owner answers, last 7 days (act on them; never ask again):\n' + '\n'.join(said[:12] + [f'{len(said) - 12} older left out.'] * (len(said) > 12))]
+        if said := ws.answers(root)[1]:
+            more = [f'{len(said) - 12} older left out.'] * (len(said) > 12)
+            parts.append('Owner answers, last 7 days (act on them; never ask again):\n' + '\n'.join(said[:12] + more))
         found, cut = board.rows(root), 0
         lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
         while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
