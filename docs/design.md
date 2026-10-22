@@ -55,6 +55,17 @@ role's lines of `.wuwei/standards.md`.
   Any number per day. The lead returns only ready candidates (promise, acceptance scenarios,
   repository, files) and red-teams the plan (the riskiest item and the cheapest early test of it).
 - Ranking: WSJF (default) or RICE, each score with evidence.
+- Flow: work in progress follows Kanban flow policy, so an old draft never starves behind the last
+  event. Each item has a class of service: `expedite`, `fixed-date`, `standard` or `intangible`
+  (`wuwei plan add --class`; default `standard`, `fixed-date` when its goal has a date). At most one
+  expedite item is open; a second is refused. The board and the Stop reminder list work by class,
+  then right to left (ready to merge, owner review, gates, fix round, building), then age, oldest
+  first. Each board row shows its class and the hours since its last event (a PR update, or a
+  ledger row naming the item or its PR). A WSJF item's time criticality rises one Fibonacci step
+  per day its first PR is open. An item may wait on others (`--after <id>`): while one is open the
+  board shows `waiting on <id>`, the Stop leaves it out, and the item it waits on adds its cost of
+  delay (value + time + risk, or reach x impact x confidence) to its own score. A PR idle 4 hours
+  with no live seat on its item in this session shows `stale` with its last event, first in its class.
 - A close (`/wuwei-close`, `wuwei close`) is a checkpoint: the report and the retro for the day so
   far. A later pass reopens the day; a second checkpoint reports what changed since the first.
 
@@ -258,7 +269,7 @@ flow.
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
-| Stop | a reminder only when actionable work is new since the last one, naming only what changed; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
+| Stop | a reminder only when actionable work is new since the last one, naming only what changed, in board order (an item waiting on another is left out); once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
 
 An owner answer and a seat stop count only when the harness wrote them (#962). The harness keeps
 each session's transcript under the projects folder (`.claude/projects` in the account's home,

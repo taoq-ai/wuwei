@@ -52,6 +52,27 @@ The configured framework ranks the queue, never a hand order.
 Every score carries one line of evidence. **Why:** a ranking you can read the reasons for is a
 ranking you can correct.
 
+## Flow
+
+Work already in progress follows Kanban flow policy, not the last event:
+
+1. **Class of service**, most urgent first: `expedite`, `fixed-date`, `standard`, `intangible`. Set it
+   with `wuwei plan add --class`. An item is `standard` by default and `fixed-date` when its goal has a
+   date. Only one expedite item is open at a time; a second is refused.
+2. **Closest to done**, right to left: ready to merge, owner review, gates, fix round, building.
+3. **Age**, oldest first.
+
+Each board row shows its class and the hours since its last event. A PR idle 4 hours with no live
+seat on its item shows `stale` with its last event, first in its class. A WSJF item's time
+criticality rises one Fibonacci step per day its PR is open.
+
+An item can wait on another: `wuwei plan add <id> --after <other>`. While the other is open, the
+board shows `waiting on <other>`, the Stop reminder leaves it out, and the other's score adds the
+waiting item's cost of delay.
+
+**Why:** attention goes to whatever moved last, so an old draft starves. Finishing what is closest
+to done, in class order, keeps work flowing.
+
 ## Checkpoints
 
 A close (`/wuwei-close`) writes the report for the day so far and launches the steward for the

@@ -7,9 +7,9 @@ import re
 import sys
 import time
 
-from wuwei import evidence, gh, plan, ws
+from wuwei import evidence, gh, plan, view, ws
 
-TTL = 60
+TTL, STALE_HOURS = 60, 4
 
 
 def andons(root):
@@ -63,10 +63,10 @@ def adopted(root, repo, prs, keep):
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 
-def running(root, session):
+def running(root, session, key='role'):
     """Roles of the seats the session started today with no stop or unconfirmed row: a dead session's never count (1180-probe)."""
     gone = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k, ws.today()) if isinstance(a := r['data'].get('agent'), str)}
-    return {r['data'].get('role') for r in ws.rows(root, 'seat.started', ws.today()) if session and r['data'].get('session') == session
+    return {r['data'].get(key) for r in ws.rows(root, 'seat.started', ws.today()) if session and r['data'].get('session') == session
             and isinstance(a := r['data'].get('agent'), str) and a not in gone}
 
 
@@ -76,7 +76,7 @@ def names(root, pr, repo, item_id):
 
 
 def compute(root, everything=False):
-    out = replies(root)
+    out, answers = [], replies(root)
     held = andons(root)
     keep = (lambda gaps: gaps) if everything else evidence.visible
     open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open' and item.get('kind') != 'reply']
@@ -115,15 +115,59 @@ def compute(root, everything=False):
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
-                            'gaps': read[pr['number']]})
+                            'gaps': read[pr['number']], 'opened': pr.get('createdAt'), 'updated': pr.get('updatedAt')})
     for item in (i for i in open_items if not i.get('repo')):  # a reply has no repository; see replies()
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
+    out = answers + flow(root, out)  # owed replies stay first
     seats, prs = running(root, os.environ.get('CLAUDE_CODE_SESSION_ID')), [r for r in out if r['pr']]  # duties with no count, so a Stop reminds once while they hold
     owed = any(any(evidence.GATES.search(g['text']) for g in r['gaps']) and not any(g['text'].startswith(('CI ', 'required check')) for g in r['gaps']) for r in prs)
     duties = [evidence.gap('orchestration: open PRs with no shepherd seat running')] * (len({r['pr'] for r in prs}) > 2 and 'shepherd' not in seats) + [
         evidence.gap('orchestration: gates owed on green heads with no gate seat running')] * (owed and not any(str(s).startswith('sentinel-') for s in seats))
     return [{'item': 'team', 'title': 'seats', 'pr': None, 'gaps': duties}] * bool(duties) + out  # first: the Stop and session start cut from the end
+
+
+def when(text):  # an ISO time or date as UTC; None when it is not one
+    try:
+        found = datetime.datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return found if found.tzinfo else found.replace(tzinfo=datetime.timezone.utc)
+
+
+def stage(row):  # right to left on the board: ready to merge 0, owner review 1, gates 2, fix round 3, building 4
+    found = [(g, evidence.GATES.search(g['text'])) for g in row['gaps'] if g['kind'] == 'safety']
+    return (4 if not row['pr'] else 3 if any(g['actionable'] and not gate for g, gate in found)
+            else 2 if any(gate for _, gate in found) else 1 if any(g['owner'] for g, _ in found) else 0)
+
+
+def flow(root, out):
+    """Kanban flow policy: class of service, stale first in its class, then right to left, then age (oldest first).
+    A row waiting on an open item says so and asks nothing; one idle STALE_HOURS with no live seat on its item says stale."""
+    rows, goals, last = plan.items(root), view.goals(root), {}
+    live = {str(i).lower() for i in running(root, os.environ.get('CLAUDE_CODE_SESSION_ID'), 'item')}
+    found = {i['id']: i for i in rows}
+    for r in ws.ledger(root):
+        for key in (d.get('id'), d.get('item'), d.get('pr')) if isinstance(d := r.get('data'), dict) else ():
+            last.update({key.lower(): r.get('ts')} if isinstance(key, str) else {})
+    days = {row['item']: (ws.now() - start).days for row in out if (start := when(row.get('opened')))}
+    for row in out:
+        if (item := found.get(row['item'])) is None:
+            continue
+        dated = (goals.get(item.get('goal')) or ('', ''))[1]
+        row['class'] = c if (c := item.get('class')) in plan.CLASSES else 'fixed-date' if dated else 'standard'
+        row['score'] = plan.cost(item, rows, days)
+        seen = max(filter(None, map(when, (row.get('updated'), row.get('opened'), item.get('added'), last.get(row['item'].lower()),
+                                           last.get((row['pr'] or '').lower())))), default=None)
+        row['last'] = seen and seen.isoformat(timespec='seconds')
+        if waits := [a for a in item.get('after') or () if (found.get(a) or {}).get('status', 'open') == 'open']:
+            row['gaps'] = [evidence.gap(f'waiting on {", ".join(waits)}', actionable=False),
+                           *(dict(g, actionable=False) for g in row['gaps'])]
+        elif row['pr'] and seen and ws.now() - seen >= datetime.timedelta(hours=STALE_HOURS) and row['item'].lower() not in live:
+            row['stale'] = True
+            row['gaps'] = [evidence.gap(f'stale: no event since {row["last"][:16]}, no live seat'), *row['gaps']]
+    return sorted(out, key=lambda r: (plan.CLASSES.index(r.get('class', 'standard')), not r.get('stale'), stage(r),
+                                      r.get('opened') or (found.get(r['item']) or {}).get('added') or ''))
 
 
 def job(root, path):  # only the Codex companion job file the planner registered with plan run --job; no plugin folder is scanned (#1201)
@@ -144,7 +188,9 @@ def text(found, root=None):
         return '\n'.join(cords + ['Board: nothing open in the plan.'])
     lines = cords + ['Board (what each open item still lacks):']
     for row in found:
-        head = f'{row["item"]} {row["title"]}' + (f' ({row["pr"]})' if row['pr'] else '')
+        idle = row.get('last') and f', last event {(ws.now() - when(row["last"])) // datetime.timedelta(hours=1)}h ago'
+        head = f'{row["item"]} {row["title"]}' + (f' ({row["pr"]})' if row['pr'] else '') + (
+            f' [{row["class"]}{idle or ""}]' if row.get('class') else '')
         gaps = '; '.join(g['text'] + ('' if g['actionable'] else ' [waiting]') for g in row['gaps']) or 'ready to merge'
         lines.append(f'- {head}: {gaps}')
     return '\n'.join(lines)
