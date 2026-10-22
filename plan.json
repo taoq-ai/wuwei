@@ -1,6 +1,31 @@
 {
  "items": [
   {
+   "id": "1223-followup",
+   "title": "fix(evidence): finding rows that differ only in case or spacing print apart, and a spec-gap result cached before #1228 is never read",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 39.0,
+   "why": "security re-read of #1228 at 08dc011 (2026-10-22, .wuwei/verdicts/1223/security-08dc011.md) returned FIX with two medium findings; the owner merged #1228 before the re-read, so both are on main. (1) evidence.py:208 counts cut collisions by exact text while evidence.excepted matches lowercased, whitespace-collapsed text, so '| HIGH | spec.md | ...' and '| High | spec.md | ...' print one gap and one yes waives both unseen. (2) evidence.py:435 keys the spec-gap cache on ws.version(), which stays 5.1.1 until the release, so a result cached by the old code shows only the first row for up to 24 hours and one yes waives a hidden CRITICAL row (reproduced through merge_door)",
+   "promise": "two finding rows whose printed cuts are equal once lowercased and whitespace-collapsed print whole, so an exception names each; the spec-gap cache key changes with this fix, so no result written by older code is read",
+   "acceptance": [
+    "given rows '| HIGH | spec.md | <90 a> |' and '| High | spec.md | <90 b> |', when evidence prints them, then each is its own gap and one yes holds the merge on the other",
+    "given a spec-gap cache entry written by the pre-#1228 code at the same version, when evidence reads the PR, then it re-reads the artifacts and prints every open row"
+   ],
+   "prs": [],
+   "status": "open",
+   "added": "2026-10-22",
+   "approved": true
+  },
+  {
    "id": "1223",
    "title": "fix(guards): the owner may accept a full-tier spec gap, so a spec-only PR is no longer deadlocked between the merge door and the question guard",
    "goal": "G-2",
@@ -156,7 +181,7 @@
    "prs": [],
    "status": "open",
    "added": "2026-10-22",
-   "approved": false
+   "approved": true
   },
   {
    "id": "door-words-text",
