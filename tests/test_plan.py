@@ -351,3 +351,4 @@ def test_plan_session_records_a_host_session_builder_and_refuses_an_agent_item(r
         assert cli.main(['plan', 'session', 'I-1', 'session_09']) == 2 and f'(I-1: host session, {status})' in capsys.readouterr().err
         assert (plan.find(root, 'I-1')['status'], plan.find(root, 'I-1')['session']) == (status, 'session_01ABC')
     assert cli.main(['plan', 'session', 'I-9', 'session_09']) == 2 and capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'
+    assert cli.main(['plan', 'session', 'I-9']) == 2 and capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'  # no session id: still a refusal
