@@ -137,8 +137,13 @@ for PreToolUse the one beside the session transcript, resolved under the project
 meta file that confirms the launch. A report the payload carries that the transcript does not hold
 records `seat.unconfirmed` and no attestation, stop or kept report. A replayed real stop or hand-back
 still re-reads the verdict file the seat's own report names, and the guards do not hold
-`.wuwei/verdicts`: a verdict rewritten after its seat named it is attested as rewritten when a real
-report naming it is replayed. A harness that keeps
+`.wuwei/verdicts`, so an attestation binds the first verdict a seat attested for a path: a verdict
+rewritten after that and replayed records `verdict.rewritten` and no attestation, and evidence keeps
+the first. A rewrite before the seat's first attestation is still attested. `wuwei init` imports
+0.34 decision files (`.wuwei/days/<date>/decisions/gate-*.md`) only into a workspace with no ledger
+yet, so a decision file a seat writes later is never imported. The guards refuse `wuwei hook`, and
+an interpreter's `-m wuwei hook` or `-m wuwei.__main__ hook` (`python3`, `py -3`, `uv run python`,
+any path), but not a script or `-c` body that imports the hook. A harness that keeps
 transcripts elsewhere (`CLAUDE_CONFIG_DIR`, Codex), or an account with no password-database entry,
 gets every answer and stop recorded as unconfirmed while the guards keep running. An answer the
 planner session never confirms (it ends before another hook call) leaves its `answer.pending` row.

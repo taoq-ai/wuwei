@@ -245,6 +245,9 @@ def _verdict_problem(root, payload, role):
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
         return None
+    if mine := [row for row in earlier if row.get('agent') == payload.get('agent_id')]:  # the first sha a seat attested binds it
+        ws.record(root, 'verdict.rewritten', {'path': rel, 'sha256': sha, 'first': mine[0].get('sha256'), 'role': role, 'agent': payload.get('agent_id')})
+        return None
     if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and theirs still '
                 f'counts as recorded. Write yours to {free(path)} and end with its Verdict file: line.')

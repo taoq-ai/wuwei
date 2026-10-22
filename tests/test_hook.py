@@ -470,6 +470,24 @@ def test_a_seat_that_replaces_another_seats_verdict_is_sent_back(root):
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev0') is None
 
 
+@pytest.mark.parametrize('via', ['stop', 'handback'])
+def test_a_rewritten_verdict_replayed_by_its_own_seat_is_recorded_as_rewritten_and_not_attested(root, fake, via):
+    """Security gate on #1244: a FIX rewritten to PASS, then the seat's real stop or hand-back replayed, attested the PASS."""
+    plan_one(root)
+    fake.prs['42'] = make_pr()
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    message = 'Verdict file: .wuwei/verdicts/I-1/quality.md'
+    say = (lambda: reviewer_stop(root, message)) if via == 'stop' else (lambda: handback(root, message))
+    assert say() is None
+    path.write_text(verdict_text())
+    assert say() is None
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX']
+    assert [(r['data']['path'], r['data']['agent']) for r in ws.rows(root, 'verdict.rewritten')] == [('.wuwei/verdicts/I-1/quality.md', 'rev1')]
+    assert any('quality' in g['text'] for g in evidence.gaps(root, 'acme/app', 42))
+
+
 VERDICT_1067 = '.wuwei/verdicts/1067/quality-3fb3f40.md'
 
 

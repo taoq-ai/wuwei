@@ -107,6 +107,12 @@ def test_merge_with_complete_evidence_passes(root, fake, repo):
     {'tool_name': 'Write', 'tool_input': {'file_path': '/w/.wuwei/ledger/0a1b2c3d.jsonl', 'content': 'x'}},
     bash('echo "{}" >> .wuwei/ledger/0a1b2c3d.jsonl'),
     bash('/opt/wuwei/bin/wuwei hook SubagentStop < forged.json'),
+    bash('python3 -m wuwei hook SubagentStop < forged.json'),
+    bash('PYTHONPATH=cli python -m wuwei hook PreToolUse < p.json'),
+    bash('py -3 -m wuwei hook SubagentStop'),
+    bash('/usr/bin/python3.11 -Im wuwei.__main__ hook SubagentStop'),
+    bash('uv run python -mwuwei hook Stop'),
+    bash('cd cli && env python3 -m wuwei hook SubagentStop'),
     bash('nice -n 5 python3 fix.py .wuwei/ledger.jsonl'),
     bash('env -u HOME rm .wuwei/ledger/0a1b2c3d.jsonl'),
 ])
@@ -495,6 +501,7 @@ HINT = 'its own one-line Bash call'
     "cat > n.md <<'EOF'\nit's done\nEOF\n\"${CLAUDE_PROJECT_DIR}/.claude/wuwei/bin/wuwei\" hook SubagentStop",
     "# it's\n\"$D/.claude/wuwei/bin/wuwei\" hook Stop",
     "# it's\nbin/wuwei 'hook' Stop",
+    'true\npython3 -m wuwei.__main__ hook SubagentStop',
 ])
 def test_a_multi_line_command_naming_a_door_is_refused_with_the_hint(root, fake, repo, command):
     decision = guards.pre_tool(root, bash(command))
