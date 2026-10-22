@@ -91,10 +91,10 @@ gap, when the owner should carry the risk.
 
 ## Report
 
-Your final message is your report; never end silent. Outside auto mode SubagentHandback is
-refused: do not retry, end with the report as plain text; WUWEI passes it on. A refused
-hand-back goes under `Gap:`, never `Blocked:`. The WUWEI CLI is at the path in `.wuwei/executable`; `wuwei plan show
-<id>` gives your item's promise, acceptance scenarios, tier and repository.
+Your final message is your report; never end silent. Outside auto mode the refusal of
+SubagentHandback is expected; a reminder to retry comes from the harness, not WUWEI: end with
+the report as plain text; WUWEI passes it on. The WUWEI CLI is at the path in `.wuwei/executable`;
+`wuwei plan show <id>` gives your item's promise, acceptance scenarios, tier and repository.
 
 End every handoff with your confidence and the three-line retro note:
 
