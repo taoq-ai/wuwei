@@ -10,6 +10,7 @@ import threading
 import tomllib
 
 if os.name == 'nt':
+    import ctypes
     import msvcrt
     import winreg
 else:
@@ -71,19 +72,39 @@ def atomic_write(path, text, root=None):  # every folder below root and the file
         os.close(fd)
 
 
-def _write_by_name(path, text, root):  # Windows has no dir_fd: each folder below root is checked for a link or junction
-    folder, temp = root, f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp'
-    for part in path.parent.relative_to(root).parts:
-        folder = folder / part
-        with contextlib.suppress(FileExistsError):
-            folder.mkdir()
-        if folder.is_symlink() or getattr(os.lstat(folder), 'st_file_attributes', 0) & 0x400:  # a reparse point: a junction
-            raise OSError(f'{folder} is a link; WUWEI writes only into real folders')
-    with contextlib.suppress(FileNotFoundError):  # a link planted at the temporary name is removed, never written through
-        os.unlink(folder / temp)
-    with open(os.open(folder / temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o666), 'wb') as out:
-        out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
-    os.replace(folder / temp, folder / path.name)
+def _write_by_name(path, text, root):  # Windows has no dir_fd: each folder below root is held, then checked for a link
+    folder, temp, held = root, f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp', []
+    try:
+        for part in path.parent.relative_to(root).parts:
+            folder = folder / part
+            with contextlib.suppress(FileExistsError):
+                folder.mkdir()
+            held.append(_hold(folder))
+            if folder.is_symlink() or getattr(os.lstat(folder), 'st_file_attributes', 0) & 0x400:  # a reparse point: a junction
+                raise OSError(f'{folder} is a link; WUWEI writes only into real folders')
+        with contextlib.suppress(FileNotFoundError):  # a link planted at the temporary name is removed, never written through
+            os.unlink(folder / temp)
+        with open(os.open(folder / temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o666), 'wb') as out:
+            out.write(text if isinstance(text, bytes) else text.encode('utf-8'))
+        os.replace(folder / temp, folder / path.name)
+    finally:
+        for handle in filter(None, held):
+            _kernel().CloseHandle(ctypes.c_void_p(handle))
+
+
+def _kernel():
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateFileW.restype = ctypes.c_void_p
+    return kernel
+
+
+def _hold(folder):  # Windows: a handle that shares no delete, so the folder is never renamed or swapped for a link while held
+    if os.name != 'nt':
+        return None
+    handle = _kernel().CreateFileW(str(folder), 0x80, 3, None, 3, 0x02200000, None)  # the reparse point itself, never its target
+    if handle in (None, ctypes.c_void_p(-1).value):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return handle
 
 
 def raw_config(root):

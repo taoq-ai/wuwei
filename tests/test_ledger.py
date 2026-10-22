@@ -110,6 +110,23 @@ def test_atomic_write_never_writes_through_a_linked_folder_or_temporary_name(tmp
     assert (tmp_path / 'root' / 'f.txt').read_text() == 'x'
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='Windows only: a held folder refuses a rename there; POSIX walks by descriptor instead')
+def test_a_folder_a_windows_write_walks_is_never_renamed_mid_write(tmp_path, monkeypatch):
+    folder, refused, real_open = tmp_path / 'a', [], os.open
+    folder.mkdir()
+
+    def at_temp(name, *args, **kwargs):  # the folder would be swapped for a link here
+        try:
+            folder.rename(tmp_path / 'moved')
+        except OSError as exc:
+            refused.append(exc)
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(ws.os, 'open', at_temp)
+    ws.atomic_write(folder / 'f.txt', 'x', tmp_path)
+    monkeypatch.undo()
+    assert refused and (folder / 'f.txt').read_text() == 'x' and not (tmp_path / 'moved').exists()
+
+
 def _mine(root):
     path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
