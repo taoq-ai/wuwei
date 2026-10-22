@@ -143,6 +143,18 @@ def test_a_clear_classification_on_a_guard_change_still_owes_arch(root, fake, pa
     assert owed(root) == ['gates missing at head aaaaaaa: arch, quality']
 
 
+@pytest.mark.parametrize('patch', [
+    '@@ -4,4 +4,5 @@\n     try:\n         x = load()\n+        y = x + 1\n     except Exception:\n         pass',
+    '@@ -4,2 +4,4 @@\n     x = load()\n+    try:\n+        y = x + 1\n+    except Exception:\n+        pass',
+    '@@ -4,3 +4,4 @@\n     # ask the user before they allow or deny\n     x = load()\n+    y = x + 1',
+])
+def test_a_guard_word_only_in_unchanged_lines_or_pythons_exception_class_raises_nothing(root, fake, patch):
+    """Smart is never slower than standard on an ordinary diff: context lines and except Exception are no guard change."""
+    smart(root)
+    pr_with(fake, {'src/app.py': (patch, branchy(1), branchy(1)), **TESTS})
+    assert owed(root) == ['gates missing at head aaaaaaa: quality']
+
+
 def test_a_clear_plan_field_on_an_owner_path_still_owes_security(root, fake):
     ws.write_config(root, {**ws.DEFAULTS, 'repos': ['acme/app'], 'owner_paths': ['src/core/*']})
     smart(root)

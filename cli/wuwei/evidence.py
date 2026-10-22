@@ -58,9 +58,10 @@ DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of t
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
 SHA = re.compile(r'[0-9a-f]{40}')
-# Smart: the lead's domain ("clear: <why>"; else complex), words of what a guard waives or refuses, McCabe's decision nodes.
+# Smart: the lead's domain ("clear: <why>"; else complex), words of what a guard waives or refuses (Exception is Python's), McCabe's decision nodes.
 cynefin = lambda item: (re.match(r'(clear|complicated):', str((item or {}).get('domain'))) or ('', 'complex'))[1]  # noqa: E731
-WAIVE = re.compile(r'\b((?i:deny|denied|refuse[ds]?|ask|allow(ed|s)?|waive[ds]?|excepted|exceptions?)|permissionDecision|PROCESS|DUTY)\b')
+NAMED = r'\b(permissionDecision|PROCESS|DUTY)\b'  # a guard's own names, read in context lines too
+WAIVE = re.compile(r'\b((?i:deny|denied|refuse[ds]?|ask|allow(ed|s)?|waive[ds]?|excepted)|exceptions?)\b|' + NAMED)
 DECIDE, MCCABE = (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.Assert, ast.BoolOp, ast.comprehension, ast.match_case), 10
 PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
 
@@ -304,9 +305,13 @@ def needed(root, tier, files, item=None, rose=bool):
     std, smart, deep = tier in ('standard', 'smart'), tier == 'smart' and bool(code), cynefin(item) == 'complex'
     wants = {'quality': code, 'security': std and risky or smart and (deep or rose()), 'arch': any(CONTRACT.search(f['path']) for f in files)
              or std and (lines(wide) > WIDE or len(code) > 10) or smart and (deep or any(not isinstance(f.get('patch'), str) and lines([f])
-             or WAIVE.search(f.get('patch') or '') or re.search(TRUST, f['path'], re.I) and cynefin(item) != 'clear' for f in files if f['path'] in code)),
+             or WAIVE.search(changed(f)) or re.search(TRUST, f['path'], re.I) and cynefin(item) != 'clear' for f in files if f['path'] in code)),
              'goal': smart and bool((item or {}).get('in_doubt'))}
     return tuple(g for g in REQUIRED['full'] if wants[g])
+
+
+def changed(f):  # a patch's changed lines and hunk headers, and context lines only where they name a guard
+    return '\n'.join(n for n in (f.get('patch') or '').splitlines() if n.startswith(('+', '-', '@@')) or re.search(NAMED, n))
 
 
 def rose(repo, pr, files):
