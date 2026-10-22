@@ -23,7 +23,7 @@ def shim(folder, name, version):
     otherwise it notes its name in used.txt and runs this Python. A shim named py runs only after -3."""
     old = tuple(map(int, version.split('.')[:2])) < (3, 11)
     folder.mkdir(parents=True, exist_ok=True)
-    text = (f'#!/bin/sh\n' + ('[ "$1" = -3 ] || exit 9\nshift\n' if name == 'py' else '')
+    text = ('#!/bin/sh\n' + ('[ "$1" = -3 ] || exit 9\nshift\n' if name == 'py' else '')
             + f'case "$1" in -V|--version) echo "Python {version}"; exit 0;; esac\n'
             + (f'for a; do [ "$a" = -P ] && {{ printf \'{REJECT.format(name=name)}\' >&2; exit 2; }}; done\n' if old else '')
             + f'echo "{name}" >> "{folder / "used.txt"}"\nexec "{sys.executable}" "$@"\n')
