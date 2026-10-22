@@ -1,7 +1,8 @@
 """Mutants of each changed condition, applied to cli/wuwei/ and .claude/wuwei/cli/wuwei/ in a scratch copy, run one at a time.
 
-    python3 specs/spec-gap-exception/mutants.py <scratch copy of the tree>
+    <a python with pytest> specs/spec-gap-exception/mutants.py <scratch copy of the tree> [extra pytest arguments]
 """
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,12 +33,12 @@ M = [
     ('hook.py', CUT, CUT.replace('[.?]', '[?]')),
     ('hook.py', CUT, CUT.replace('|$)', ')')),
     ('hook.py', CUT, CUT.replace(r'\s*', '')),
-    ('hook.py', CUT, CUT.replace('m.end()', 'm.start()')),
+    ('hook.py', CUT, CUT.replace('m.end()', 'm.start()')),  # equivalent: the rest then starts with the |, which the split keeps
     ('hook.py', CUT, 'cut = 0'),
     ('hook.py', SEP, "tail[cut:]"),
     ('hook.py', SEP, r"re.split(r'\.\s', tail[cut:], maxsplit=1)[0]"),
     ('hook.py', SEP, r"re.split(r'\?', tail[cut:], maxsplit=1)[0]"),
-    ('evidence.py', '    return found\n', '    return found[:1]\n'),  # main: only the first open row
+    ('evidence.py', '    return found\n\n\ndef spec_gaps', '    return found[:1]\n\n\ndef spec_gaps'),  # main: only the first open row
     ('evidence.py', LISTED, LISTED.replace('return [_unchecked', 'return [p for p in [_unchecked') + ' if p][:1]'),  # main: first checklist
     ('evidence.py', 'for problem in _rule(repo, feature + name, rule, head))', 'for problem in _rule(repo, feature + name, rule, head)[:1])'),
     ('evidence.py', CELL, 'row[:100]'),  # main: cut at 100 characters
@@ -48,15 +49,16 @@ M = [
     ('evidence.py', CELL, 'row'),  # whole rows
 ]
 TESTS = ['tests/test_guards.py', 'tests/test_hook.py', 'tests/test_evidence.py']
-for i, (f, old, new) in enumerate(M):
+for i, (f, old, new) in list(enumerate(M))[int(os.environ.get('FROM', 0)):]:
     paths = [T / 'cli/wuwei' / f, T / '.claude/wuwei/cli/wuwei' / f]
     saved = [p.read_text() for p in paths]
     assert all(s.count(old) == 1 for s in saved), (i, f)
     for p, s in zip(paths, saved):
         p.write_text(s.replace(old, new))
-    r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-x', '-p', 'no:cacheprovider', *TESTS, *sys.argv[2:]], cwd=T,
+    first = sorted(TESTS, key=lambda t: t != f'tests/test_{f[:-3]}.py')  # the mutated module's own tests first: a kill comes sooner
+    r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-x', '-p', 'no:cacheprovider', *first, *sys.argv[2:]], cwd=T,
                        capture_output=True, text=True)
     for p, s in zip(paths, saved):
         p.write_text(s)
     fails = [line for line in r.stdout.splitlines() if line.startswith('FAILED')]
-    print(i, f, 'KILLED' if r.returncode else 'SURVIVED', fails[:1], r.stdout.strip().splitlines()[-1], flush=True)
+    print(i, f, 'KILLED' if r.returncode else 'SURVIVED', fails[:1], (r.stdout.strip().splitlines() or [r.stderr[-300:]])[-1], flush=True)

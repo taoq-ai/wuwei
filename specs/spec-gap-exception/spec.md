@@ -22,7 +22,8 @@ record. A question that names only the row's first sentence waives nothing.
 Out of scope: reading unchecked tasks on a spec-only PR as expected (a scope change for the owner),
 and any change to which gaps are safety. Files: `cli/wuwei/guards.py` (the AskUserQuestion branch),
 `cli/wuwei/hook.py` (`exception_refs`), their vendored copies, `tests/test_guards.py`,
-`tests/test_hook.py`, and the docs that state the question door. Runtime budget +2 lines.
+`tests/test_hook.py`, and the docs that state the question door. Runtime budget +2 lines, raised
+to +6 for fix round 1, which also edits `cli/wuwei/evidence.py` (see Assumptions).
 
 The acceptance scenarios, restated:
 
@@ -42,14 +43,31 @@ The acceptance scenarios, restated:
    end inside a cell, after its last `|`. When that last partial cell holds `. ` or `?`, the hook cuts
    there and records a shorter text. The owner's yes then waives nothing and the merge stays held.
    This fails closed. Of the 702 finding rows in this repository's `specs/*/analysis.md`, 51 hold a
-   sentence break inside the printed 100 characters and 2 hold one after the last `|`.
-2. A question with a `|` in its own words (`Accept (yes|no)?`). The hook reads the gap up to that
-   `|`, so the recorded text holds part of the question and equals no printed gap. The yes waives
-   nothing: fails closed.
+   sentence break inside the printed 100 characters and 2 hold one after the last `|`. Fixed in
+   round 1 (5 below).
+2. A question with a `|` in its own words (`Accept (yes|no)?`). At b6d0635 the hook read every gap
+   to that `|`, so `gates missing at head <sha7>: quality. Accept (yes|no)?` recorded a gap that
+   waives nothing, where main recorded it right (the quality gate's finding). Round 1: a gap
+   without a row reads as on main, and a row reads to its end. Still failing closed: a `|` right
+   after the row (`<row> | Accept?`, as on main) and a row with no trailing `|`.
 3. A process fit question that the guard now lets through: a spec gap asked below full tier. There
    `wuwei evidence` hides it as process fit, so the planner never sees it to ask; if asked, the yes
    records a ruling and a follow-up item and waives a gap that never held the merge. Harmless, but
    it costs the owner one question.
+
+Fix round 1 (gates at b6d0635): the merge door must waive only the gap the owner saw. Evidence
+printed only the first open finding row of an `analysis.md` and only the first checklist with an
+unchecked box, so a yes to the printed gap also waived the ones never printed. Each now prints as
+its own gap. The hook read every gap to its last `|`, so `Accept (yes|no)?` broke gaps that hold no
+row; only a gap that holds a row (`: |`) now reads past its first break, to the row's end.
+
+4. (round 1) A second open row or checklist hidden behind the first. Evidence printed one row and
+   one checklist per file or folder, and the gate excepted by the printed text, so a yes to `A1`
+   waived an unprinted `A2`. Fixed: each is its own gap; the door holds on `A2` until it is
+   accepted by name.
+5. (round 1) A row printed cut at 100 characters inside a cell. Fixed: the row is printed to its
+   last cell edge within 100 characters, so it ends in `|` and the hook reads it whole. The owner
+   sees the row's first cells (its ID among them), not the cut part of its last cell.
 
 ## Clarifications
 
@@ -67,6 +85,12 @@ The acceptance scenarios, restated:
 - Q: Does the merge door's match change? A: No. `evidence.excepted` still needs the exact printed
   text (case, spacing, end marks and a printed `[waiting]` aside). A first sentence alone, or a text
   that holds part of the question, waives nothing.
+- Q: (round 1) Where does the row end when the question holds its own `|`? A: At the row's last
+  `|` that is followed by a `. `, a `?` or the end of the question. Only a gap that holds `: |`
+  is read this way; any other gap ends at its first `. ` or `?`, exactly as on main.
+- Q: (round 1) Does evidence print every open row and every checklist? A: Yes, each as its own gap,
+  in file order. Two rows that print the same text are one gap; an ID in the first cell keeps
+  them apart.
 - Q: Does the guard's shape check change? A: No. The exception still has to name the PR and head in
   the documented shape, and the gap still has to start with a letter or digit.
 
@@ -90,18 +114,30 @@ Acceptance 4: `test_an_exception_for_a_process_gap_goes_back_to_the_model` in te
 
 - FR-001: `guards.pre_tool` sends back an `exception:` question only when it names the template's
   sections, a changed-lines count or an open-days age.
-- FR-002: `hook.exception_refs` returns the gap up to the first `. ` or `?` after the last `|` of the
-  text after the references, or after its start when it holds no `|`.
-- FR-003: runtime does not grow past the item's +2 lines; `.claude/wuwei/` matches `cli/wuwei/`.
-- FR-004: the route corpus reads the same at main and at the head.
+- FR-002: `hook.exception_refs` returns a gap that holds `: |` up to the first `. ` or `?` after the
+  row's end (its last `|` before a `. `, a `?` or the end); any other gap up to its first `. ` or
+  `?`, as on main.
+- FR-003: runtime does not grow past +6 lines over main (round 1); `.claude/wuwei/` matches
+  `cli/wuwei/`.
+- FR-004: the route corpus reads the same at main and at the head, also with an approved exception
+  for every gap on the PRs the doors read.
+- FR-005 (round 1): `evidence._rule` returns one gap per open CRITICAL or HIGH row and one per
+  checklist file with an unchecked box.
+- FR-006 (round 1): a row longer than 100 characters is printed to its last `|` within the first
+  100 characters, or its first 100 characters when no `|` follows the first.
 
 ## Assumptions
 
 - Below full tier the planner never sees a spec gap (`evidence.visible` hides process fit), so an
   exception asked there is harmless. Overturned if a seat prints process fit to the planner.
-- The last-`|` rule is enough for the rows `wuwei evidence` prints: 49 of the 51 real rows with a
-  sentence break in their printed part keep it. Overturned if the owner needs the two others; the
-  fix then belongs in how `evidence._rule` cuts a row (at a cell boundary), outside this item.
+- (round 1, the planner's) The fix for a masked row or checklist belongs where the gap is printed,
+  `cli/wuwei/evidence.py`, an owner path outside the item's first file list: this change made those
+  gaps waivable, so it must print each one. Overturned if the owner wants the merge door, not the
+  printer, to refuse an exception for a file that holds more than one open row.
+- (round 1) A row cut at a cell edge shows the owner its first cells, not the cut part of its last
+  cell. Measured on this repository's 712 `specs/*/analysis.md` rows: all 712 read whole at the
+  head (660 at main, 710 at b6d0635). Overturned if owners need the summary cell in the question;
+  then print rows whole.
 
 ## Rollback
 

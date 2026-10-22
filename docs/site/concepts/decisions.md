@@ -59,6 +59,8 @@ a printed `[waiting]` do not matter. For a gate gap, the gates it names also wor
 `gates missing at head <sha7>: security`. A part of a gap waives nothing: `security` does not drop
 `gates missing at head <sha7>: quality, security`, and `e` drops no gap at all. A gap that ends in an
 `analysis.md` finding row runs to the row's last `|`, so a sentence inside the row stays in the gap.
+Each open finding row and each checklist with an unchecked box is its own gap, so accepting one
+leaves the others holding the merge.
 
 **Why:** an accepted gap is a debt. Exceptions expire into work, never into silence.
 
