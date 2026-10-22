@@ -11,6 +11,7 @@ FIB = (1, 2, 3, 5, 8, 13, 20)
 FIELDS = {'wsjf': ('value', 'time', 'risk', 'size'), 'rice': ('reach', 'impact', 'confidence', 'effort')}
 TIERS = ('light', 'smart', 'standard', 'full')
 CLASSES = ('expedite', 'fixed-date', 'standard', 'intangible')  # Kanban classes of service, most urgent first
+HOSTS = ('agent', 'session')  # where an item's builder runs: an Agent-tool seat here, or its own session; gates always here
 
 
 def _path(root):
@@ -85,11 +86,13 @@ ALIASES = {'business_value': 'value', 'user_business_value': 'value', 'time_crit
 
 
 def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=(), prs=(), domain='', in_doubt=False,
-        cls=None, after=()):
+        cls=None, after=(), host='agent'):
     """Add an item, or update it in place when its id is already in the plan (a parked or dropped
     item reopens). The promise and acceptance travel with it, so every seat reads them here."""
     if tier not in TIERS or cls not in (None, *CLASSES):
         raise ValueError(f'tier must be one of {", ".join(TIERS)}; a class of service one of {", ".join(CLASSES)}')
+    if host not in HOSTS:
+        raise ValueError(f'host must be one of {", ".join(HOSTS)}, not {host!r}')
     if domain and not re.fullmatch(r'(clear|complicated|complex):[ \t]*\S.*', domain):  # the Cynefin domain and one line of why
         raise ValueError(f'domain must read "clear|complicated|complex: <one line of evidence>", not {domain!r}')
     (cls or (find(root, item_id) or {}).get('class')) == 'expedite' and expedite(items(root), item_id)
@@ -104,7 +107,7 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
     scores = {ALIASES.get(k, k): v for k, v in scores.items()}
     fields = {'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'framework': framework, 'scores': scores,
               'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance), 'prs': list(prs), 'domain': domain, 'in_doubt': bool(in_doubt),
-              'class': cls, 'after': [find(root, a)['id'] for a in after]}
+              'class': cls, 'after': [find(root, a)['id'] for a in after], 'host': host}
     rows = items(root)
     item = next((row for row in rows if row.get('id', '').lower() == str(item_id).lower()), None)
     if item is not None:
@@ -133,7 +136,7 @@ def add_from(root, path):
         found.append(add(root, c['id'], c['title'], c.get('goal', ''), c.get('repo') or c.get('repository', ''),
                          c.get('tier', 'smart'), scores, c.get('why', ''), c.get('promise', ''),
                          c.get('acceptance') or c.get('scenarios') or c.get('accept') or (), (), c.get('domain', ''), c.get('in_doubt'),
-                         c.get('class'), c.get('after') or ()))
+                         c.get('class'), c.get('after') or (), c.get('host') or 'agent'))
     return found
 
 
