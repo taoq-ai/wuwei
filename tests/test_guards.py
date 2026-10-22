@@ -189,6 +189,9 @@ def test_the_plan_question_reaches_the_owner(root):
 def test_an_exception_for_a_process_gap_goes_back_to_the_model(root, gap):
     decision = guards.pre_tool(root, ask(f'exception: acme/app#43 at e750645: {gap}. Accept the gap so it can merge?'))
     assert decision['decision'] == 'deny' and 'never block' in decision['reason']
+    batch = ask('scope: may I-1 touch the docs?')
+    batch['tool_input']['questions'].append({'question': f'exception: acme/app#43 at e750645: {gap}. Accept?'})
+    assert 'never block' in guards.pre_tool(root, batch)['reason']  # one process gap in a batch sends the batch back
 
 
 @pytest.mark.parametrize('gap', ['specs/tin-258/tasks.md has 17 unchecked items', 'specs/tin-258/tasks.md has no checklist items',

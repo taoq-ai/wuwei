@@ -2073,9 +2073,13 @@ def test_the_latest_answer_to_a_question_is_the_one_given_back_and_an_empty_one_
 
 def test_a_scope_question_already_answered_is_sent_back_with_its_answer_and_date(root):
     hook.handle(root, 'PostToolUse', answered(root, [SCOPE], {SCOPE: 'Yes, the help text only'}))
-    for spelling in (SCOPE, '  Scope:  may I-1 ALSO change\nthe CLI help text?  '):
+    write_plan(root, [{'id': 'I-9', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', 'approved': False}])
+    for spelling in (SCOPE, '  Scope:  may I-1 ALSO change\nthe CLI help text?  '):  # an unapproved plan item reopens plan: questions only
         out = ask_again(root, spelling)
         assert out['decision'] == 'deny' and 'Yes, the help text only' in out['reason'] and ws.today() in out['reason']
+    spaced = 'trust:  may seats\nread the cache?'
+    hook.handle(root, 'PostToolUse', answered(root, [spaced], {spaced: 'No'}))
+    assert '"No"' in ask_again(root, 'trust: may seats read the cache?')['reason']
 
 
 @pytest.mark.parametrize('question', [f'scope: you answered "{SCOPE}"; may I-1 now change the README too?',
