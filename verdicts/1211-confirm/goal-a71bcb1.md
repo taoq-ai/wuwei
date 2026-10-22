@@ -1,0 +1,31 @@
+Verdict: PASS
+Gate: goal
+Item: 1211-confirm
+PR: taoq-ai/wuwei#1233
+Head: a71bcb19bdae8d65bd240619d7799f1a06e63545
+Confidence: medium
+Breaking: no
+Supersedes: none
+
+## Findings
+- [low] PR-body:0 blocks: no. "Fixes #1211" and "Fixes #1231" close both issues, but the real cause of neither is shown: the free-text row was never captured and no compacted transcript exists. The body says so plainly, so the claim is honest; the owner may prefer "Refs" so the issues stay open until a real unrecorded answer names its check in answer.unconfirmed.
+- [low] tests/test_hook.py:0 blocks: no. #1211 case 3 (a breaking question with a sentence after "Proceed?") has no test in the diff. Only the generated probe in specs/1211-confirm/answer_probe.py covers it (60 batches by the PR's own kinds). The ruling regex is not end-anchored, so the parse tolerates the tail (checked at the head), and the fix to case 3 is the same timing and per-question confirmation as the rest. A one-line parametrized row would pin it.
+- [low] PR-body:0 blocks: no. "Size: 1,126 changed lines" counts insertions only (git diff --stat 6828776..a71bcb1: 1126 insertions, 68 deletions). Process fit only.
+- [low] blocks: no. #1231 is folded into this item by the lead (spec.md says so), but `wuwei plan show 1211-confirm` does not mention it; the plan text and its estimate (+3, budget 5) do not match the delivered scope (+10 lines, 3,396 to 3,406, read with wc -l at main and head). The PR states this; the runtime budget test is red until free-lines-6 merges.
+
+## Probes
+- Plan: promise (1) pending at a Stop, reread later, answer.unconfirmed only on a differing row or after BOUND=600 s; (2) per-question confirmation; (3) the reason names the case. Source: wuwei plan show 1211-confirm. Delivered in hook.py _shown, _confirm, _unconfirmed and BOUND (diff 6828776..a71bcb1); the vendored copy is identical (diff of cli/wuwei/hook.py and .claude/wuwei/cli/wuwei/hook.py: none).
+- Acceptance 1 to 4: each has a named test (test_a_label_answered_minutes_later_is_recorded_when_its_row_lands; test_a_differing_free_text_answer_leaves_the_labelled_plan_approval_in_its_batch_recorded; test_an_answer_with_no_tool_result_row_is_recorded_unconfirmed_once_the_bound_passes; test_a_payload_answer_the_transcript_does_not_hold_is_named_and_never_recorded). pytest -q tests/test_hook.py tests/test_codex.py at the head in the builder's worktree: 508 passed, matching the PR body.
+- Probe re-run at the head from a git archive (python3 -I specs/1211-confirm/answer_probe.py, main 6828776 and head, same probe file): 1,755 cases generated, all ran without a hook.error at both trees, moved 1,365, holes main 1,365, head 0. Per class: present 0/0, late 195/0, never 195/0, differing 195/0, forged first 195/0, replayed 0/0, text only 195/0, text forged pairs 195/0, no tool_use 195/0 (main/head). 195 batches = 5 kinds x 3 answers, singles plus ordered pairs. The differing class on main: 100 of 195 also lost a labelled answer. All match the PR body; the table counts were read from the output, not the body.
+- Route corpus: tests/fixtures/routes.json sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 at both main and head (sha256sum); the 0-moved differential itself was not re-run by this gate (not run: guards.py is untouched in the diff, so it is outside this gate).
+- #1211 case 1 (free text starting No/Yes): recorded as its first word on main already (#1219 test, c0fea453); on this head it is also confirmed per question, and if the transcript's value differs from the payload's, the labelled answers beside it are recorded and the one differing is named. Not proven: that the harness writes free text equal in payload and transcript. The fixture claude-ask-post-free-text.json is marked reconstructed in tests/fixtures/payloads/README.md and the PR says so.
+- #1211 case 2 (batch where free text voided labelled answers): met and tested (acceptance 2, probe class differing: head records every matching labelled answer).
+- #1211 case 3 (breaking with a tail after "Proceed?"): the ruling regex matches the question with the tail (checked directly at the head: groups breaking, acme/app, 42, aaaaaaa). Covered by the generated probe in all nine timing classes, not by a unit test (see Findings).
+- #1231 acceptance ("answered in the same turn after a compaction, when the turn stops, the answer is recorded and the stop is not blocked"): the "stop is not blocked" half holds unconditionally (a Stop leaves an unrecorded answer to the next call; probe hole "a Stop blocked on an unrecorded answer" is 0 at head across 1,755 cases; test_an_unrecorded_answer_never_blocks_the_stop_and_its_note_reaches_the_next_call). The "answer is recorded" half holds for the shapes pinned (no toolUseResult, a string, a list, text as string or parts, a compact_boundary row beside the answer, a late row) and not for a transcript that lacks the tool_use row (decided at once as unconfirmed, the payload's answers kept in answer.unconfirmed). Compaction itself is not reproduced; the PR and spec.md say so plainly, state the weighing, and say the next unrecorded answer will name its check. This is an honest cover of the acceptance, with the recorded half conditional on the cause being one of the pinned shapes.
+- Explain-back: spec.md "The promise in my words" matches the plan promise and acceptance and the goal (G-2), with the #1231 additions listed separately. No claim beyond the requirements except the lead-added #1231 scope.
+- Docs: docs/design.md section 8 and docs/site/concepts/hooks.md now state the per-question rule, the 10-minute bound and the non-blocking Stop; the old 1.5 s give-up text is gone (grep). specs/hook-transcript still describes the old 1.5 s rule as history.
+- Runtime lines: wc -l of cli/wuwei/*.py is 3,396 at main and 3,406 at head, as the body says; the budget test red is the known state.
+- Confidence reason: the counts and tests reproduce; the uncertainty is that the two real-world causes (free text value, compaction) are unproven, so the issues may need a second pass.
+
+## Residual risk
+The next real free-text or post-compaction answer may fail a check not pinned here; it is then unrecorded, but named in answer.unconfirmed and no longer blocks the Stop. Closing both issues on merge may hide that until it recurs.
