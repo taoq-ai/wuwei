@@ -1157,6 +1157,8 @@ def test_a_parent_swapped_for_a_ledger_link_after_the_check_is_never_followed(ro
     assert out['decision'] == 'block' and ws.rows(root, 'attest') == [] and ws.rows(root, 'hook.error') == []
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows refuses the swap itself while the write holds the folder, '
+                    'which test_a_folder_a_windows_write_walks_is_never_renamed_mid_write covers')
 @pytest.mark.parametrize('swapped', ['verdicts/x', 'verdicts'])
 def test_a_parent_swapped_for_a_ledger_link_inside_the_write_never_lands_it_in_the_ledger(root, tmp_path_factory, monkeypatch, swapped):
     ws.record(root, 'plan.pass', {})

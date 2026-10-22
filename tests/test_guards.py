@@ -1713,6 +1713,9 @@ def landed(remote):
     ('git push ../r.git +main', 'c', 'r.git'), ('git push origin +HEAD:main', 'c', 's.git')])
 def test_a_push_to_a_scratch_bare_remote_passes_the_door_and_lands(root, scratch, command, at, remote):
     """Item scratch-remotes: the door passes a push whose remote is a local repository in a scratch folder, and real git pushes it."""
+    if os.name == 'nt' and '{s}' in command:
+        pytest.skip('POSIX only: the scratch rule reads no drive-letter remote (git on Linux reads C:/x as an ssh host), '
+                    'so on Windows such a push keeps the door; a relative scratch remote passes there')
     command = command.format(s=scratch)
     assert guards.bash(root, command, str(scratch / at), 's1') is None, command
     subprocess.run([BASH, '-c', command], cwd=scratch / at, check=True, capture_output=True, timeout=30)
