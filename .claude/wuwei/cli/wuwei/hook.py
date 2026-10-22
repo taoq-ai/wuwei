@@ -480,9 +480,9 @@ def deliver(root, event, payload, out, said):
         try:
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
-                    and re.match(rf'<task-notification>\s*<task-id>{agent}</task-id>', str(r.get('content')))]  # its own frame, not a quote
+                    and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
-            told = any(r.get('operation') == 'enqueue' and r['content'] not in gone and (html.unescape(b) == text or b.startswith(
+            told = any(r['content'] not in gone and (html.unescape(b) == text or b.startswith(
                 HANDED.format(agent))) for r in rows for b in re.findall(r'<result>(.*?)</result>', r['content'], re.S))
             if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
