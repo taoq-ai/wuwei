@@ -3080,35 +3080,6 @@
    "reason": "merged as taoq-ai/wuwei#1094"
   },
   {
-   "id": "1221",
-   "title": "docs(charters): gates start at push, in parallel with CI, and the ready door names a failing check",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 7.0,
-   "why": "taoq-ai/wuwei#1221. The waits are written in planner.md Running the work 2 ('once CI has run'), _way.md, _pr.md and builder.md, and board.py:123 names owed gates only on heads where CI is no longer running. The ready-door CI read is a design change the owner's issue asks for. Text lands after flow-advice (same planner.md section and _way.md); board.py after it and before flow-board (same lines).",
-   "promise": "Gates start at push, in parallel with CI; green CI stays a condition for ready and merge. Text: planner.md Running the work 2 launches the gates the diff needs when the builder hands back its pushed head, without waiting for CI; builder.md hands back once the push lands, with CI reported as unread; _way.md and _pr.md say the gates read the draft head while CI runs; shepherd.md keeps ready after green CI and passed gates; a red CI found after the gates pass goes back to the builder, and its fix is a new head under the delta rule. Runtime: board.py's orchestration duty names owed gates with no gate seat while CI runs or has not started (a red head goes to the builder first); the ready door refuses the flip to ready and a reviewer request on a draft while a check fails at the head, naming the failing checks (design section 7 amended in the PR). A test shows that nothing in the hooks or wuwei evidence discounts a verdict attested while CI ran. Files: charters/planner.md, _way.md, _pr.md, builder.md, shepherd.md, agents rebuilt, skills/wuwei-watch/SKILL.md, cli/wuwei/board.py, cli/wuwei/guards.py (ready_door) and the vendored copies, tests/test_guards.py, tests/test_watch.py, docs/design.md, docs/site. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +1, budget 3. Rollback: revert.",
-   "acceptance": [
-    "Given a builder push, when the builder hands back, then its charter has it hand back without a CI read and report CI as unread",
-    "Given a pushed draft head with CI running and gates owed, when the board is read with no gate seat running, then the team row names the owed gates",
-    "Given a verdict attested at head H while CI ran, when CI turns green at H, then wuwei evidence counts it and no hook refuses or discounts it",
-    "Given gates passed and a failing check at the head, when gh pr ready or a merge runs, then WUWEI refuses it and names the failing check; with CI green both pass"
-   ],
-   "prs": [],
-   "status": "done",
-   "added": "2026-10-22",
-   "approved": true,
-   "reason": "merged as taoq-ai/wuwei#1247",
-   "changed": "2026-10-22T23:17:05.725622+00:00"
-  },
-  {
    "id": "1168",
    "title": "The ready and reviewer doors honour an owner exception the way wuwei evidence does",
    "goal": "G-2",
@@ -3160,6 +3131,35 @@
    "added": "2026-10-18",
    "approved": true,
    "reason": "closed #999 as completed with comment https://github.com/taoq-ai/wuwei/issues/999#issuecomment-6250767418 citing _common.md:41-42 and evidence.py:298-302 at efcd9e7"
+  },
+  {
+   "id": "1221",
+   "title": "docs(charters): gates start at push, in parallel with CI, and the ready door names a failing check",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 7.0,
+   "why": "taoq-ai/wuwei#1221. The waits are written in planner.md Running the work 2 ('once CI has run'), _way.md, _pr.md and builder.md, and board.py:123 names owed gates only on heads where CI is no longer running. The ready-door CI read is a design change the owner's issue asks for. Text lands after flow-advice (same planner.md section and _way.md); board.py after it and before flow-board (same lines).",
+   "promise": "Gates start at push, in parallel with CI; green CI stays a condition for ready and merge. Text: planner.md Running the work 2 launches the gates the diff needs when the builder hands back its pushed head, without waiting for CI; builder.md hands back once the push lands, with CI reported as unread; _way.md and _pr.md say the gates read the draft head while CI runs; shepherd.md keeps ready after green CI and passed gates; a red CI found after the gates pass goes back to the builder, and its fix is a new head under the delta rule. Runtime: board.py's orchestration duty names owed gates with no gate seat while CI runs or has not started (a red head goes to the builder first); the ready door refuses the flip to ready and a reviewer request on a draft while a check fails at the head, naming the failing checks (design section 7 amended in the PR). A test shows that nothing in the hooks or wuwei evidence discounts a verdict attested while CI ran. Files: charters/planner.md, _way.md, _pr.md, builder.md, shepherd.md, agents rebuilt, skills/wuwei-watch/SKILL.md, cli/wuwei/board.py, cli/wuwei/guards.py (ready_door) and the vendored copies, tests/test_guards.py, tests/test_watch.py, docs/design.md, docs/site. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +1, budget 3. Rollback: revert.",
+   "acceptance": [
+    "Given a builder push, when the builder hands back, then its charter has it hand back without a CI read and report CI as unread",
+    "Given a pushed draft head with CI running and gates owed, when the board is read with no gate seat running, then the team row names the owed gates",
+    "Given a verdict attested at head H while CI ran, when CI turns green at H, then wuwei evidence counts it and no hook refuses or discounts it",
+    "Given gates passed and a failing check at the head, when gh pr ready or a merge runs, then WUWEI refuses it and names the failing check; with CI green both pass"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1247",
+   "changed": "2026-10-22T23:17:05.725622+00:00"
   },
   {
    "id": "draft-raise",
