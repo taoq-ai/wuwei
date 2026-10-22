@@ -67,7 +67,9 @@ row; only a gap that holds a row (`: |`) now reads past its first break, to the 
    accepted by name.
 5. (round 1) A row printed cut at 100 characters inside a cell. Fixed: the row is printed to its
    last cell edge within 100 characters, so it ends in `|` and the hook reads it whole. The owner
-   sees the row's first cells (its ID among them), not the cut part of its last cell.
+   sees the row's first cells (its ID among them), not the cut part of its last cell. Two rows
+   that would print the same cut (no ID, or the same ID) print whole instead, or one yes would
+   waive both.
 
 ## Clarifications
 
@@ -89,8 +91,7 @@ row; only a gap that holds a row (`: |`) now reads past its first break, to the 
   `|` that is followed by a `. `, a `?` or the end of the question. Only a gap that holds `: |`
   is read this way; any other gap ends at its first `. ` or `?`, exactly as on main.
 - Q: (round 1) Does evidence print every open row and every checklist? A: Yes, each as its own gap,
-  in file order. Two rows that print the same text are one gap; an ID in the first cell keeps
-  them apart.
+  in file order. Rows whose cut would be the same print whole; two identical rows are one gap.
 - Q: Does the guard's shape check change? A: No. The exception still has to name the PR and head in
   the documented shape, and the gap still has to start with a letter or digit.
 
@@ -124,7 +125,8 @@ Acceptance 4: `test_an_exception_for_a_process_gap_goes_back_to_the_model` in te
 - FR-005 (round 1): `evidence._rule` returns one gap per open CRITICAL or HIGH row and one per
   checklist file with an unchecked box.
 - FR-006 (round 1): a row longer than 100 characters is printed to its last `|` within the first
-  100 characters, or its first 100 characters when no `|` follows the first.
+  100 characters, or its first 100 characters when no `|` follows the first. Rows whose printed
+  text would be the same are printed whole, so one yes never waives two rows.
 
 ## Assumptions
 

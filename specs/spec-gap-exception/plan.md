@@ -22,7 +22,7 @@ for round 1.
 - III. An auditor: no new door; the question door refuses less, only for gaps that hold a merge.
 - V. Test first: the new tests ran red on 6828776's code (14 failed, 7 passed) before the change;
   round 1's ran red on b6d0635's code before its fix (counts in the PR body).
-- VI. Budgets: no config key; runtime +3 lines in round 1, within the +6 it allows.
+- VI. Budgets: no config key; runtime +0 lines in round 1, within the +6 it allows.
 - VII. Security first: the merge door's exact match is unchanged; a longer or shorter recorded gap
   waives nothing, and (round 1) every open row and checklist is printed, so a yes waives only what
   the owner saw.
@@ -38,12 +38,12 @@ for round 1.
 - evidence.py, `_rule` (round 1): returns a list of gap texts. A checklists folder gives one per
   file with an unchecked box; `analysis.md` gives one per open CRITICAL or HIGH row. A row longer
   than 100 characters is cut after its last `|` within the first 100, or at 100 when no `|`
-  follows the first. `spec_gaps` flattens the lists.
+  follows the first; rows whose cuts are equal print whole. `spec_gaps` flattens the lists.
 
 ## Lines
 
-Round 0: guards.py 0, hook.py 0. Round 1: evidence.py +1, hook.py +2. Runtime 3,396 at main, 3,399
-at the head (+3 of the +6 the round allows).
+Round 0: guards.py 0, hook.py 0. Round 1: evidence.py -2, hook.py +2. Runtime 3,396 at main and at
+the head (+0 of the +6 the round allows).
 
 ## Probes
 

@@ -14,8 +14,9 @@ and acceptance and the constitution.
 | A5 | Coverage | HIGH | evidence.py _rule, analysis.md rule | Only the first open row was printed, so a yes to it waived an unprinted CRITICAL row (security gate) | Resolved in round 1: each open row is its own gap; tests and probes hold the door on A2 until it is named |
 | A6 | Coverage | MEDIUM | evidence.py _rule, checklists rule | Only the first checklist with an unchecked box was printed, so a yes to it waived the others (security gate) | Resolved in round 1: each checklist file is its own gap |
 | A7 | Coverage | LOW | spec.md How this fails 2 | A row with no trailing pipe, or a pipe right after the row, is still recorded short | Accepted: fails closed, as on main; no real row here lacks its trailing pipe |
+| A8 | Coverage | HIGH | evidence.py _rule, cell-edge cut | Two open rows that share their cells up to the cut would print one gap, so one yes would waive both | Resolved in round 1: rows whose cuts are equal print whole |
 
-No open finding above MEDIUM. Round 1's HIGH (A5) is resolved.
+No open finding above MEDIUM. Round 1's HIGH rows (A5, A8) are resolved.
 
 ## Coverage
 
@@ -26,7 +27,7 @@ No open finding above MEDIUM. Round 1's HIGH (A5) is resolved.
 | FR-003 budget and vendored copy | yes | T009, T011 | |
 | FR-004 route corpus unchanged | yes | T012, T023 | round 1 adds approved exceptions |
 | FR-005 each row and checklist its own gap | yes | T016, T017, T020 | round 1 |
-| FR-006 cut at a cell edge | yes | T018, T020 | round 1 |
+| FR-006 cut at a cell edge | yes | T018, T020, T026 | round 1 |
 
 ## Constitution alignment
 

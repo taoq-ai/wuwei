@@ -5,7 +5,7 @@
 - [x] The merge door's exact match is unchanged
 - [x] A first sentence alone waives nothing
 - [x] No config key or ledger kind added
-- [x] Runtime within the item's +2 lines (round 0) and +6 lines (round 1): +3 at the round 1 head
+- [x] Runtime within the item's +2 lines (round 0) and +6 lines (round 1): +0 at the round 1 head
 - [x] .claude/ copy matches cli/wuwei/
 - [x] Route corpus read at main and at the head, its sha256 and every moved route recorded
 - [x] Generated question probe written by code, with its counts

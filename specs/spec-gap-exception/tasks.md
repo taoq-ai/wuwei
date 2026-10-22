@@ -36,3 +36,4 @@
 - [x] T023 Route corpus at main and at the head, plain, with approved exceptions and with a two-row spec PR (route_probe.py)
 - [x] T024 Question probe with the gates' tail and row classes, and the exception_refs differential (question_probe.py, refs_differential.py)
 - [x] T025 Mutants of each changed expression on both copies, one at a time (mutants.py)
+- [x] T026 [US1] Rows whose cuts are the same print whole, so one yes never waives two rows (tests/test_evidence.py, tests/test_guards.py)

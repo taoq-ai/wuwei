@@ -11,7 +11,8 @@ T = Path(sys.argv[1])
 SEP = r"re.split(r'\.\s|\?', tail[cut:], maxsplit=1)[0]"
 CUT = r"cut = max((m.end() for m in re.finditer(r'\|(?=\s*(?:[.?]|$))', tail)), default=0) if ': |' in tail else 0"
 PROCESS = 'r"template\'s sections|changed lines|open [0-9]+ days"'
-CELL = 'row[:row.rfind("|", 1, 100) + 1] or row[:100] if len(row) > 100 else row'
+CELL = "row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row"
+SAME = 'cut if cuts.count(cut) == 1 else row'
 LISTED = ("        return [_unchecked(e['path'], gh.file(repo, e['path'], head)) for e in entries\n"
           "                if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')]")
 M = [
@@ -38,15 +39,17 @@ M = [
     ('hook.py', SEP, "tail[cut:]"),
     ('hook.py', SEP, r"re.split(r'\.\s', tail[cut:], maxsplit=1)[0]"),
     ('hook.py', SEP, r"re.split(r'\?', tail[cut:], maxsplit=1)[0]"),
-    ('evidence.py', '    return found\n\n\ndef spec_gaps', '    return found[:1]\n\n\ndef spec_gaps'),  # main: only the first open row
+    ('evidence.py', 'for row, cut in zip(rows, cuts)]', 'for row, cut in zip(rows, cuts)][:1]'),  # main: only the first open row
     ('evidence.py', LISTED, LISTED.replace('return [_unchecked', 'return [p for p in [_unchecked') + ' if p][:1]'),  # main: first checklist
     ('evidence.py', 'for problem in _rule(repo, feature + name, rule, head))', 'for problem in _rule(repo, feature + name, rule, head)[:1])'),
     ('evidence.py', CELL, 'row[:100]'),  # main: cut at 100 characters
-    ('evidence.py', CELL, 'row[:row.rfind("|", 1, 100) + 1] if len(row) > 100 else row'),
-    ('evidence.py', CELL, CELL.replace('rfind("|", 1, 100)', 'rfind("|", 0, 100)')),
-    ('evidence.py', CELL, CELL.replace('rfind("|", 1, 100)', 'rfind("|", 1, 101)')),
+    ('evidence.py', CELL, CELL.replace(' or row[:100]', '')),
+    ('evidence.py', CELL, CELL.replace("rfind('|', 1, 100)", "rfind('|', 0, 100)")),
+    ('evidence.py', CELL, CELL.replace("rfind('|', 1, 100)", "rfind('|', 1, 101)")),
     ('evidence.py', CELL, CELL.replace('len(row) > 100', 'len(row) >= 100')),
     ('evidence.py', CELL, 'row'),  # whole rows
+    ('evidence.py', SAME, 'cut'),  # rows with the same cut print one gap
+    ('evidence.py', SAME, 'cut if cuts.count(cut) > 1 else row'),
 ]
 TESTS = ['tests/test_guards.py', 'tests/test_hook.py', 'tests/test_evidence.py']
 for i, (f, old, new) in list(enumerate(M))[int(os.environ.get('FROM', 0)):]:

@@ -536,6 +536,20 @@ def test_a_long_finding_row_is_printed_to_its_last_cell_edge_within_100_characte
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {printed}']
 
 
+SHARED = '| HIGH | spec.md | ' + 'a' * 90 + ' |'
+
+
+@pytest.mark.parametrize('second', ['| HIGH | spec.md | ' + 'b' * 90 + ' |', '| HIGH | spec.md |'])
+def test_rows_whose_cuts_are_the_same_are_printed_whole(root, fake, second):
+    """Two rows that share their cells up to the cut stay two gaps, so one yes never waives both (#1228)."""
+    light(root, 'full')
+    files = speckit(fake, **{f'{SPEC}/analysis.md': f'| Severity | Location | Summary |\n|---|---|---|\n{SHARED}\n{second}\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')
+    full_gates(root)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: {row}'
+                                                         for row in (SHARED, second)]
+
+
 def test_a_clean_full_tier_speckit_feature_passes(root, fake):
     light(root, 'full')
     fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body=footer() + '\nRollback: revert')

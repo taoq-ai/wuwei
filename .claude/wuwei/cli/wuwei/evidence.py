@@ -187,8 +187,7 @@ def _unchecked(path, text):
 
 
 def _rule(repo, path, rule, head):
-    """The gap texts of the artifact at the head, none when it meets its rule. Each open finding row and each checklist with
-    an unchecked box is its own gap, so an exception waives only what the owner saw (#1228)."""
+    """The artifact's gaps at the head, [] when it meets its rule: one per open finding row and per checklist with an open box (#1228)."""
     if path.endswith('/'):
         if not (entries := gh.listing(repo, path.rstrip('/'), head)):
             return [f'{path} missing: run the spec engine step that writes it']
@@ -202,13 +201,11 @@ def _rule(repo, path, rule, head):
         return [_unchecked(path, text)]
     if rule == 'clarified' and not re.search(r'^##\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
         return [f'{path} has no ## Clarifications section: run clarify']
-    found = []
-    for line in text.splitlines() if rule == 'clean' else ():
-        cells, row = {cell.strip().upper() for cell in line.strip().strip('|').split('|')}, line.strip()
-        if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'} and not any(
-                c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells):  # a recorded resolution (#1047)
-            found.append(f'{path} has an open CRITICAL or HIGH finding: {row[:row.rfind("|", 1, 100) + 1] or row[:100] if len(row) > 100 else row}')
-    return found
+    rows = [line.strip() for line in text.splitlines() if rule == 'clean' and line.lstrip().startswith('|') and (cells := {
+        cell.strip().upper() for cell in line.strip().strip('|').split('|')}) & {'CRITICAL', 'HIGH'} and not any(
+            c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells)]  # a recorded resolution (#1047)
+    cuts = [row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row for row in rows]  # at a cell edge
+    return [f'{path} has an open CRITICAL or HIGH finding: {cut if cuts.count(cut) == 1 else row}' for row, cut in zip(rows, cuts)]
 
 
 def spec_gaps(repo, engine, tier, files, head):

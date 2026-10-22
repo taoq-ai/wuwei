@@ -249,7 +249,9 @@ def test_an_accepted_finding_row_waives_only_the_whole_row(root, fake, repo, row
     ({'analysis': '| A1 | HIGH | wording nit |\n| A2 | CRITICAL | auth bypass |\n'}, 'analysis.md has an open CRITICAL or HIGH finding: '
      '| A1 | HIGH | wording nit |', 'analysis.md has an open CRITICAL or HIGH finding: | A2 | CRITICAL | auth bypass |'),
     ({'checklists/a.md': '- [ ] testable\n', 'checklists/security.md': '- [ ] threat model\n' * 5},
-     'checklists/a.md has 1 unchecked item', 'checklists/security.md has 5 unchecked items')])
+     'checklists/a.md has 1 unchecked item', 'checklists/security.md has 5 unchecked items'),
+    ({'analysis': f'| A1 | HIGH | {"a" * 90} |\n| A1 | HIGH |\n'}, 'analysis.md has an open CRITICAL or HIGH finding: | A1 | HIGH |',
+     f'analysis.md has an open CRITICAL or HIGH finding: | A1 | HIGH | {"a" * 90} |')])
 def test_a_yes_to_one_finding_row_or_checklist_leaves_the_next_holding_the_merge(root, fake, repo, files, first, second):
     """The owner accepts only what the door printed: the second open row or checklist holds until it is accepted by name (#1228)."""
     from conftest import answered
