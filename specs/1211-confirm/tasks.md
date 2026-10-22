@@ -24,3 +24,12 @@
 - [x] T021 Generated answer probe at main and the head: 1,755 cases, holes main 1,365, head 0
 - [x] T022 Mutants of each new condition in both copies, one at a time (mutants.py)
 - [x] T023 Full suite; runtime at 3,406, over the cap until free-lines-6 merges (stated in the spec)
+
+## Phase 5: Fix round 1 (security, arch and quality at a71bcb1)
+
+- [x] T030 Tests: each record shape with no toolUseResult answers records nothing and names the check; the gates' planted pairs (a question text, a label, a deny error row) record nothing; a list question raises nothing; a Stop past the bound reads once; a breaking question with a sentence after "Proceed?". Red at a71bcb1: 11 failed
+- [x] T031 Remove the text fallback from `_shown`; keep only string questions in `post_tool`; read the bound once in `_confirm` and skip the Stop's wait past it (both copies of hook.py)
+- [x] T032 Drop the fallback tests, probe classes and mutants; add the no-answers-dict probe class and the two hole columns
+- [x] T033 design.md section 8, the hooks page, spec.md (How this fails 1 no longer says re-ask), plan.md
+- [x] T034 Merge origin/main (free-lines-6, reply-thread-ts, #1228); runtime 3,382
+- [x] T035 Route corpus, probe, changed-expression mutants and the full suite at the merged head

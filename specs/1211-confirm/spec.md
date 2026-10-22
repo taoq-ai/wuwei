@@ -31,13 +31,13 @@ them across several tool calls):
 4. `_shown` says which check failed: no AskUserQuestion tool_use with the id (decided at once), no
    tool_result row (pending), a tool_result whose `toolUseResult` holds no answers dict, or which
    question's answer differs. The next ledger row names the cause.
-5. A tool_result row with no `toolUseResult.answers` dict is read by its own text, the harness's
-   record in the same transcript row: `Your questions have been answered: "<q>"="<label>"`. A pair
-   counts only when its question is one the tool_use asked and the pair is followed by the next
-   asked question's `, "<q>"=`, or by `.` for the last, so no pair can stretch over its neighbour.
-6. An answer that is not recorded never blocks the planner's Stop. The Stop records what it can and
-   leaves the rest pending; the next tool call records `answer.unconfirmed` and gives its note as
-   context.
+5. A tool_result row with no `toolUseResult.answers` dict records nothing: `answer.unconfirmed`
+   names that check and the type it found. The row's text is never read (fix round 1: model-written
+   questions, option labels and WUWEI's own deny reasons fill it, so the gates planted pairs that
+   recorded approvals the owner never gave).
+6. An answer that is not recorded never blocks the planner's Stop. A Stop records an entry it can
+   record whole and leaves any other pending; the next tool call records `answer.unconfirmed` and
+   gives its note as context. Past the bound a Stop no longer rereads for the row.
 
 The trust boundary stays: an answer counts only when the transcript holds that tool_use id, an
 AskUserQuestion tool_use, and that question's exact answer in the last tool_result row for the id. A
@@ -89,22 +89,22 @@ next unrecorded answer names its check, so a real compacted session shows which 
 ## How this fails
 
 1. A harness that writes a free-text answer differently in the payload and the transcript still
-   leaves that one answer unrecorded. The note now names it with both values, so the planner can
-   see the shape and re-ask only that question, and the next build can capture the row. The
-   labelled answers beside it are recorded.
+   leaves that one answer unrecorded. The note now names it with both values, so the next build can
+   capture the row. The labelled answers beside it are recorded.
 2. A pending answer whose row never comes (a crashed harness, a forged PostToolUse for an id that
    never gets a row) is reread on every planner call for 10 minutes, and each Stop in that window
-   waits up to 1.5 s for it. One transcript read per pending entry per call; it ends at the bound
-   with one `answer.unconfirmed` row.
+   waits up to 1.5 s for it. Past the bound a Stop reads it once and does not wait. One transcript
+   read per pending entry per call; the next non-Stop call after the bound records one
+   `answer.unconfirmed` row.
 3. A forged PostToolUse kept first for a real id while the row is not yet written (the cache keeps
    the first entry) still blocks the real answer: its answers differ, so nothing is recorded and the
    reason names each. Main has the same hole. Once the row is written a forged entry is decided at
    its own call, so the real PostToolUse after it records (the probe's forged-first class). A forged
    entry can only record answers the transcript holds, so it can suppress an answer but never invent
    one.
-4. The harness text format for a batch is assumed (`"<q1>"="<a1>", "<q2>"="<a2>". You can now
-   continue...`); only single-question rows were seen. If a batch is joined another way, a batch read
-   by its text records nothing, loudly ("its text does not match"); a single question still records.
+4. If #1231's cause is a real answered row with no `toolUseResult.answers` dict, that answer is
+   still not recorded. It is no longer silent: `answer.unconfirmed` reads "the tool_result has no
+   toolUseResult answers (<type>)", and a design for that shape waits for a captured row.
 
 ## Clarifications
 
@@ -127,12 +127,14 @@ next unrecorded answer names its check, so a real compacted session shows which 
   payload holds no answer" instead of nothing.
 - Q: Does the Stop still wait 1.5 s? A: Yes, so an answer written within it is recorded at the Stop
   with its notes; after it the answer stays pending.
-- Q: Is the tool_result text a sound source? A: Yes, under #962: it is the harness's own row in the
-  session transcript, never the payload. Soundness rests on anchoring each pair between the tool_use's
-  questions; the forged-pairs class (a question or answer stretched over its neighbour, the next
-  question's label claimed, a question not asked) records nothing in the tests and the probe.
-- Q: Which wins when the row has a `toolUseResult.answers` dict and text? A: The dict; the text is
-  read only when there is no dict.
+- Q: Is the tool_result text a sound source? A: No (fix round 1). The row is the harness's, but its
+  text embeds model-written questions and labels unescaped, and an error row embeds WUWEI's own deny
+  reason, which quotes the question. Security, arch and quality planted a pair in each and recorded
+  approvals the owner never gave (30 of 30, 260 of 260 at a71bcb1; main 0). Only the
+  `toolUseResult.answers` dict counts.
+- Q: Does a Stop past the bound still reread for 1.5 s? A: No (fix round 1). Letting the Stop claim
+  the entry would either block the Stop with its note or drop the note, so the Stop reads it once and
+  leaves it to the next call. One line.
 - Q: Why defer the whole entry at a Stop rather than record its matched answers then? A: It keeps one
   claim per entry and costs no line. By the Stop the planner has usually made a call after the
   answer, which already decided it.
@@ -159,8 +161,9 @@ first PostToolUse kept past a Stop, a replayed batch, and payload answers the tr
 
 ### US5: a record shape names its check, and an unrecorded answer never blocks the Stop (P1, #1231)
 
-The shapes under Compaction, the text match by question, the forged-pairs class, and a Stop that
-finds a differing answer returns no block while the next call carries the note once.
+The shapes under Compaction, each recording nothing with its check named, the gates' planted pairs
+(a question text, a label, a deny error row) recording nothing, and a Stop that finds a differing
+answer returns no block while the next call carries the note once.
 
 ## Requirements
 
@@ -176,11 +179,11 @@ finds a differing answer returns no block while the next call carries the note o
 - FR-005: design.md section 8 and the hooks page state the per-question rule, the pending Stop and
   the bound.
 - FR-006 (#1231): `_shown` names the failed check: no tool_use, no tool_result (pending), no
-  `toolUseResult` answers with text that does not match, or the differing question.
-- FR-007 (#1231): with no `toolUseResult.answers` dict, a pair counts when the row's text holds
-  `"<q>"="<a>"` followed by the next asked question's `, "<q>"=` or by `.`, for a question the
-  tool_use asked.
-- FR-008 (#1231): at a Stop an answer with a reason stays pending; no Stop blocks on it.
+  `toolUseResult` answers (with the type found), or the differing question.
+- FR-007 (#1231, fix round 1): with no `toolUseResult.answers` dict nothing is recorded; the row's
+  text is never read. A question that is not a string reads as no question.
+- FR-008 (#1231): at a Stop an answer with a reason stays pending; no Stop blocks on it, and past the
+  bound no Stop waits for its row.
 
 ## Assumptions
 
@@ -192,11 +195,11 @@ finds a differing answer returns no block while the next call carries the note o
   row that lands later than that after its PostToolUse.
 - The `prompt` row keeps only the recorded questions, so the report's owner prompts list only them.
   Overturned if the report should also list the unrecorded ones (they are in `answer.unconfirmed`).
-- Runtime +10 lines (3,396 to 3,406): +4 for 1211 and +6 for #1231 (the tool_use check, the text
-  match, the Stop deferral). Over the 3,400 cap until free-lines-6 (#1229, 23 lines) merges, so
-  `test_the_runtime_holds_its_size_budget` fails on this branch alone; the lead allowed more than +5
-  when stated. Overturned if the planner holds the item to +5, in which case the text match splits out.
-- The harness joins a batch's pairs with `, ` (How this fails 4). Overturned by a real batch row.
+- Runtime +9 lines after the merge of main (3,373 to 3,382, under the 3,400 cap): fix round 1
+  removed the text match (-2) and added the Stop's bound check (+1).
+- Fix round 1 removed the text fallback the planner suggested when folding #1231 in: its text is
+  model-written in part, so no anchoring makes it a sound source. A design for a row with no answers
+  dict waits for a real captured row. Overturned by such a row whose text the harness escapes.
 - An answer whose transcript lacks the tool_use is decided at once: the harness writes the tool_use
   row before the owner answers, seconds before PostToolUse (10:20:15 and 10:20:18 in the real flow).
   Overturned by a real PostToolUse that runs before its tool_use row is written.
