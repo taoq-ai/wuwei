@@ -18,7 +18,7 @@
 | `wuwei plan session <id> <session id>` | Record the builder session of an open `--host session` item; while the item is open the board counts it as a live builder seat and names the session, and with no PR and no event for four hours shows the row stale; refused for an item with host `agent` or a done, parked or dropped item |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
 | `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
-| `wuwei status [--json]` | The board: what each open item lacks |
+| `wuwei status [--json]` | The board: what each open item lacks; past the WIP limit, an approved item with no PR shows `queued` |
 | `wuwei evidence owner/repo#n [--json] [--record DIR]` | One PR's gaps; exit 1 when there are gaps |
 | `wuwei report [--day YYYY-MM-DD]` | The day report |
 | `wuwei report --dora [--window 28]` | The DORA keys per repository |
