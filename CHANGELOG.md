@@ -1,5 +1,56 @@
 # Changelog
 
+## [5.2.0](https://github.com/taoq-ai/wuwei/compare/v5.1.1...v5.2.0) (2026-10-23)
+
+
+### Features
+
+* **board:** in-progress work follows Kanban flow policy ([#1243](https://github.com/taoq-ai/wuwei/issues/1243)) ([470ab63](https://github.com/taoq-ai/wuwei/commit/470ab635e25c9142d795e75e1d215372e0a7a1e4))
+* **board:** several sessions share one workspace ([#1238](https://github.com/taoq-ai/wuwei/issues/1238)) ([93a4b68](https://github.com/taoq-ai/wuwei/commit/93a4b68b61795e027cd3d936970bc1b2af7bbdc3))
+* **board:** the board shows items in progress against the WIP limit and queues the rest, and a launch over the seat ceiling carries a note ([#1252](https://github.com/taoq-ai/wuwei/issues/1252)) ([fcf1212](https://github.com/taoq-ai/wuwei/commit/fcf1212cb8b61c2f9fcb131f07303fa8adb0787f))
+* **evidence:** a base merge into an open PR is measured on the PR's own diff ([#1234](https://github.com/taoq-ai/wuwei/issues/1234)) ([415e8fe](https://github.com/taoq-ai/wuwei/commit/415e8fe8aa2e434c621e2e15ba7b28bd550545a2))
+* **gates:** gates start at push, in parallel with CI, and the ready door names a failing check ([#1247](https://github.com/taoq-ai/wuwei/issues/1247)) ([1b8ef2b](https://github.com/taoq-ai/wuwei/commit/1b8ef2b8786cc5396ec5e26e48a6535c16ab228d))
+* **plan:** a long item's builder can run as its own session (--host session), gates stay here, builders push after each green step ([#1251](https://github.com/taoq-ai/wuwei/issues/1251)) ([af8fb51](https://github.com/taoq-ai/wuwei/commit/af8fb51e014e7384739b143094db07043a0585d2))
+* **tiers:** a smart tier, the default, picks each item's gates from its Cynefin domain and raises them on measured diff signals ([#1240](https://github.com/taoq-ai/wuwei/issues/1240)) ([b9522fc](https://github.com/taoq-ai/wuwei/commit/b9522fc7c3ee57793ea255acc9cc9f718f944e35))
+
+
+### Bug Fixes
+
+* **bin:** the hook launcher finds a Python 3.11 or later on Windows, macOS and Linux ([#1241](https://github.com/taoq-ai/wuwei/issues/1241)) ([7e67073](https://github.com/taoq-ai/wuwei/commit/7e670737a6f26997f31c04fa7719403a7b24dc0d))
+* **evidence:** a gate PASS counts only from the verdict its seat first attested, init imports day decisions only before a ledger, python -m wuwei hook is refused ([#1249](https://github.com/taoq-ai/wuwei/issues/1249)) ([db2e531](https://github.com/taoq-ai/wuwei/commit/db2e531a41c18de3ae08c5b2188c9147b18a7ec5))
+* **evidence:** finding rows that differ only in case or spacing print apart, and a spec-gap result cached before [#1228](https://github.com/taoq-ai/wuwei/issues/1228) is never read ([#1235](https://github.com/taoq-ai/wuwei/issues/1235)) ([86b2e56](https://github.com/taoq-ai/wuwei/commit/86b2e569bacedde4dccfc486c80d0c42b4d1aae3))
+* **guards:** the multi-line refusal names the door words it found ([#1245](https://github.com/taoq-ai/wuwei/issues/1245)) ([bf43f58](https://github.com/taoq-ai/wuwei/commit/bf43f588024b4f0d4e9e04da267ad9e3e57613d5))
+* **guards:** the owner may accept a full-tier spec gap, and a finding row is recorded whole ([#1228](https://github.com/taoq-ai/wuwei/issues/1228)) ([d141928](https://github.com/taoq-ai/wuwei/commit/d14192853545812dbde67dc55a9e42a8cecd7b07))
+* **hook:** a gate attestation is recorded only from the seat's own transcript ([#1244](https://github.com/taoq-ai/wuwei/issues/1244)) ([5481871](https://github.com/taoq-ai/wuwei/commit/54818710343a73d45ea5fa8cbbf706e2d8ed4d18))
+* **hook:** a seat report the harness already notified never blocks the planner's stop ([#1236](https://github.com/taoq-ai/wuwei/issues/1236)) ([1bcefca](https://github.com/taoq-ai/wuwei/commit/1bcefca8b4b0221061f48f516b1ad20626bf03bd))
+* **hook:** a seat transcript holding a raw U+2028 still reads ([#1250](https://github.com/taoq-ai/wuwei/issues/1250)) ([49d6545](https://github.com/taoq-ai/wuwei/commit/49d6545fa2426658c0bbdd224782416d8738ec39))
+* **hook:** an owed reply whose Slack link names a message inside a thread closes on a send into that thread ([#1232](https://github.com/taoq-ai/wuwei/issues/1232)) ([75c63de](https://github.com/taoq-ai/wuwei/commit/75c63def959acbe9daed79c002eec88d277f8c75))
+* **hook:** an owner answer the transcript shows late or beside a differing answer is recorded, and never blocks a Stop ([#1233](https://github.com/taoq-ai/wuwei/issues/1233)) ([cc52ac6](https://github.com/taoq-ai/wuwei/commit/cc52ac6ca23a88741d682259e41fde60f9424cc3))
+* **hook:** owner answers survive compaction and new sessions ([#1239](https://github.com/taoq-ai/wuwei/issues/1239)) ([38282d6](https://github.com/taoq-ai/wuwei/commit/38282d68e2212195370299d5f6ecb7c106b04ddb))
+* **ws:** a cache entry or name never reads, writes or deletes outside .wuwei/cache ([#1242](https://github.com/taoq-ai/wuwei/issues/1242)) ([9e7ad5a](https://github.com/taoq-ai/wuwei/commit/9e7ad5ab20c60485e521be949914ee893eb609da))
+* WUWEI loads and judges on Windows and macOS as on Linux, and CI runs all three ([#1248](https://github.com/taoq-ai/wuwei/issues/1248)) ([319a6d4](https://github.com/taoq-ai/wuwei/commit/319a6d42abbed1cdf16618aa9bee72b8a743043b))
+
+
+### Documentation
+
+* **charters:** finish before starting under a WIP limit and a seat ceiling ([#1225](https://github.com/taoq-ai/wuwei/issues/1225)) ([bcdfc1b](https://github.com/taoq-ai/wuwei/commit/bcdfc1bdd79dec5b493a1934765b10427e6bcba9))
+
+
+### Code Refactoring
+
+* free 23 runtime lines in __main__, plan and ws with no behaviour change ([#1229](https://github.com/taoq-ai/wuwei/issues/1229)) ([fbf187b](https://github.com/taoq-ai/wuwei/commit/fbf187b7e657d16162c0a95d5028dd1d8f568a3b))
+
+
+### Tests
+
+* the suite puts a stub gh first on PATH so a test run spends no GitHub REST quota ([#1226](https://github.com/taoq-ai/wuwei/issues/1226)) ([d7a574a](https://github.com/taoq-ai/wuwei/commit/d7a574a03795693d33714c25ba1effc94a3fe44f))
+
+
+### Miscellaneous Chores
+
+* **constitution:** the runtime budget is 3,600 lines and the agents have word headroom ([#1237](https://github.com/taoq-ai/wuwei/issues/1237)) ([da48f37](https://github.com/taoq-ai/wuwei/commit/da48f3743a19039ee2137abbc2721d63b27cdae5))
+* **constitution:** the runtime budget is 3,800 lines ([#1246](https://github.com/taoq-ai/wuwei/issues/1246)) ([8c38073](https://github.com/taoq-ai/wuwei/commit/8c38073b4cd9b48db33cdeb5601847aae4c5eec1))
+
 ## [5.1.1](https://github.com/taoq-ai/wuwei/compare/v5.1.0...v5.1.1) (2026-10-21)
 
 
