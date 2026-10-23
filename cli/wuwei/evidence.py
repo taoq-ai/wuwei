@@ -1,5 +1,6 @@
 """What a pull request still lacks. One pure reading of the artifacts: it never asks how the work was done."""
 
+import ast
 import datetime
 import fnmatch
 import hashlib
@@ -34,6 +35,7 @@ SPEC_RULES = {
 # The plan item a PR names: the WUWEI footer ([WUWEI <version>](<site>) · Item <id> · ...), or a WUWEI-Item: line.
 ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
+norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
                      r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names its item by the old)")
@@ -43,7 +45,7 @@ CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.gr
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
 RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
                    r'|requirements[^/]*\.txt$|package\.json$|pyproject\.toml$|go\.mod$|Cargo\.toml$', re.I)
-RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
+RAISE = {'light': 'standard', 'smart': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
@@ -56,6 +58,11 @@ DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of t
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
 SHA = re.compile(r'[0-9a-f]{40}')
+# Smart: the lead's domain ("clear: <why>"; else complex), words of what a guard waives or refuses (Exception is Python's), McCabe's decision nodes.
+cynefin = lambda item: (re.match(r'(clear|complicated):', str((item or {}).get('domain'))) or ('', 'complex'))[1]  # noqa: E731
+NAMED = r'\b(permissionDecision|PROCESS|DUTY)\b'  # a guard's own names, read in context lines too
+WAIVE = re.compile(r'\b((?i:deny|denied|refuse[ds]?|ask|allow(ed|s)?|waive[ds]?|excepted)|exceptions?)\b|' + NAMED)
+DECIDE, MCCABE = (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.Assert, ast.BoolOp, ast.comprehension, ast.match_case), 10
 PR_TTL = 900  # ponytail: a CI re-run or a thread resolved without a reply moves no update time; it shows within this window
 
 
@@ -187,27 +194,25 @@ def _unchecked(path, text):
 
 
 def _rule(repo, path, rule, head):
-    """None when the artifact at the head meets its rule, else the gap text."""
+    """The artifact's gaps at the head, [] when it meets its rule: one per open finding row, as (whole, cut), and per checklist with an open box (#1228)."""
     if path.endswith('/'):
         if not (entries := gh.listing(repo, path.rstrip('/'), head)):
-            return f'{path} missing: run the spec engine step that writes it'
-        return next((problem for e in entries if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')
-                     if (problem := _unchecked(e['path'], gh.file(repo, e['path'], head)))), None)
+            return [f'{path} missing: run the spec engine step that writes it']
+        return [_unchecked(e['path'], gh.file(repo, e['path'], head)) for e in entries
+                if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')]
     try:
         text = gh.file(repo, path, head)
     except gh.GhError:
-        return f'{path} missing: run the spec engine step that writes it'
+        return [f'{path} missing: run the spec engine step that writes it']
     if rule == 'checked':
-        return _unchecked(path, text)
+        return [_unchecked(path, text)]
     if rule == 'clarified' and not re.search(r'^##\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
-        return f'{path} has no ## Clarifications section: run clarify'
-    if rule == 'clean':
-        for line in text.splitlines():
-            cells = {cell.strip().upper() for cell in line.strip().strip('|').split('|')}
-            if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'} and not any(
-                    c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells):  # a recorded resolution (#1047)
-                return f'{path} has an open CRITICAL or HIGH finding: {line.strip()[:100]}'
-    return None
+        return [f'{path} has no ## Clarifications section: run clarify']
+    rows = [line.strip() for line in text.splitlines() if rule == 'clean' and line.lstrip().startswith('|') and (cells := {
+        cell.strip().upper() for cell in line.strip().strip('|').split('|')}) & {'CRITICAL', 'HIGH'} and not any(
+            c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells)]  # a recorded resolution (#1047)
+    lead = f'{path} has an open CRITICAL or HIGH finding: '
+    return [(lead + row, lead + (row[:row.rfind('|', 1, 100) + 1] or row[:100] if len(row) > 100 else row)) for row in rows]  # cut at a cell edge
 
 
 def spec_gaps(repo, engine, tier, files, head):
@@ -221,8 +226,13 @@ def spec_gaps(repo, engine, tier, files, head):
         return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
             gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
-    problems = (_rule(repo, feature + name, rule, head) for feature in features for name, rule in wanted)
-    return [gap(problem) for problem in dict.fromkeys(problems) if problem]
+    found = [*dict.fromkeys((feature, *((p, p) if isinstance(p, str) else p)) for feature in features for name, rule in wanted
+                            for p in _rule(repo, feature + name, rule, head) if p)]  # (feature, whole, cut)
+    seen = [n for _, *texts in found for n in {*map(norm, texts)}]  # what an exception reads each gap as, over the whole PR
+    shown = [(feature, cut if seen.count(norm(cut)) == 1 else whole) for feature, whole, cut in found]
+    keys = [norm(text) for _, text in shown]  # gaps that still read alike carry their place after the feature folder
+    return [gap(text if keys.count(k) == 1 else f'{f}({keys[:i].count(k) + 1} of {keys.count(k)}) {text[len(f):]}')
+            for i, ((f, text), k) in enumerate(zip(shown, keys))]
 
 
 def failures(repo, merged, deploys):
@@ -283,18 +293,39 @@ def newer(root, repo, v, held, head):
         and ancestor(root, repo, v['head'], head)
 
 
-def needed(root, tier, files):
-    """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
-    security comes for risky or owner paths, arch for a contract or a wide change of all but prose; full all four."""
+def needed(root, tier, files, item=None, rose=bool):
+    """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none; security comes for risky or owner
+    paths, arch for a contract or a wide change of all but prose; full all four. At smart the domain sets a floor measured signals raise."""
     code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
             or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
     wide = [f for f in files if not PROSE.match(f['path']) or f['path'].startswith(('specs/', 'openspec/'))]
     risky = owned(root, code) or any(RISKY.search(p) for p in code)
     if tier == 'full' and code:
         return REQUIRED['full']
-    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(f['path']) for f in files)
-             or tier == 'standard' and (lines(wide) > WIDE or len(code) > 10)}
-    return tuple(g for g in REQUIRED['standard'] if wants[g])
+    std, smart, deep = tier in ('standard', 'smart'), tier == 'smart' and bool(code), cynefin(item) == 'complex'
+    wants = {'quality': code, 'security': std and risky or smart and (deep or rose()), 'arch': any(CONTRACT.search(f['path']) for f in files)
+             or std and (lines(wide) > WIDE or len(code) > 10) or smart and (deep or any(not isinstance(f.get('patch'), str) and lines([f])
+             or WAIVE.search(changed(f)) or re.search(TRUST, f['path'], re.I) and cynefin(item) != 'clear' for f in files if f['path'] in code)),
+             'goal': smart and bool((item or {}).get('in_doubt'))}
+    return tuple(g for g in REQUIRED['full'] if wants[g])
+
+
+def changed(f):  # a patch's changed lines and hunk headers, and context lines only where they name a guard
+    return '\n'.join(n for n in (f.get('patch') or '').splitlines() if n.startswith(('+', '-', '@@')) or re.search(NAMED, n))
+
+
+def rose(repo, pr, files):
+    """A function's decision nodes (summed by name, ast) rise to MCCABE or more from base to head; an unread head is a rise."""
+    def count(path, ref, found):  # '(' never parses: a ref that is no sha is never read (no default branch stands in)
+        try:
+            for f in [n for n in ast.walk(ast.parse(gh.file(repo, path, ref) if SHA.fullmatch(ref or '') else '(')) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+                found[f.name] = found.get(f.name, 0) + sum(isinstance(n, DECIDE) for n in ast.walk(f))
+            return found
+        except (gh.GhError, SyntaxError, ValueError, RecursionError):
+            return None
+    return any(now is None or any(n >= MCCABE and n > (was or {}).get(k, 0) for k, n in now.items()) for path in [f['path'] for f in files
+               if f['path'].endswith('.py') and f.get('additions') and not TEST.search(f['path'])]
+               for was, now in [(count(path, pr.get('baseRefOid'), {}), count(path, pr.get('headRefOid'), {}))])
 
 
 def lines(files):
@@ -313,20 +344,23 @@ def gates_for(root, repo, pr, files, item):
         tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
     elif tier == 'light' and any(re.search(TRUST, f['path'], re.I) and not DOCS.search(f['path']) for f in files):
         tier, why = 'standard', ' (tier raised to standard: the diff touches a trust path)'
-    gates = REQUIRED[tier] if why else needed(root, tier, files)  # an overrun budget trims nothing
+    cached = lambda: _cached(root, f'cc-{repo.replace("/", "__")}-{pr.get("baseRefOid")}-{pr.get("headRefOid")}', lambda: rose(repo, pr, files))  # noqa: E731
+    gates = REQUIRED[tier] if why else needed(root, tier, files, item, cached)  # an overrun budget trims nothing
+    if spent['raised']:  # and keeps every gate the unraised item owed
+        gates = tuple(g for g in REQUIRED['full'] if g in gates + tuple(needed(root, (item or {}).get('tier', 'standard'), files, item, cached)))
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
 
-def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard'):
-    """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR
-    (its repository before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head
-    a later finding replaces a FIX, and a pass clears it only by naming it in Supersedes (#1162). Code moved since the
-    last pass is re-read by the one gate the delta needs; docs or a small change off risky paths carries it."""
+def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard', base=''):
+    """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR (its repository
+    before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head a later finding replaces a FIX,
+    and a pass clears it only by naming it in Supersedes (#1162). Code moved since the last pass is re-read by the one gate the delta
+    needs; docs or a small change off risky paths carries it. Given a base sha, the delta is the PR's own diff (#1230)."""
     latest, last = {}, None
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
         named = prior and prior['verdict'] == 'FIX' and prior['head'][:7] == found['head'][:7] and (fix or any(  # #1162
-            ('/' + s).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
+            ('/' + s.replace('\\', '/')).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
         if (fix or (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) and ancestor(root, repo, found['head'], head) \
                 and (newer(root, repo, found, prior, found['head']) or fix and prior['verdict'] == 'PASS' or named):  # head asked above
             latest[found['gate']] = found
@@ -337,6 +371,14 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
     delta = compare(root, repo, last, head)['files']
+    if base:  # a file whose patch from the base, line numbers aside, is the same at both heads is out; one GitHub omits moves
+        was, now = ({f['path']: (re.sub(r'(?m)^@@.*', '@@', f['patch']) if isinstance(f.get('patch'), str) else object(), f)
+                     for f in compare(root, repo, base, sha)['files']} for sha in (last, head))
+        made = re.findall(r'[^\s`,]+', ' '.join(re.findall(rf'(?im)^[-*\s]*Generated \({re.escape(repo)}, [0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}\):(.*)$',
+            path.read_text(encoding='utf-8')))) if (path := Path(root) / ws.DIR / 'standards.md').is_file() else []
+        moved = [p for p in was.keys() | now.keys() if (was.get(p) or [0])[0] != (now.get(p) or [0])[0] and (not any(fnmatch.fnmatch(p, g) for g in made)
+                 or RISKY.search(p) or CONTRACT.search(p) or owned(root, [p]))]  # a dated Generated glob never drops a risky, owner or contract path
+        delta = [next((f for f in delta if f['path'] == p), (now.get(p) or was.get(p))[1]) for p in moved] if len(was) < 300 > len(now) else delta
     want = needed(root, 'light' if tier == 'light' else 'standard', delta)
     gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
     if not gate or lines(delta) <= TRIVIAL and gate == 'quality' or gate in passed and head.startswith(passed[gate]['head']):
@@ -363,8 +405,8 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
             continue
         why = parsed['errors'][0] if parsed['errors'] else (
             f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
-            f'report with "Verdict file: {path.relative_to(root)}" (a Codex task job or Codex seat never attests)')
-        found.append(gap(f'verdict {path.relative_to(root)} not counted: {why}'))
+            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a Codex task job or Codex seat never attests)')
+        found.append(gap(f'verdict {path.relative_to(root).as_posix()} not counted: {why}'))
     return found
 
 
@@ -430,16 +472,16 @@ def gaps(root, repo, number, listed=None):
             found.append(gap('PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'))
         if missing := [s for s in template_sections(root, repo) if s.lower() not in body.lower()]:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
-        if tier != 'light':
+        if tier != 'light' and (tier != 'smart' or cynefin(item) == 'complex'):  # smart: complex only, and then they hold
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             # the artifacts at a head never change, CI or not; the file list does when the base is retargeted (a path may hold a newline)
             listing = hashlib.sha256(json.dumps(sorted(files)).encode()).hexdigest()[:32]
-            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier}', f'{name}-{head}-{listing}'
+            key, kept = f'{ws.version()} {spec_engine(root, repo)} {tier} rows pr-wide', f'{name}-{head}-{listing}'  # not an older rule's result
             if key not in (spec := ws.cache_get(root, kept, 86400) or {}):
                 spec[key] = spec_gaps(repo, spec_engine(root, repo), tier, files, head)
                 if not any(' missing: ' in g['text'] for g in spec[key]):  # a host error reads as missing
                     ws.cache_put(root, kept, spec)
-            found += [dict(g, kind='safety') if tier == 'full' else g for g in spec[key]]
+            found += [dict(g, kind='safety') if tier in ('full', 'smart') else g for g in spec[key]]
         code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
@@ -448,7 +490,7 @@ def gaps(root, repo, number, listed=None):
         owners = owned(root, files)
         if (tier == 'full' or owners) and not re.search(r'^Rollback:\s*\S', body, re.M):
             found.append(gap('no Rollback: line (how to undo this change)'))
-        found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
+        found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised, pr.get('baseRefOid'))
         found += breaking_gaps(root, ref, pr, item_id)
         rollup = pr.get('statusCheckRollup')
         found += ci_gaps(rollup, review_contexts(root, repo, rollup))
@@ -503,7 +545,6 @@ def gaps(root, repo, number, listed=None):
 def excepted(root, ref, head, found):
     """Drop each gap the owner accepted at this head by its exact text or its gate gap's exact gates, never by a part
     of either (case, spacing, end marks and a printed [waiting] aside); each acceptance is an exception on the record."""
-    norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
     accepted = {norm(row['data']['gap']) for row in ws.rows(root, 'ruling') if isinstance(row['data'].get('gap'), str)
                 and row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')} - {''}

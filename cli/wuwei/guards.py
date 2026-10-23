@@ -4,15 +4,17 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
-from os.path import join, normpath, realpath
-from pathlib import Path
+import os
+from os.path import realpath
+from pathlib import Path, PurePosixPath
+from posixpath import join, normpath  # a command reads the same on every OS
 import re
 import shlex
 import subprocess
 from tempfile import gettempdir
 from urllib.parse import unquote
 
-from wuwei import evidence, gh, ws
+from wuwei import evidence, gh, plan, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
@@ -28,7 +30,7 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
@@ -51,6 +53,7 @@ READY = 'leaves draft or asks reviewers only once its gates pass at the PR head 
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
 PUSH_VALUED = {'o', *(n[:i] for n in ('push-option', 'repo', 'receive-pack', 'exec', 'recurse-submodules') for i in range(1, len(n) + 1))}
 REF_RULES = ('{}', 'refs/{}', 'refs/tags/{}', 'refs/heads/{}', 'refs/remotes/{}', 'refs/remotes/{}/HEAD')  # refs.c ref_rev_parse_rules
+WINDOWS = os.name == 'nt'
 TEMP = ()  # folders whose local remotes take any push; () is gettempdir() and /tmp, where a session's scratch and mktemp -d lie
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -70,19 +73,39 @@ PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
+    win = windows(path)  # a backslash is / on Windows and a name character elsewhere: either reading that names it counts
+    return win != path and _records(win, below, cap, name) or _records(path, below, cap, name)
+
+
+def windows(path):  # as Windows reads a path: \ is /, a drive-relative X: goes, and a name drops its :stream, trailing dots and spaces
+    parts = re.sub(r'^[A-Za-z]:', '', path.replace('\\', '/')).split('/')
+    return '/'.join(p if p in ('.', '..') else re.sub(r':.*', '', p).rstrip('. ') or p for p in parts)
+
+
+def named(n, p):  # p names n as sh globs it, in any case (macOS and Windows), or as a Windows 8.3 short name (WUWEI~1 for .wuwei)
+    short = re.fullmatch(r'([^~.]{1,6})~[0-9]+(\.[^.]*)?', p)
+    return fnmatchcase(n, p) or fnmatchcase(n, p.lower()) or bool(short) and n.replace('.', '').upper().startswith(short[1].upper())
+
+
+def _records(path, below, cap, name):
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
         return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    return any(p[:1] == '.' and fnmatchcase(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
-        fnmatchcase(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
+    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+        named(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
 def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
-    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: str(Path.home()), path)  # keep: a file in <project>/memory, as a literal path
-    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'/[\w./@+-]*', full) and (  # resolves, links read
+    full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: os.environ.get('HOME') or str(Path.home()), path)  # keep: a file in
+    full = full.replace('\\', '/') if WINDOWS else full  # <project>/memory, as a literal path; \ is a separator on Windows only
+    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*' if WINDOWS else r'/[\w./@+-]*', full) and (  # resolves, links read
         real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
+
+
+def progname(word):  # the program a word runs: macOS and Windows find it in any case, Windows by name.exe and a backslash path too
+    return re.sub(r'\.exe$', '', PurePosixPath(word.replace('\\', '/')).name.lower())
 
 
 def deny(reason):
@@ -138,13 +161,13 @@ def _unwrap(tokens):
         i += 1
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
-    if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
+    if argv and progname(argv[0]) in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
         argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
-                     and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
+                     and (progname(a) in READ or progname(a).startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
-    if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
+    if body and progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
         return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
-    return [(argv, targets)] + ([UNREAD] if argv and Path(argv[0]).name in SHELLS else [])  # its commands come from stdin or a file
+    return [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
 
 
 def _default(root, repo):
@@ -308,10 +331,10 @@ def create_door(root, repo, branch, base, text, act=OPEN, ref=''):
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
     except gh.GhError as exc:
         return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; it {act}.')
-    pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch}
+    pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch,
+          'headRefOid': (head := (diff.get('commits') or [{}])[-1].get('sha', '')), 'baseRefOid': (diff.get('merge_base_commit') or {}).get('sha')}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
-    head = (diff.get('commits') or [{}])[-1].get('sha', '')
-    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier)
+    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier, pr['baseRefOid'])
     found = evidence.excepted(root, ref, head, found) if ref else found  # the owner's exception for this PR at this head (#1168)
     found += [{'text': 'no plan item is named, so no gate verdict can count: end the PR body with the WUWEI footer or a '
                'WUWEI-Item line, passed by --body or a --body-file path WUWEI can read (a literal path, not $VAR)'}] if found and not item_id else []
@@ -326,7 +349,11 @@ def ready_door(root, repo, number):
         pr = gh.pr(repo, number)
     except gh.GhError as exc:
         return deny(f'cannot read {repo}#{number} ({exc}): a draft {READY}.')
-    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}') if pr['isDraft'] else None
+    if not pr['isDraft']:
+        return None
+    ci = [g for g in evidence.gaps(root, repo, number) if g['text'].startswith(('CI ', 'required check', 'evidence unreadable'))]
+    return deny(f'{repo}#{number} {READY}, and with green CI at its head (#1221):\n' + '\n'.join('- ' + g['text'] for g in ci)) if ci \
+        else create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY, f'{repo}#{number}')
 
 
 def merge_door(root, repo, number, auto=False):
@@ -363,14 +390,15 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
-        return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
-                    '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
-                    'by --body-file, -F or a file written with Write.')
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
+            w, command, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS if all(re.search(w, command, re.I) for w in d)]):  # #1117
+        return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
+                    'anywhere in the text counts, a heredoc body or quoted prose included: run the door command in its own one-line '
+                    'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.')
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
-        program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
+        program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
@@ -380,7 +408,7 @@ def bash(root, command, cwd, session):
             return deny(HARNESS)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
-        if program == 'wuwei' and argv[1:2] == ['hook']:
+        if re.search(r'(^wuwei|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0(--\0)?hook(\0|$)', '\0'.join([program, *argv[1:]])):  # literal spellings
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
@@ -417,7 +445,7 @@ def pre_tool(root, payload):
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
-            r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open [0-9]+ days", q)]
+            r"template's sections|changed lines|open [0-9]+ days", q)]  # a spec gap is safety at full tier (#1223)
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
@@ -430,6 +458,11 @@ def pre_tool(root, payload):
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
+        known = ws.answers(root)[0]
+        shown = all(i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')  # else plan: is asked again
+        if again := [known[k] for q in questions if (k := ' '.join(q.casefold().split())) in known and (shown or k[:5] != 'plan:')]:
+            return deny('already answered: ' + '; '.join(f'on {ts:.10}, "{q:.200}" -> "{a:.300}"' for ts, q, a in again)
+                        + '. Act on that; a new head, PR or plan item is a new question.')
         if not (unclassed := [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]):
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)

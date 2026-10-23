@@ -27,7 +27,7 @@ def _field(text, name):
 
 def parse(text, strict=False):
     """strict (at attestation) also asks the arch gate for its Breaking: line."""
-    errors = []
+    errors, text = [], text.replace('\r\n', '\n')  # a file saved on Windows reads as one saved on Linux
     result = {'verdict': _field(text, 'Verdict').upper(), 'gate': _field(text, 'Gate').lower(),
               'item': _field(text, 'Item'), 'head': _field(text, 'Head').lower(),
               'confidence': _field(text, 'Confidence').lower(),

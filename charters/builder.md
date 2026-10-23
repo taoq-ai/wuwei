@@ -11,8 +11,8 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    top of the spec (or the PR body at `light`). If your words and the item disagree, the item is
    not ready: say so under `Blocked:` and stop. Building the wrong thing is the costliest mistake.
 3. At `full`, add a pre-mortem: `How this fails:` with three concrete ways the change could go
-   wrong in production. The gates probe those first.
-4. At `standard` and `full`, when the repository uses a spec engine (`.specify/` or `openspec/`),
+   wrong in production; at `smart` for a complex item, a short one. The gates probe those first.
+4. At `standard`, `full` and `smart` for a complex item, when the repository uses a spec engine (`.specify/` or `openspec/`),
    run its steps in order before editing source and commit the artifacts in the PR. WUWEI reads
    them at the PR head:
    - spec-kit: `spec.md`, `plan.md` and `tasks.md` with every task checked. At `full` also a
@@ -42,6 +42,8 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    docs already state is a `fix:` (a patch) with release notes in the body; a new capability is a
    `feat:` (a minor). Prefer a compatible path (a deprecation window, a new version beside the old)
    when one exists.
+7. Commit and push after every green step, so a restart loses at most one step. Whether you run
+   as an Agent-tool seat or in your own session, hand back the pushed head.
 
 ## Disagreeing with a finding
 
@@ -71,6 +73,9 @@ fix it here.
 
 Push the branch, then open it as a draft PR so CI runs (`gh pr create --draft`; in a cloud session
 the REST route in the shepherd charter with `-F draft=true`). Never mark it ready or request
-reviewers. The gates review the draft head, and the PR turns ready once they pass (WUWEI refuses
-`gh pr ready` and a non-draft `gh pr create` before). Hand back with: the branch, the draft PR and
-its head, commands and results, residual risk, your confidence, and the retro note.
+reviewers. The gates review the draft head while CI runs, and the PR turns ready once they pass
+and CI is green (WUWEI refuses `gh pr ready` until both hold, and a non-draft `gh pr create`
+before the gates pass). Hand back as
+soon as the push lands, without waiting for CI. Hand back with: the branch, the draft PR and its
+head, CI as unread, commands and results, residual risk, your confidence, and the closing lines of
+`_common.md` Report.

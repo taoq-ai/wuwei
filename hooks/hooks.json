@@ -1,9 +1,9 @@
 {
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SessionStart"}]}],
-    "PreToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PreToolUse"}]}],
-    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PostToolUse"}]}],
-    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SubagentStop"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook Stop"}]}]
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SessionStart", "commandWindows": "\"${CLAUDE_PLUGIN_ROOT}\\bin\\wuwei.cmd\" hook SessionStart"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PreToolUse", "commandWindows": "\"${CLAUDE_PLUGIN_ROOT}\\bin\\wuwei.cmd\" hook PreToolUse"}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PostToolUse", "commandWindows": "\"${CLAUDE_PLUGIN_ROOT}\\bin\\wuwei.cmd\" hook PostToolUse"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SubagentStop", "commandWindows": "\"${CLAUDE_PLUGIN_ROOT}\\bin\\wuwei.cmd\" hook SubagentStop"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook Stop", "commandWindows": "\"${CLAUDE_PLUGIN_ROOT}\\bin\\wuwei.cmd\" hook Stop"}]}]
   }
 }

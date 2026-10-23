@@ -30,8 +30,13 @@ def cmd_plan(args):
         scores = {k: int(v) if float(v).is_integer() and k not in ('impact', 'confidence') else float(v)
                   for k, v in scores.items() if v is not None}
         item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '',
-                        args.promise or '', args.accept or (), [f'{args.repo if r.lower() == str(args.repo).lower() else r}#{n}' for r, n in [_ref(args.pr)]] if args.pr else ())
+                        args.promise or '', args.accept or (), [f'{args.repo if r.lower() == str(args.repo).lower() else r}#{n}' for r, n in [_ref(args.pr)]] if args.pr else (),
+                        args.domain or '', args.in_doubt, args.cls, args.after or (), args.host)
         print(f'{item["id"]} added with score {item["score"]}')
+    elif args.action == 'session':  # a host-session builder has no seat.started row: the board counts it live from this record
+        if (item := plan.find(root, args.id)) and (item.get('host') != 'session' or item.get('status', 'open') != 'open' or not args.title):
+            raise ValueError(f'plan session needs <id> <session id> for an open item added with --host session ({item["id"]}: host {item.get("host", "agent")}, {item.get("status", "open")}); nothing recorded')
+        print(f'{plan.mark(root, args.id, "open", f"builder session {args.title}", session=args.title)["id"]} builder session {args.title} recorded')
     elif args.action in ('park', 'drop', 'done'):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
         plan.mark(root, args.id, status, args.reason or '')
@@ -47,7 +52,7 @@ def cmd_plan(args):
             raise ValueError('plan run needs --reason "<what ran and what it showed>" or --job <job file>; nothing recorded')
         print(f'{plan.mark(root, args.id, "open", args.reason or "", kind="run", **{"job": args.job} if args.job else {})["id"]} run evidence recorded')
     elif args.action == 'restore':
-        print(f'{plan.restore(root, args.id)["id"]} open again')
+        print(f'{plan.mark(root, args.id, "open", "restored")["id"]} open again')
     elif args.action == 'show' and args.id:
         if (item := plan.find(root, args.id)) is None:
             raise ValueError(f'{args.id} is not in the plan')
@@ -67,20 +72,17 @@ def cmd_plan(args):
                   f'{item.get("goal") or "":<5} {item.get("repo") or ""}  {item["title"]}')  # a null field prints blank (#1209)
         if not rows:
             print('the plan is empty: run /wuwei-run')
-    return 0
 
 
 def cmd_status(args):
     root = _root()
     rows = board.compute(root, everything=args.all)
     print(json.dumps(rows, indent=1) if args.json else board.text(rows, root))
-    return 0
 
 
 def cmd_owe(args):
     item = plan.owe(_root(), args.where, args.what, args.who, within=args.within, due=args.due)
     print(f'{item["id"]} reply owed to {item["who"]} in {item["where"]}, due {item["due"]}')
-    return 0
 
 
 def cmd_watch(args):
@@ -91,7 +93,6 @@ def cmd_watch(args):
     open_replies = [r for r in board.replies(root)]
     print(f'last pass: {passes[-1]["ts"] if passes else "never"}; replies owed: {len(open_replies)} '
           f'({sum(1 for r in open_replies if "overdue" in r["gaps"][0]["text"])} overdue)')
-    return 0
 
 
 def cmd_andon(args):
@@ -100,7 +101,6 @@ def cmd_andon(args):
         raise SystemExit('wuwei: say why: wuwei andon owner/repo --reason "<what is broken for everyone>"')
     board.andon(root, args.repo, args.reason or '', clear=args.clear)
     print(f'andon {"cleared" if args.clear else "raised"} on {args.repo}')
-    return 0
 
 
 def cmd_evidence(args):
@@ -120,25 +120,21 @@ def cmd_sent(args):
     ws.record(root, 'sent', {'tool': 'outside the session', 'refs': [args.pr.lower()], 'link': args.link})
     ws.cache_put(root, 'board', None)
     print(f'recorded: {args.pr} was posted at {args.link}')
-    return 0
 
 
 def cmd_report(args):
     root = _root()
     print(json.dumps(report.dora(root, args.window), indent=1) if args.dora else report.day(root, args.day))
-    return 0
 
 
 def cmd_close(args):
     path = report.close(_root())
     print(f'checkpoint written: {path}\nlaunch the steward for the retro; plan again any time to reopen the day')
-    return 0
 
 
 def cmd_init(args):
     for line in setup.init(args.directory, cloud=args.cloud, codex=args.codex):
         print(line)
-    return 0
 
 
 def cmd_sync(args):
@@ -150,7 +146,6 @@ def cmd_sync(args):
     except (RuntimeError, OSError) as exc:  # a pull stopped at a planted link is one more sync failure
         print(f'wuwei sync: {exc}', file=sys.stderr)
         return 1
-    return 0
 
 
 def cmd_doctor(args):
@@ -164,7 +159,6 @@ def cmd_config(args):
     root = _root()
     data = ws.set_config(root, args.key, args.value) if args.key else ws.config(root)
     print('\n'.join(f'{k} = {json.dumps(v)}' for k, v in data.items()))
-    return 0
 
 
 def cmd_verify(args):
@@ -189,17 +183,22 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     actions = {'show': '[id]: the ranked plan, or one item as JSON', 'add': '<id> "<title>" | --from <file>',
                'park': '<id> --reason', 'drop': '<id> --reason', 'done': '<id> --reason', 'restore': '<id>: reopen',
-               'run': '<id> --reason "<what ran, what it showed>" | --job <Codex job json>', 'pass': '--reason', 'view': '[--html]'}
+               'run': '<id> --reason "<what ran, what it showed>" | --job <Codex job json>', 'pass': '--reason', 'view': '[--html]',
+               'session': '<id> <session id>: the builder session of a --host session item'}
     p = sub.add_parser('plan', help=', '.join(actions), formatter_class=argparse.RawDescriptionHelpFormatter,
                        description='actions:\n' + '\n'.join(f'  {k:<8} {v}' for k, v in actions.items()))
     p.add_argument('action', nargs='?', default='show', choices=tuple(actions))
     for name in ('id', 'title'):
         p.add_argument(name, nargs='?')
-    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'pr', 'job'):
+    for name in ('goal', 'repo', 'why', 'reason', 'promise', 'pr', 'job', 'domain'):
         p.add_argument(f'--{name}')
     p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
     p.add_argument('--from', dest='source', help="with add: the lead's candidates file")
-    p.add_argument('--tier', default='standard')
+    p.add_argument('--tier', default='smart')
+    p.add_argument('--in-doubt', action='store_true', help='with add: the promise is in doubt, so the goal gate runs')
+    p.add_argument('--class', dest='cls', choices=plan.CLASSES, help='class of service; default standard, fixed-date for a dated goal')
+    p.add_argument('--after', action='append', help='an item this one waits on; repeat for each')
+    p.add_argument('--host', choices=plan.HOSTS, default='agent', help="with add: where the builder runs; gates stay in this session")
     for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):
         p.add_argument(f'--{name}', type=float)
     for name in ('--json', '--html'):  # --html with view: print the page for a widget
@@ -259,7 +258,7 @@ def main(argv=None):
     p.set_defaults(func=lambda args: hook.main(args.event))
     args = parser.parse_args(argv)
     try:
-        return args.func(args)
+        return args.func(args) or 0  # a command that returns nothing succeeded
     except ValueError as exc:
         print(f'wuwei: {exc}', file=sys.stderr)
         return 2

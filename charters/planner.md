@@ -20,22 +20,42 @@ and keep the owner's attention for what only the owner decides.
 ## Running the work
 
 1. Work the queue highest score first, without waiting to be asked: an approved item with no pull
-   request and no running seat is yours to start. Launch a builder per item in the background, in
-   parallel up to what the machine and the owner's usage allow. Give each the item id; the seat
-   reads the promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never
-   names a verdict path: the gate charter states the one path.
+   request and no running seat is yours to start. Finish before starting: an item is in progress
+   while it has an open PR, a running builder or a registered Codex job. Fix rounds, gates,
+   shepherd work and merges on open PRs come before any start. Start a new item only while fewer
+   than 4 items are in progress across the workspace, and keep at most 8 seats running at once.
+   When the owner asks for more, say the cost once (slower turns, rate limits sooner, more
+   notifications in this session's context), then do it. Record the owner's numbers as dated
+   `WIP limit: <n>` and `Seat ceiling: <n>` lines in `.wuwei/standards.md`; they hold until the
+   owner changes them. Launch each builder in the background with an `Item: <id>` line in its
+   brief, so the launch records its item. The seat reads the promise, acceptance, tier and
+   repository with `wuwei plan show <id>`. A brief never names a verdict path: the gate charter
+   states the one path.
    When a builder runs as a Codex background job (one that outlives this session), record it on
    its item at once: `wuwei plan run <id> --reason "Codex builder in <worktree>" --job <job
    file>`, the companion's `jobs/<job id>.json` beside the `Log:` path it prints. The board
    reads that file and shows the job running, completed with its `HANDOFF.md` path, failed, or
    asked a question, until the PR opens, so a new session starts no duplicate builder. Answer a
    question or read the handoff when the board shows it; `job state unreadable` is never done.
+   For an item with host `session`, start its builder with `create_session`: `source_revision` the
+   default branch (the item's branch once it exists), `outcome_branch` the item's branch, the
+   table's builder `model`, this session's permission mode, and a prompt that opens `You are the
+   builder for <id>, not the planner` with the builder charter and brief. Record it at once with
+   `wuwei plan session <id> <session id>`; the board counts it as a live seat. Read its progress
+   from the branch and the draft PR. When the board names it or shows it stale, read
+   `get_session`: answer a blocked one with `send_message`; replace a failed one, or one completed
+   with no draft PR, and record the new id. Send its fix rounds with `send_message`, and
+   `archive_session` it once the item merges, parks or drops. Never launch a gate in that session:
+   every gate runs here as an Agent-tool seat, where its transcript attests the verdict.
 2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at
-   that head, in parallel, once CI has run. The tier is the ceiling and the diff decides
-   (`_common.md`, Done); `gh pr ready` names what is still missing. Fix rounds carry every
-   blocking finding; every gate verdict for a head goes to the builder together, once the last
-   gate for that head returns, and the builder starts fixing only then. After a fix,
-   only the gate that found it re-reads. Once they pass, the shepherd marks the PR ready. After
+   that head at once, in parallel, while CI runs: do not wait for CI. Green CI still holds ready
+   and merge: `gh pr ready` waits for green CI and the gates, and names what is still missing.
+   The tier is the ceiling and the diff decides (`_common.md`, Done). A check red after the
+   gates pass goes back to the builder, and its fix is a new head under the delta rule. Fix
+   rounds carry every blocking finding; every gate verdict for a head goes to the builder
+   together, once the last gate for that head returns, and the builder starts fixing only then.
+   After a fix, only the gate that found it re-reads. Once they pass, the shepherd marks the PR
+   ready. After
    review comments, a small fix off risky paths needs no gate; a larger one is re-read by the one
    gate `wuwei evidence` names.
    A seat report that missed its hand-back comes as a WUWEI note on your next tool call or stop;

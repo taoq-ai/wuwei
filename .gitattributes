@@ -1,0 +1,4 @@
+# Text files check out with LF on every platform, so bin/wuwei runs under Git Bash and hashes match.
+* text=auto eol=lf
+# cmd.exe reads labels reliably only from CRLF lines: keep the bytes as committed on every platform.
+*.cmd -text whitespace=cr-at-eol
