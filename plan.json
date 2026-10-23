@@ -1,90 +1,6 @@
 {
  "items": [
   {
-   "id": "door-words-text",
-   "title": "fix(guards): the multi-line refusal names the door word it found, quoted text and heredoc bodies included",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 3,
-    "risk": 2,
-    "size": 1
-   },
-   "score": 8.0,
-   "why": "The remaining part of #1117 is a message; the parser stays as the gates left it.",
-   "promise": "The issue's fallback: when the multi-line or unreadable rule refuses (guards.py:319-322), the text names the door words it matched (\"found: gh pr\") and says a door name anywhere in the text counts, a heredoc body or quoted prose included; write such a file with Write. The lead's probe at efcd9e7 shows the issue's other shapes already pass: `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a quoted argument naming git push, `printf ... > brief.md`, and `gh pr create --draft`; the item adds them as regression tests. Files: guards.py, tests, the vendored copy. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after gh-args (both edit guards.bash). Rollback: revert the commit. Outside: reading heredoc bodies as data (a parser change the multi-line rule exists to avoid); a later item if the owner wants it. Assumptions: naming the trigger is enough for seats to route long text through Write; overturned if the retro shows the refusal still costs turns.",
-   "acceptance": [
-    "given `cat > brief.md <<'EOF'` with a body line naming gh pr view, when guards.bash reads it, then it is refused and the text names \"gh pr\" and the Write tool",
-    "given `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a single-line echo of quoted text naming git push into a file, and `gh pr create --draft --title t --body-file b.md`, when guards.bash reads them, then none is refused by the multi-line rule",
-    "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no verdict moves"
-   ],
-   "status": "open",
-   "added": "2026-10-18",
-   "approved": true
-  },
-  {
-   "id": "flow-board",
-   "title": "feat(board): the board shows items in progress against the WIP limit and queues the rest, and a launch over the seat ceiling carries a note",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 6.0,
-   "why": "The runtime half of the owner's 2026-10-22 flow asks: the Stop hook today lists every approved item with no PR as 'no pull request yet', open work to close now, which pushes new starts. Merges after free-lines-6 (lines) and 1221 (same board.py lines 122-126); flow-advice is its cheap trial.",
-   "promise": "In progress is counted across the workspace: open items with a linked open PR, a builder seat this session started that names the item, has no stop and started within the last 4 hours, or a registered Codex job reading running. When in progress reaches the limit (4, or the last 'WIP limit: <n>' line in .wuwei/standards.md), each approved item with no PR and no running seat shows 'queued: <k> items in progress, WIP limit <n>: finish one first' as a waiting gap, so the Stop hook leaves it out; under the limit the highest-score items fill the free slots and show 'no pull request yet' as on main. The team row adds 'orchestration: <k> items in progress, over the WIP limit of <n>: finish before starting' when over, and 'orchestration: <s> seats running, over the ceiling of <c>' when this session's live seats exceed the ceiling (8, or the last 'Seat ceiling: <n>' line). An Agent or Task launch that would take live seats over the ceiling gets a PreToolUse note: 'WUWEI: seat <s+1> running in this session, over the ceiling of <c>: turns slow and rate limits come sooner. Tell the owner once; start it if the owner asked.' Never a refusal; no config key. Files: cli/wuwei/board.py, cli/wuwei/hook.py (advise), cli/wuwei/evidence.py only if the duty pattern must widen, the vendored copies, tests/test_watch.py, tests/test_hook.py, docs/design.md (board and PreToolUse rows), docs/site/reference.md. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +8, budget 12. Rollback: revert.",
-   "acceptance": [
-    "Given 4 items with open PRs and 2 approved items without one, when the board is read, then both show queued [waiting] and the Stop hook lists neither",
-    "Given 3 items in progress and 2 approved items without a PR, when the board is read, then the higher-score one shows no pull request yet and the other shows queued",
-    "Given a builder seat for item X started 5 hours ago with no stop, when in progress is counted, then X does not count",
-    "Given 8 live seats in this session, when the planner launches a ninth, then the launch passes with a note naming 9 over the ceiling of 8; at 7 live seats there is no note",
-    "Given 'WIP limit: 6' in .wuwei/standards.md, when the board is read, then the limit is 6"
-   ],
-   "prs": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true
-  },
-  {
-   "id": "builder-host",
-   "title": "feat(plan): a long item's builder can run as its own session (--host session), gates stay subagents here, and every builder pushes after each green step",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 6.0,
-   "why": "owner 2026-10-22: 'Sounds good, let's go for that' to the recommendation: default stays subagents for every seat; opt in per plan item with --host session, only for builders on long items; a plan field, not a config key (six-key budget); the builder subsession pushes to its branch and opens the draft; gates still run as subagents on that head so attestation stays as strict (#1244); and builders push after every green step so a restart loses at most one step. Today a session restart dropped eight seats and one builder's commits sat unpushed.",
-   "promise": "plan add takes --host session|agent (default agent) and stores it on the item; for an item with host session the planner charter starts its builder with create_session (same environment, the item's branch, the builder charter as the brief) instead of the Agent tool, records the session id on the item, reads its progress from the branch and the draft PR, and never launches a gate in that session; the board counts a session builder as a live seat from its record and shows its session; builder.md says to commit and push after every green step, and every builder (agent or session) hands back the pushed head. Gates for every item stay Agent-tool subagents in the planner's session, so attestation is unchanged. Runtime estimate +12. Files: cli/wuwei/plan.py, __main__.py, board.py, charters/planner.md, builder.md, agents rebuilt, docs, tests, the vendored copy.",
-   "acceptance": [
-    "given plan add <id> --host session, when the item is shown, then host is session; without --host it is agent; any other value is refused",
-    "given an item with host session and a recorded session id, when the board is read, then its builder counts as a live seat against the seat ceiling and its row names the session",
-    "given the charters, when the planner starts a host-session item, then it uses a session for the builder and Agent-tool sentinels for every gate, and builder.md tells every builder to push after each green step"
-   ],
-   "prs": [],
-   "domain": "complicated: a new seat host across the plan, the planner charter and the board, with a known trust line (gates stay in-session)",
-   "in_doubt": false,
-   "class": null,
-   "after": [],
-   "status": "open",
-   "added": "2026-10-22",
-   "approved": true,
-   "changed": "2026-10-22T17:52:50.824532+00:00"
-  },
-  {
    "id": "1223-followup",
    "title": "fix(evidence): finding rows that differ only in case or spacing print apart, and a spec-gap result cached before #1228 is never read",
    "goal": "G-2",
@@ -2846,6 +2762,33 @@
    "changed": "2026-10-22T21:25:16.038779+00:00"
   },
   {
+   "id": "door-words-text",
+   "title": "fix(guards): the multi-line refusal names the door word it found, quoted text and heredoc bodies included",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 3,
+    "risk": 2,
+    "size": 1
+   },
+   "score": 8.0,
+   "why": "The remaining part of #1117 is a message; the parser stays as the gates left it.",
+   "promise": "The issue's fallback: when the multi-line or unreadable rule refuses (guards.py:319-322), the text names the door words it matched (\"found: gh pr\") and says a door name anywhere in the text counts, a heredoc body or quoted prose included; write such a file with Write. The lead's probe at efcd9e7 shows the issue's other shapes already pass: `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a quoted argument naming git push, `printf ... > brief.md`, and `gh pr create --draft`; the item adds them as regression tests. Files: guards.py, tests, the vendored copy. Runtime lines: 0, budget 1. AGENTS.md \"Testing the guards\" applies: the route corpus on main and the branch with its sha256, each route whose verdict moves as its own row. Order: after gh-args (both edit guards.bash). Rollback: revert the commit. Outside: reading heredoc bodies as data (a parser change the multi-line rule exists to avoid); a later item if the owner wants it. Assumptions: naming the trigger is enough for seats to route long text through Write; overturned if the retro shows the refusal still costs turns.",
+   "acceptance": [
+    "given `cat > brief.md <<'EOF'` with a body line naming gh pr view, when guards.bash reads it, then it is refused and the text names \"gh pr\" and the Write tool",
+    "given `node codex-companion.mjs task --write \"$(cat brief.md)\"`, a single-line echo of quoted text naming git push into a file, and `gh pr create --draft --title t --body-file b.md`, when guards.bash reads them, then none is refused by the multi-line rule",
+    "given tests/fixtures/routes.json at main and at the head, when the suite reads every route, then no verdict moves"
+   ],
+   "status": "done",
+   "added": "2026-10-18",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1245",
+   "changed": "2026-10-23T07:20:02.541693+00:00"
+  },
+  {
    "id": "merge-dropped",
    "title": "feat(evidence): a PR file whose change a merge from the base dropped is a gap",
    "goal": "G-2",
@@ -2970,6 +2913,40 @@
    "added": "2026-10-17",
    "approved": true,
    "reason": "merged as 9c637ab (#1123): four gates pass at a287d44; runtime 2,976 on main"
+  },
+  {
+   "id": "guard-wrappers",
+   "title": "fix(guards): the guards read door commands inside powershell, pwsh, cmd, wsl and zsh wrappers, fold the long s and dotless i, and verdict.py splits findings on newlines only",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 8,
+    "size": 3
+   },
+   "score": 8.0,
+   "why": "owner 2026-10-23 approved guard-wrappers (Approve, Recommended): three gaps found in the #1248 and #1250 gate rounds, on main today. Correction to the question: verdict.py:53 splits a verdict file's Findings section, not a transcript; a raw U+2028 in a finding fails the verdict closed",
+   "promise": "a door command (git push, gh pr merge, wuwei hook, a .wuwei or .claude/projects path) wrapped in powershell -c, pwsh -Command, cmd /c, wsl or zsh -c gets the same verdict as unwrapped; .wuwei spelled with the long s (U+017F) or dotless i (U+0131) is refused as .wuwei; a verdict whose finding line holds U+2028 reads as one finding",
+   "acceptance": [
+    "powershell -c 'git push origin main' is refused as git push origin main is",
+    "cmd /c gh pr merge 5 gets the merge door verdict",
+    "zsh -c 'cat .wuwei/ledger/x.jsonl' is refused",
+    "a path naming .wuwei with U+0131 for i is refused",
+    "a verdict file whose finding line holds a raw U+2028 parses as one finding, not a shape error"
+   ],
+   "prs": [],
+   "domain": "complicated: known parser shapes from #1248 and #1250 probes, analysable with a combinatorial probe",
+   "in_doubt": false,
+   "class": "expedite",
+   "after": [],
+   "status": "parked",
+   "added": "2026-10-23",
+   "approved": false,
+   "changed": "2026-10-23T07:19:50.230530+00:00",
+   "reason": "owner 2026-10-23: stop the work; not started, no branch or PR"
   },
   {
    "id": "models-record",
@@ -3277,6 +3254,36 @@
    "reason": "merged as taoq-ai/wuwei#1108"
   },
   {
+   "id": "flow-board",
+   "title": "feat(board): the board shows items in progress against the WIP limit and queues the rest, and a launch over the seat ceiling carries a note",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "The runtime half of the owner's 2026-10-22 flow asks: the Stop hook today lists every approved item with no PR as 'no pull request yet', open work to close now, which pushes new starts. Merges after free-lines-6 (lines) and 1221 (same board.py lines 122-126); flow-advice is its cheap trial.",
+   "promise": "In progress is counted across the workspace: open items with a linked open PR, a builder seat this session started that names the item, has no stop and started within the last 4 hours, or a registered Codex job reading running. When in progress reaches the limit (4, or the last 'WIP limit: <n>' line in .wuwei/standards.md), each approved item with no PR and no running seat shows 'queued: <k> items in progress, WIP limit <n>: finish one first' as a waiting gap, so the Stop hook leaves it out; under the limit the highest-score items fill the free slots and show 'no pull request yet' as on main. The team row adds 'orchestration: <k> items in progress, over the WIP limit of <n>: finish before starting' when over, and 'orchestration: <s> seats running, over the ceiling of <c>' when this session's live seats exceed the ceiling (8, or the last 'Seat ceiling: <n>' line). An Agent or Task launch that would take live seats over the ceiling gets a PreToolUse note: 'WUWEI: seat <s+1> running in this session, over the ceiling of <c>: turns slow and rate limits come sooner. Tell the owner once; start it if the owner asked.' Never a refusal; no config key. Files: cli/wuwei/board.py, cli/wuwei/hook.py (advise), cli/wuwei/evidence.py only if the duty pattern must widen, the vendored copies, tests/test_watch.py, tests/test_hook.py, docs/design.md (board and PreToolUse rows), docs/site/reference.md. AGENTS.md Testing the guards: route corpus at main and head with sha256. Runtime: estimate +8, budget 12. Rollback: revert.",
+   "acceptance": [
+    "Given 4 items with open PRs and 2 approved items without one, when the board is read, then both show queued [waiting] and the Stop hook lists neither",
+    "Given 3 items in progress and 2 approved items without a PR, when the board is read, then the higher-score one shows no pull request yet and the other shows queued",
+    "Given a builder seat for item X started 5 hours ago with no stop, when in progress is counted, then X does not count",
+    "Given 8 live seats in this session, when the planner launches a ninth, then the launch passes with a note naming 9 over the ceiling of 8; at 7 live seats there is no note",
+    "Given 'WIP limit: 6' in .wuwei/standards.md, when the board is read, then the limit is 6"
+   ],
+   "prs": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1252",
+   "changed": "2026-10-23T07:20:02.600201+00:00"
+  },
+  {
    "id": "exception-parser",
    "title": "refactor(guards): one exception: ref and gap parser in guards, called by the hook, so the guard passes only what the hook records",
    "goal": "G-2",
@@ -3436,6 +3443,38 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1082"
+  },
+  {
+   "id": "builder-host",
+   "title": "feat(plan): a long item's builder can run as its own session (--host session), gates stay subagents here, and every builder pushes after each green step",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "owner 2026-10-22: 'Sounds good, let's go for that' to the recommendation: default stays subagents for every seat; opt in per plan item with --host session, only for builders on long items; a plan field, not a config key (six-key budget); the builder subsession pushes to its branch and opens the draft; gates still run as subagents on that head so attestation stays as strict (#1244); and builders push after every green step so a restart loses at most one step. Today a session restart dropped eight seats and one builder's commits sat unpushed.",
+   "promise": "plan add takes --host session|agent (default agent) and stores it on the item; for an item with host session the planner charter starts its builder with create_session (same environment, the item's branch, the builder charter as the brief) instead of the Agent tool, records the session id on the item, reads its progress from the branch and the draft PR, and never launches a gate in that session; the board counts a session builder as a live seat from its record and shows its session; builder.md says to commit and push after every green step, and every builder (agent or session) hands back the pushed head. Gates for every item stay Agent-tool subagents in the planner's session, so attestation is unchanged. Runtime estimate +12. Files: cli/wuwei/plan.py, __main__.py, board.py, charters/planner.md, builder.md, agents rebuilt, docs, tests, the vendored copy.",
+   "acceptance": [
+    "given plan add <id> --host session, when the item is shown, then host is session; without --host it is agent; any other value is refused",
+    "given an item with host session and a recorded session id, when the board is read, then its builder counts as a live seat against the seat ceiling and its row names the session",
+    "given the charters, when the planner starts a host-session item, then it uses a session for the builder and Agent-tool sentinels for every gate, and builder.md tells every builder to push after each green step"
+   ],
+   "prs": [],
+   "domain": "complicated: a new seat host across the plan, the planner charter and the board, with a known trust line (gates stay in-session)",
+   "in_doubt": false,
+   "class": null,
+   "after": [],
+   "status": "done",
+   "added": "2026-10-22",
+   "approved": true,
+   "changed": "2026-10-23T00:04:31.467789+00:00",
+   "reason": "merged as taoq-ai/wuwei#1251"
   },
   {
    "id": "db-recipe",
