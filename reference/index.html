@@ -1,0 +1,1486 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Responsible autonomy for agent teams. A process auditor that reads the evidence, holds the few doors that do not reopen, and asks you only what is yours.">
+      
+      
+        <meta name="author" content="TaoQ AI Labs">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/reference/">
+      
+      
+        <link rel="prev" href="../concepts/codex/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Reference - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Reference
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/the-day/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The day
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The team and its charters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and effort
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/evidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/doors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The doors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks, the sensei
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harness permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/learning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Learning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report, telemetry and DORA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/many-repositories/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Many repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/watch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work in progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/cloud/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running on Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pr-body-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR body lines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verdict-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verdict format
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pr-body-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR body lines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verdict-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verdict format
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">&para;</a></h1>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wuwei init [dir] [--cloud]</code></td>
+<td>Create <code>.wuwei/</code> and merge WUWEI's allow, deny and ask rules into <code>.claude/settings.json</code>; <code>--cloud</code> also copies the plugin into <code>.claude/</code> for cloud sessions; <code>--codex</code> writes the role agents and door rules into <code>.codex/</code></td>
+</tr>
+<tr>
+<td><code>wuwei sent owner/repo#n &lt;link&gt;</code></td>
+<td>Record a review request posted outside the session</td>
+</tr>
+<tr>
+<td><code>wuwei sync</code></td>
+<td>Pull, then push <code>.wuwei/</code> on the <code>wuwei/state</code> branch</td>
+</tr>
+<tr>
+<td><code>wuwei doctor</code></td>
+<td>Install, workspace, ledger, harness rules, and each door's strength per repository</td>
+</tr>
+<tr>
+<td><code>wuwei plan [show] [&lt;id&gt;]</code></td>
+<td>The ranked plan; <code>--json</code> for machines; with an id, that item as JSON (promise and acceptance included)</td>
+</tr>
+<tr>
+<td><code>wuwei plan add &lt;id&gt; "&lt;title&gt;" --goal G-n --repo owner/name --tier smart\|light\|standard\|full</code></td>
+<td>Add an item (tier <code>smart</code> by default, with <code>--domain "clear\|complicated\|complex: &lt;one line of evidence&gt;"</code> and <code>--in-doubt</code> when the promise itself may be wrong) with <code>--value --time --risk --size</code> (WSJF) or <code>--reach --impact --confidence --effort</code> (RICE) and <code>--why</code>, <code>--promise</code>, one <code>--accept</code> per scenario, <code>--class expedite\|fixed-date\|standard\|intangible</code> (the class of service; at most one open expedite item), one <code>--after &lt;id&gt;</code> per item it waits on (never one that waits on it), <code>--host agent\|session</code> (where its builder runs: an Agent-tool seat, the default, or its own session; gates always run as Agent-tool seats in the planner's session; any other value is refused), and <code>--pr owner/repo#n</code> to link a PR whose body has no WUWEI footer (a taken-over PR; the board otherwise says <code>PR owner/repo#n not linked</code>); an id already in the plan is updated in place, and a changed promise or acceptance clears its approval</td>
+</tr>
+<tr>
+<td><code>wuwei plan add --from &lt;file&gt;</code></td>
+<td>Add the lead's candidates (<code>.wuwei/candidates.json</code>): a list, or <code>{"candidates": [...]}</code>, each with an <code>id</code> and a <code>title</code>; any other shape is refused and nothing is added</td>
+</tr>
+<tr>
+<td><code>wuwei plan restore &lt;id&gt;</code></td>
+<td>Reopen a parked or dropped item</td>
+</tr>
+<tr>
+<td><code>wuwei plan park\|drop\|done &lt;id&gt; --reason "..."</code></td>
+<td>Change an item's status</td>
+</tr>
+<tr>
+<td><code>wuwei plan run &lt;id&gt; --reason "&lt;what ran, what it showed&gt;"</code></td>
+<td>Record run evidence for an operations item; refused without <code>--reason</code> or <code>--job</code></td>
+</tr>
+<tr>
+<td><code>wuwei plan run &lt;id&gt; --job &lt;job file&gt;</code></td>
+<td>Register a Codex companion job file; the board shows its state (running, completed with the HANDOFF path, failed, asked a question, or <code>job state unreadable</code>)</td>
+</tr>
+<tr>
+<td><code>wuwei plan session &lt;id&gt; &lt;session id&gt;</code></td>
+<td>Record the builder session of an open <code>--host session</code> item; while the item is open the board counts it as a live builder seat and names the session, and with no PR and no event for four hours shows the row stale; refused for an item with host <code>agent</code> or a done, parked or dropped item</td>
+</tr>
+<tr>
+<td><code>wuwei plan pass --reason "..."</code></td>
+<td>Record a plan pass; reopens a closed day</td>
+</tr>
+<tr>
+<td><code>wuwei plan view [--html]</code></td>
+<td>The plan as a view: writes <code>.wuwei/plan.html</code>, prints a summary and the question line (<code>--html</code> prints the page)</td>
+</tr>
+<tr>
+<td><code>wuwei status [--json]</code></td>
+<td>The board: what each open item lacks; past the WIP limit, an approved item with no PR shows <code>queued</code></td>
+</tr>
+<tr>
+<td><code>wuwei evidence owner/repo#n [--json] [--record DIR]</code></td>
+<td>One PR's gaps; exit 1 when there are gaps</td>
+</tr>
+<tr>
+<td><code>wuwei report [--day YYYY-MM-DD]</code></td>
+<td>The day report</td>
+</tr>
+<tr>
+<td><code>wuwei report --dora [--window 28]</code></td>
+<td>The DORA keys per repository</td>
+</tr>
+<tr>
+<td><code>wuwei close</code></td>
+<td>Checkpoint: write the report for the day so far</td>
+</tr>
+<tr>
+<td><code>wuwei andon owner/repo --reason "..."</code> / <code>--clear</code></td>
+<td>Pull or clear the cord on one repository</td>
+</tr>
+<tr>
+<td><code>wuwei owe &lt;thread link&gt; "&lt;what&gt;" --who &lt;name&gt; [--within 4h \| --due &lt;ISO&gt;]</code></td>
+<td>Record a reply someone is waiting for</td>
+</tr>
+<tr>
+<td><code>wuwei watch [--record "&lt;summary&gt;"]</code></td>
+<td>The last watch pass and replies owed; record a pass</td>
+</tr>
+<tr>
+<td><code>wuwei status --all</code></td>
+<td>The board with process fit too (for the watch)</td>
+</tr>
+<tr>
+<td><code>wuwei config [key value]</code></td>
+<td>Show, or set one of the six keys</td>
+</tr>
+<tr>
+<td><code>wuwei verify</code></td>
+<td>Check the ledger's hash chain</td>
+</tr>
+<tr>
+<td><code>wuwei agents [check\|build]</code></td>
+<td>Check or build the role agents from the charters</td>
+</tr>
+<tr>
+<td><code>wuwei --version</code></td>
+<td>The plugin version</td>
+</tr>
+<tr>
+<td><code>wuwei hook &lt;event&gt;</code></td>
+<td>Called by the harness only</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p><code>.wuwei/config.toml</code> has six keys. Everything else is discovered or part of the process.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repos</code></td>
+<td>the origin of the init directory</td>
+<td>the repositories in the workspace</td>
+</tr>
+<tr>
+<td><code>owner_paths</code></td>
+<td><code>[]</code></td>
+<td>glob patterns you review yourself</td>
+</tr>
+<tr>
+<td><code>prioritisation</code></td>
+<td><code>wsjf</code></td>
+<td><code>wsjf</code> or <code>rice</code></td>
+</tr>
+<tr>
+<td><code>tracker</code></td>
+<td><code>github</code></td>
+<td>where issues live</td>
+</tr>
+<tr>
+<td><code>telemetry</code></td>
+<td><code>true</code></td>
+<td>local tool-call traces</td>
+</tr>
+<tr>
+<td><code>models</code></td>
+<td><code>{}</code></td>
+<td>your rows over the <a href="../concepts/models/">model table</a>: <code>"&lt;role&gt;[ &lt;tier&gt;]" = "&lt;model&gt; &lt;effort&gt;"</code>; set with <code>wuwei config models "builder light=opus medium"</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="files">Files<a class="headerlink" href="#files" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.wuwei/plan.json</code></td>
+<td>the running queue</td>
+</tr>
+<tr>
+<td><code>.wuwei/goals.md</code></td>
+<td>the goals, the direction</td>
+</tr>
+<tr>
+<td><code>.wuwei/plan.html</code></td>
+<td>the plan view you approve</td>
+</tr>
+<tr>
+<td><code>.wuwei/standards.md</code></td>
+<td>rules the retro promoted, per role; a <code>Review requests: &lt;where&gt;</code> line names where reviews are asked; a <code>Generated (&lt;owner/repo&gt;, &lt;date&gt;): &lt;globs&gt;</code> line names files, off risky, owner and contract paths, whose change after a pass needs no delta review</td>
+</tr>
+<tr>
+<td><code>.wuwei/verdicts/&lt;item&gt;/</code></td>
+<td>the sentinels' verdict files</td>
+</tr>
+<tr>
+<td><code>.wuwei/ledger/&lt;clone&gt;.jsonl</code></td>
+<td>the hash-chained record, one file per clone</td>
+</tr>
+<tr>
+<td><code>.wuwei/.gitignore</code></td>
+<td>keeps the state out of working branches; it travels on <code>wuwei/state</code></td>
+</tr>
+<tr>
+<td><code>.wuwei/traces.jsonl</code></td>
+<td>local telemetry</td>
+</tr>
+<tr>
+<td><code>.wuwei/days/&lt;date&gt;/report.md</code></td>
+<td>each checkpoint's report</td>
+</tr>
+<tr>
+<td><code>.wuwei/retro/&lt;date&gt;.md</code></td>
+<td>the steward's retro</td>
+</tr>
+<tr>
+<td><code>.wuwei/canary</code></td>
+<td>the workspace canary token</td>
+</tr>
+</tbody>
+</table>
+<h2 id="pr-body-lines">PR body lines<a class="headerlink" href="#pr-body-lines" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Line</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;sub&gt;[WUWEI &lt;version&gt;](https://taoq-ai.github.io/wuwei/) · Item `&lt;id&gt;` · &lt;title&gt; · Goal &lt;G-n&gt; · Tier &lt;tier&gt;&lt;/sub&gt;</code></td>
+<td>always, last line; the older <code>WUWEI-Item: &lt;id&gt;</code> still links, with a process-fit line naming the footer</td>
+</tr>
+<tr>
+<td><code>No test: &lt;reason&gt;</code></td>
+<td>a change no test can hold</td>
+</tr>
+<tr>
+<td><code>Size: &lt;reason&gt;</code></td>
+<td>over about 400 changed lines</td>
+</tr>
+<tr>
+<td><code>Rollback: &lt;how to undo&gt;</code></td>
+<td>full tier, or <code>owner_paths</code> touched</td>
+</tr>
+<tr>
+<td><code>BREAKING CHANGE: &lt;what&gt;</code> (and <code>!</code> in the title)</td>
+<td>a major only: an incompatible change to the public API, as <a href="../concepts/evidence/#breaking-changes">Breaking changes</a> declares it; a stricter check of a rule the docs already state is a <code>fix:</code> (a patch) with release notes in the body</td>
+</tr>
+<tr>
+<td><code>Announcement: &lt;url&gt;</code></td>
+<td>a breaking change: one http(s) URL alone on the line, without brackets, of a communication that already exists (a PR or issue comment, or a published release note or migration guide); a changelog entry written at release does not count</td>
+</tr>
+</tbody>
+</table>
+<h2 id="verdict-format">Verdict format<a class="headerlink" href="#verdict-format" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>Verdict: PASS | FIX | ESCALATE
+Gate: arch | quality | security | goal
+Item: &lt;plan item id&gt;
+PR: &lt;owner/repo&gt;#&lt;number&gt;   (or &lt;owner/repo&gt; alone before its draft PR exists)
+Head: &lt;the 40-character sha you reviewed&gt;
+Confidence: low | medium | high
+Breaking: no | yes: &lt;what breaks for which clients&gt;   (arch only)
+
+## Findings
+- [critical|high|medium|low] &lt;file&gt;:&lt;line&gt; blocks: yes. Failure: &lt;the concrete scenario&gt;
+- [low] &lt;file&gt;:&lt;line&gt; blocks: no. &lt;a note&gt;   (the &lt;file&gt;:&lt;line&gt; is optional on a note)
+(or none)
+</code></pre></div>
+<p>A blocking finding names its <code>&lt;file&gt;:&lt;line&gt;</code>; a note without a place in the code leaves it out. The
+reviewer ends its report with <code>Verdict file: &lt;path&gt;</code>. A written verdict file is never edited: a
+corrected or second verdict for the same head goes to the next free <code>&lt;gate&gt;-&lt;sha7&gt;-2.md</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.indexes", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

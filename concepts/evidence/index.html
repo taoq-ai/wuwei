@@ -1,0 +1,1803 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Responsible autonomy for agent teams. A process auditor that reads the evidence, holds the few doors that do not reopen, and asks you only what is yours.">
+      
+      
+        <meta name="author" content="TaoQ AI Labs">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/concepts/evidence/">
+      
+      
+        <link rel="prev" href="../models/">
+      
+      
+        <link rel="next" href="../doors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Evidence - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#evidence" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Evidence
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Reference
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../the-day/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The day
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The team and its charters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and effort
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evidence
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#review-statuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review statuses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-spec-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The spec engine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#breaking-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Breaking changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gates-before-the-pr-chosen-by-the-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gates before the PR, chosen by the diff
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gates before the PR, chosen by the diff">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-smart-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The smart tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attested-verdicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attested verdicts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-and-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety and process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exceptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exceptions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-evidence-cannot-be-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When evidence cannot be read
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The doors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks, the sensei
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harness permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Learning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report, telemetry and DORA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../many-repositories/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Many repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../watch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work in progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running on Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#review-statuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review statuses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-spec-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The spec engine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#breaking-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Breaking changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gates-before-the-pr-chosen-by-the-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gates before the PR, chosen by the diff
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gates before the PR, chosen by the diff">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-smart-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The smart tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attested-verdicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attested verdicts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-and-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety and process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exceptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exceptions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-evidence-cannot-be-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When evidence cannot be read
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="evidence">Evidence<a class="headerlink" href="#evidence" title="Permanent link">&para;</a></h1>
+<p>A pull request is done when its safety evidence is complete. <code>wuwei evidence owner/repo#n</code> lists one
+PR's safety gaps; <code>wuwei status</code> lists every open item's. Each gap is <strong>actionable</strong> (the team can close it
+now), <strong>waiting</strong> (CI running, CI not started at a code head with no checks yet, the code host unreadable,
+an andon) or <strong>yours</strong> (an owner review).</p>
+<p>WUWEI never asks how the work was done. A test is in the diff or it is not; a reviewer passed this
+head or did not.</p>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Applies</th>
+<th>Kind</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The WUWEI footer naming the item</td>
+<td>every PR</td>
+<td>process</td>
+<td>work outside the plan is visible, and the audit can trace each change to a goal</td>
+</tr>
+<tr>
+<td>The repository's PR template sections</td>
+<td>when the repo has a template</td>
+<td>process</td>
+<td>the repository's own process comes first</td>
+</tr>
+<tr>
+<td>A test in the diff, or <code>No test: &lt;reason&gt;</code></td>
+<td>code changes</td>
+<td>safety</td>
+<td>test first is the cheapest defect filter there is</td>
+</tr>
+<tr>
+<td>Under about 400 changed lines, or <code>Size: &lt;reason&gt;</code></td>
+<td>every PR, generated files aside</td>
+<td>process</td>
+<td>small batches fail less and are reviewed better</td>
+</tr>
+<tr>
+<td><code>Rollback: &lt;how to undo&gt;</code></td>
+<td>full tier, or <code>owner_paths</code> touched</td>
+<td>process</td>
+<td>a change you cannot undo deserves a plan for undoing it</td>
+</tr>
+<tr>
+<td>The spec engine's steps, judged by their artifacts at the head</td>
+<td>standard and full, when the repo has <code>.specify/</code> or <code>openspec/</code></td>
+<td>process at standard, safety at full</td>
+<td>the agreement about what to build is part of the change</td>
+</tr>
+<tr>
+<td>A breaking change: an <code>Announcement:</code> link, then the owner's confirmation at the head</td>
+<td>a declared break, or one the arch gate finds</td>
+<td>safety</td>
+<td>clients you break should hear it from you first, and you decide whether it ships</td>
+</tr>
+<tr>
+<td>The gates the diff needs, passed before the PR turned ready</td>
+<td>the diff, under the tier's ceiling</td>
+<td>safety</td>
+<td>independent review before anyone else reads the code, and only the reviews the change calls for</td>
+</tr>
+<tr>
+<td>CI green</td>
+<td>every PR</td>
+<td>safety</td>
+<td>the repository's own checks</td>
+</tr>
+<tr>
+<td>Every check the base branch requires ran (see <a href="#required-checks">required checks</a>)</td>
+<td>a base branch with protection or rulesets that require checks</td>
+<td>safety</td>
+<td>a check that never ran is not a pass, and an admin can merge past GitHub's own hold</td>
+</tr>
+<tr>
+<td>A review status settled (see <a href="#review-statuses">review statuses</a>)</td>
+<td>a commit status from a workflow the repo runs on <code>pull_request_review</code></td>
+<td>safety</td>
+<td>a gate waiting on a reviewer needs someone to act; it is not a build</td>
+</tr>
+<tr>
+<td>Every review thread answered</td>
+<td>every PR</td>
+<td>safety</td>
+<td>people's questions are obligations</td>
+</tr>
+<tr>
+<td>A reviewer requested</td>
+<td>every PR</td>
+<td>process</td>
+<td>a PR nobody is asked to read is not reviewed</td>
+</tr>
+<tr>
+<td>Owner review: your approving review, or your <code>owner review:</code> answer, at the head (a <code>breaking:</code> or <code>exception:</code> answer is not one)</td>
+<td><code>owner_paths</code> touched</td>
+<td>safety</td>
+<td>what you chose to review yourself</td>
+</tr>
+<tr>
+<td>Not stale (under three days open)</td>
+<td>every PR</td>
+<td>process</td>
+<td>inventory rots; flow over stock</td>
+</tr>
+</tbody>
+</table>
+<h2 id="review-statuses">Review statuses<a class="headerlink" href="#review-statuses" title="Permanent link">&para;</a></h2>
+<p>Some repositories publish their approval rule as a commit status, from a workflow that runs on
+<code>pull_request_review</code> (ai-stacks' <code>Review Gate</code>). WUWEI follows the status's <code>target_url</code> to its
+workflow run and compares the run's workflow with the workflows the repository has run on
+<code>pull_request_review</code> (its last 100 such runs, read once a day, and only when a head has an
+unsettled status). A match is review evidence, not CI:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>pending</td>
+<td><code>waiting on review: &lt;context&gt;</code></td>
+</tr>
+<tr>
+<td>failure</td>
+<td><code>change request outstanding: &lt;context&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>Both are actionable safety gaps: someone has to ask for a review or answer the change request, and
+the merge stays refused until then, with or without auto-merge. When the Actions host cannot be
+read, the status stays CI (<code>CI running</code> or <code>CI failing</code>), never a pass.</p>
+<p><strong>Why:</strong> a review gate read as CI tells the team to wait for a build that already finished, or to
+fix a build that is not red.</p>
+<h2 id="required-checks">Required checks<a class="headerlink" href="#required-checks" title="Permanent link">&para;</a></h2>
+<p>WUWEI reads the checks the PR's base branch requires: from branch protection (through the branch
+read, which needs only read access) and from the rulesets that apply to the branch. It keeps the
+answer 15 minutes per repository and branch.</p>
+<table>
+<thead>
+<tr>
+<th>What WUWEI finds</th>
+<th>Gap</th>
+<th>Arming auto-merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CI settled, and a required check has no check run and no status of that name on the head</td>
+<td><code>required check not run at &lt;sha7&gt;: &lt;names&gt;</code></td>
+<td>held</td>
+</tr>
+<tr>
+<td>CI still running, and a required check has no run yet</td>
+<td><code>required check not run yet at &lt;sha7&gt;: &lt;names&gt;</code> (waiting)</td>
+<td>passes</td>
+</tr>
+<tr>
+<td>the protection or rulesets read fails or is malformed</td>
+<td><code>required checks unreadable on &lt;branch&gt;: &lt;error&gt;</code> (waiting)</td>
+<td>held</td>
+</tr>
+<tr>
+<td>GitHub reports the PR's <code>mergeable_state</code> blocked, and WUWEI has no other safety gap for it</td>
+<td><code>GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR</code> (waiting)</td>
+<td>passes</td>
+</tr>
+</tbody>
+</table>
+<p>Every one of these gaps holds a direct merge. GitHub creates a job's check run only once the job is
+queued, so while CI runs a missing check may simply not exist yet. GitHub's auto-merge waits on its
+own required checks and its own hold, so arming it then is safe. A required check that ran and
+failed or is still running reads as <code>CI failing</code> or <code>CI running</code>. A failed read is read again next
+time.</p>
+<p><strong>Release PRs.</strong> release-please pushes with the workflow token, and a push with that token starts no
+workflow. Its PR then carries <code>required checks not run</code>, with a pointer to this remedy. The way
+through:</p>
+<ol>
+<li>Set a repository secret the release workflow passes to release-please as its token. In this
+   repository that is <code>RELEASE_PAT</code>, which <code>.github/workflows/release.yml</code> already reads before the
+   workflow token. Use a fine-grained token or a GitHub App token with contents and pull-requests
+   write. Its pushes start the Tests workflow on the release PR.</li>
+<li>Until then, close and reopen the release PR. A reopen by a person starts the <code>pull_request</code>
+   workflows at its head.</li>
+<li>Or record an owner <code>exception:</code> at that head.</li>
+</ol>
+<p>A release PR sometimes does get its checks (when a person's push or reopen started them), so one
+release PR with green checks does not show the secret is set.</p>
+<p><strong>Why:</strong> release-please pushed with the workflow token, so release PRs #1156 and #1157 had none of
+main's required checks on their heads. GitHub reported them blocked, but an admin could merge past
+that, and WUWEI read only the checks that reported.</p>
+<h2 id="the-spec-engine">The spec engine<a class="headerlink" href="#the-spec-engine" title="Permanent link">&para;</a></h2>
+<p>When a repository uses a spec engine, its steps are part of the evidence at <code>standard</code> and <code>full</code>.
+WUWEI does not watch the steps run; it reads their artifacts at the PR head, in every feature
+directory the diff touches, so a later commit that only updates <code>tasks.md</code> still counts.</p>
+<table>
+<thead>
+<tr>
+<th>Engine</th>
+<th>standard</th>
+<th>full adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>spec-kit (<code>.specify/</code>, features in <code>specs/&lt;feature&gt;/</code>)</td>
+<td><code>spec.md</code>, <code>plan.md</code>, <code>tasks.md</code> with every task checked (implement done)</td>
+<td>a <code>## Clarifications</code> section in <code>spec.md</code> (clarify ran), <code>analysis.md</code> with no open CRITICAL or HIGH row (analyze ran clean), every item in <code>checklists/</code> checked</td>
+</tr>
+<tr>
+<td>OpenSpec (<code>openspec/</code>, changes in <code>openspec/changes/&lt;change&gt;/</code>)</td>
+<td><code>proposal.md</code>, at least one capability spec under <code>specs/</code>, <code>tasks.md</code> with every task checked</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Each open CRITICAL or HIGH row is its own gap, and so is each checklist with an unchecked box. A row
+longer than 100 characters is cut at its last cell edge within them, unless another open row would
+print the same text; then both print whole. An owner who accepts one has seen the gap that the
+exception waives.</p>
+<p><strong>Why:</strong> a spec nobody finished is worse than no spec, because it looks like agreement. Checking the
+artifacts, not the commands, keeps the rule true whichever way the steps were run.</p>
+<p>At <code>standard</code> the steps are process fit: a misfit is recorded, never blocking. At <code>full</code> they are
+safety gaps and hold the merge, because full is the tier for work where building the wrong thing is
+expensive.</p>
+<h2 id="breaking-changes">Breaking changes<a class="headerlink" href="#breaking-changes" title="Permanent link">&para;</a></h2>
+<p>A breaking change is a major version under <a href="https://semver.org/spec/v2.0.0.html">SemVer 2.0.0</a>:
+an incompatible change to the public API a project declares. Its clients cannot be un-broken, so
+it is close to a one-way door. In a repository WUWEI audits, the arch gate reads that repository's
+declared public API, or what it documents for clients when it declares none.</p>
+<p>WUWEI's own public API is:</p>
+<ul>
+<li>the CLI commands, flags, exit codes and the output documented for scripts;</li>
+<li>the config keys and their defaults;</li>
+<li>the ledger, state and verdict file formats;</li>
+<li>the PR body lines and owner question shapes that seats and owners write;</li>
+<li>the hook input and output contract;</li>
+<li>the skill names (<code>/wuwei-run</code>, <code>/wuwei-watch</code>, <code>/wuwei-close</code>, <code>/wuwei-rules</code>, and the old name
+  of a renamed skill while its alias ships), the plugin name and the marketplace name;</li>
+<li>the agent role names, which the config's <code>models</code> rows name;</li>
+<li>the owner-written files: <code>.wuwei/goals.md</code>, <code>.wuwei/standards.md</code> and the plan file format.</li>
+</ul>
+<p>The gate reads this list, or a project's own declaration, at the base commit, never from the PR's
+own head, so a PR cannot shrink the API it is judged by. A change is classified by what it does to
+that API:</p>
+<table>
+<thead>
+<tr>
+<th>Bump</th>
+<th>The change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>major</td>
+<td>a documented element is removed, renamed or given a different meaning or shape; an input every client must now give; a documented exit code changes meaning</td>
+</tr>
+<tr>
+<td>minor</td>
+<td>a new capability that existing clients need not use; a new check that is off by default or only adds information</td>
+</tr>
+<tr>
+<td>patch</td>
+<td>a fix of behaviour that contradicted the documented public API at the base, including a closed guard bypass and a gap the docs already promised; docs; internals</td>
+</tr>
+</tbody>
+</table>
+<p>A fix makes the code do what the docs already said, so it is a patch even when WUWEI now refuses
+or reports more. Refusing or reporting more is a patch only under that condition: the old
+behaviour contradicted the documented public API. A new rule that asks every PR for something the
+docs never asked is an input every client must now give, so a major. An exit code is judged by its
+meaning, not by which inputs reach it: when <code>wuwei evidence</code> exits 1 on one more PR because a
+documented rule is now checked strictly, 1 still means gaps, so that is a patch. A change with
+any major part is a major. When the gate is unsure which bump applies, it escalates to you with
+<code>Breaking: yes</code>.</p>
+<p>Versions 2.0.0 to 4.0.0 were bumped under the earlier rule, where any visible change in behaviour
+counted as breaking, and from 4.1.0 the SemVer policy applies.</p>
+<p>WUWEI finds a breaking change three ways: the PR declares it (a <code>!</code> in the title, a
+<code>BREAKING CHANGE:</code> line), the architecture gate states it (every arch verdict carries
+<code>Breaking: no</code> or <code>Breaking: yes: &lt;what breaks for which clients&gt;</code>, and yes means a major), and a
+change to a contract file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier
+so it looks. A patch is a <code>fix:</code> commit and a minor a <code>feat:</code>, as release-please bumps them; only
+a major takes a <code>!</code>.</p>
+<p>Before a major merges it needs evidence, in order:</p>
+<ol>
+<li>An <code>Announcement: &lt;url&gt;</code> line: one http(s) URL alone on the line, without brackets. It points at
+   a client communication that already exists: a PR or issue comment, or a published release note
+   or migration guide. A changelog entry written at release does not count.</li>
+<li>Your confirmation, asked once the announcement exists:
+   <code>breaking: owner/repo#n at &lt;sha7&gt;: &lt;what breaks&gt;. Announced at &lt;link&gt;. Proceed?</code>. It binds to that
+   head; a change after it asks again.</li>
+</ol>
+<p><strong>Why:</strong> a break nobody announced is an outage for someone else. The team does the work of finding
+and announcing it; you decide whether it ships. A major that is not one costs clients an upgrade
+review for nothing, so a fix of a documented rule ships as a patch, with release notes.</p>
+<h2 id="gates-before-the-pr-chosen-by-the-diff">Gates before the PR, chosen by the diff<a class="headerlink" href="#gates-before-the-pr-chosen-by-the-diff" title="Permanent link">&para;</a></h2>
+<p>The gates run before review: the PR opens as a draft, the gates read its head while CI runs, and
+<code>gh pr ready</code> and reviewer requests are refused until the gates pass at its head, so reviewers and
+the merge only ever see gated code. They also wait for green CI at the head, naming what holds it
+(a review-triggered status is review evidence, not CI); a red check found after the gates pass goes back to the builder, and its fix is a new head.</p>
+<p>The tier is a ceiling and the diff decides what runs under it:</p>
+<table>
+<thead>
+<tr>
+<th>The diff</th>
+<th>Gates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>prose only, at any size (<code>.md</code>, <code>.rst</code> and <code>.adoc</code> files outside the spec folders, other than the files seats load such as <code>AGENTS.md</code>, <code>CLAUDE.md</code>, charters, agents and skills; <code>LICENSE</code>; <code>NOTICE</code>), or specs of 200 lines or fewer with no contract</td>
+<td>none</td>
+</tr>
+<tr>
+<td>code</td>
+<td>quality</td>
+</tr>
+<tr>
+<td>risky paths (auth, sessions, tokens, secrets, crypto, SQL, migrations, policies, infrastructure, CI, dependency manifests) or <code>owner_paths</code>, at standard</td>
+<td>+ security</td>
+</tr>
+<tr>
+<td>a contract file or a spec contract (a file under a spec's <code>contracts/</code> folder) at any tier, or at standard more than 200 changed lines that are not prose (code, specs, <code>.txt</code> files, code under <code>docs/</code>, the files seats load) or 10 code files</td>
+<td>+ arch</td>
+</tr>
+<tr>
+<td>full tier</td>
+<td>all four</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-smart-tier">The smart tier<a class="headerlink" href="#the-smart-tier" title="Permanent link">&para;</a></h3>
+<p><code>smart</code> is the default for new items. The lead classifies each item with Cynefin and records the
+domain with one line of evidence (<code>--domain "clear: &lt;why&gt;"</code>); the gates start from the standard
+rows above and the domain and the measured signals at the head only add to them:</p>
+<table>
+<thead>
+<tr>
+<th>Domain or signal</th>
+<th>Gates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>clear</td>
+<td>the standard rows above</td>
+</tr>
+<tr>
+<td>complicated, on a trust path (auth, sessions, tokens, secrets, permissions, grants, policies)</td>
+<td>+ arch</td>
+</tr>
+<tr>
+<td>complex, or no domain recorded, or a domain in another spelling</td>
+<td>quality, security and arch, a short <code>How this fails</code> and the spec engine's artifacts, which hold the merge</td>
+</tr>
+<tr>
+<td>a changed Python function whose decision nodes (if, loop, except, assert, boolean operator, comprehension, match case, conditional expression), read with <code>ast</code> at the base and the head and summed over functions of one name, rise to 10 or more (McCabe complexity over 10); a head that cannot be read or parsed counts as a rise</td>
+<td>+ security</td>
+</tr>
+<tr>
+<td>a code patch that names what a guard waives or refuses (deny, ask, allow, refuse, waive, excepted, exception, <code>permissionDecision</code>, <code>PROCESS</code>, <code>DUTY</code>), or a code file with no patch</td>
+<td>+ arch</td>
+</tr>
+<tr>
+<td>the promise marked in doubt (<code>--in-doubt</code>)</td>
+<td>+ goal</td>
+</tr>
+</tbody>
+</table>
+<p>A model-written or seat-written field can only raise the set: a <code>clear</code> domain on an owner path
+still takes security, and on a guard change still takes arch.</p>
+<p>A one-line config flag costs one gate. After a fix round only the gate that found the problem
+re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
+the earlier passes; a larger one is re-read by the one gate it needs (security for risky paths,
+arch for a contract, quality otherwise). The delta is what moved in the PR's own diff against its
+base, not everything between the two heads. A merge of the base that leaves the PR's own patches
+alone (line numbers aside) carries the passes, as does a change only to files the workspace
+declares generated with a dated line in <code>.wuwei/standards.md</code>, such as
+<code>- Generated (acme/app, 2026-10-22): guide/* src/version.py</code>. The line applies off risky, owner
+and contract paths: a file there still counts, whatever the line names. When the error budget is overrun (smart rises to
+standard), or a light item touches a
+trust path (auth, sessions, tokens, secrets, permissions, grants, policies) outside docs, the raised
+tier takes its full gate set.</p>
+<p><strong>Why:</strong> gates that run after the PR opens race the merge, and four gates on a one-line change
+cost more than they find. Review cost follows risk.</p>
+<h2 id="attested-verdicts">Attested verdicts<a class="headerlink" href="#attested-verdicts" title="Permanent link">&para;</a></h2>
+<p>A verdict counts only when WUWEI attested it. When a sentinel stops, the SubagentStop hook reads the
+file it names (<code>Verdict file: &lt;path&gt;</code>), checks its shape, and records its hash, gate, item, head,
+confidence and the agent that wrote it. A malformed verdict goes back to the reviewer once with the
+format. A file edited after attestation no longer counts, except that a finding (FIX or ESCALATE)
+still holds as recorded: replacing it cannot turn it into a pass. A verdict counts only at an
+ancestor of the PR head. A pass counts only for this PR, for its repository alone, or when no PR is
+named (an imported 0.34 verdict); a finding holds from any PR of the item. A later pass at an older
+head never clears a finding. At the same head it clears a FIX only when it names that file on a
+<code>Supersedes: &lt;item&gt;/&lt;file&gt;</code> line, for a finding closed outside the diff; an ESCALATE stays the
+owner's. Otherwise only a pass at a newer head on the PR's line clears it. <code>Supersedes:</code> clears
+gates only: an arch <code>Breaking: no</code> clears a <code>Breaking: yes</code> only from a newer head on the PR's line,
+for this PR or its repository alone. The
+create and ready doors read no PR yet, so there a pass for any PR of the item in that repository
+counts. A gate whose only pass named another PR reads missing: re-run it with
+<code>PR: &lt;owner/repo&gt;#&lt;n&gt;</code>. A seat that writes over another seat's verdict is sent back to
+write its own file beside it. When the stop cannot read the seat's last message, the handback to the
+lead carries it, and the verdict is attested from there. A verdict file that does not count is
+never silent: the board names it and why (its shape, or that no sentinel attested it). An attested
+pass that does not count for this PR or head shows only as the gate missing.</p>
+<p><strong>Why:</strong> a review is evidence only if a reviewer wrote it and it has not changed since. The hook
+checks the file at stop, however it was written, so a shell edit cannot slip past the lint.</p>
+<h2 id="duties">Duties<a class="headerlink" href="#duties" title="Permanent link">&para;</a></h2>
+<p>A <strong>duty</strong> is work the team owes that does not hold the merge but reaches the team until it is
+done: asking for review where the team asks (see <a href="../watch/#review-requests">review requests</a>), and,
+when a check is red, re-requesting an approval given at an older commit (the approval is named with
+its commit, so nobody re-runs a review gate that wants an approval at the head).
+One <code>team</code> row, first on the board, names the seats nobody runs: <code>orchestration: open PRs with no shepherd seat running</code>
+when more than two PRs are open, and <code>orchestration: gates owed with no gate seat running</code> when a
+gate is missing at a head with no failing check: gates start at push, while CI runs or before it
+starts, and a red head goes to its builder first. A seat runs when this session
+started it today and no stop or unconfirmed row followed; a Codex job writes no seat row and never
+counts. The lines carry no count, so a Stop reminds once while the state holds.
+Duties show on the board and in the Stop reminder, like safety gaps.</p>
+<h2 id="safety-and-process">Safety and process<a class="headerlink" href="#safety-and-process" title="Permanent link">&para;</a></h2>
+<p>Only <strong>safety</strong> gaps hold a merge and reach the team while it works: a test, the gates at the head,
+green CI, answered threads, owner review, a breaking change's announcement and confirmation, the
+spec engine's steps at <code>full</code>, and evidence that can be read. Everything else is
+<strong>process fit</strong>: the plan link, the PR template, small batches, the <code>Rollback:</code> line, the spec
+engine's steps below <code>full</code>, a requested reviewer, staleness. Process fit never blocks and is never shown on the
+board or asked about; the merge records it, the report lists it, and the steward turns a rule that
+keeps misfiring, or keeps being skipped, into a fix.</p>
+<p><strong>Why:</strong> continuous flow. Neither you nor the model should be distracted by a rule that does not
+fit this change. The audit still sees every misfit, and the process learns from them.</p>
+<h2 id="exceptions">Exceptions<a class="headerlink" href="#exceptions" title="Permanent link">&para;</a></h2>
+<p>For a safety gap only, you can accept one gap at one head as an exception (see <a href="../decisions/#exceptions">decisions</a>). The
+gap disappears from that head's evidence, the exception stays on the record, and a follow-up item
+in the plan closes it later. Only the gap the exception names exactly disappears; a part of a gap
+waives nothing. When it is a gate gap, the <code>verdict ... not counted</code> lines under it go too, and the
+ready door lets that draft turn ready or ask reviewers at that head.</p>
+<h2 id="when-evidence-cannot-be-read">When evidence cannot be read<a class="headerlink" href="#when-evidence-cannot-be-read" title="Permanent link">&para;</a></h2>
+<p>An unreadable code host is a waiting gap, never a pass. A merge whose evidence cannot be read stays
+refused.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.indexes", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

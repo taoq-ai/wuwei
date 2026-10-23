@@ -1,0 +1,1509 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Responsible autonomy for agent teams. A process auditor that reads the evidence, holds the few doors that do not reopen, and asks you only what is yours.">
+      
+      
+        <meta name="author" content="TaoQ AI Labs">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/concepts/models/">
+      
+      
+        <link rel="prev" href="../team/">
+      
+      
+        <link rel="next" href="../evidence/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Models and effort - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#models-and-effort" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Models and effort
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Reference
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../the-day/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The day
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The team and its charters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and effort
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and effort
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The inputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-each-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why each row
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escalation-and-diversity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escalation and diversity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#effort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Effort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-claude-code-applies-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Claude Code applies it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Codex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#learning-from-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learning from it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The doors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks, the sensei
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harness permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../learning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Learning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report, telemetry and DORA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../many-repositories/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Many repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../watch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work in progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud sessions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running on Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The inputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-each-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why each row
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escalation-and-diversity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escalation and diversity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#effort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Effort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-claude-code-applies-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Claude Code applies it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Codex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#learning-from-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learning from it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="models-and-effort">Models and effort<a class="headerlink" href="#models-and-effort" title="Permanent link">&para;</a></h1>
+<p>Each seat runs on the model and effort its work needs. The planner charter holds one table for
+every repository running WUWEI (<code>charters/planner.md</code>, "Model and effort"). The planner follows it,
+departs from it with a recorded reason, and is never refused. WUWEI advises; you decide.</p>
+<p><strong>Why:</strong> a seat on too weak a model costs fix rounds and escaped defects; a seat on too strong a
+setting costs tokens for nothing. One written table makes the choice the same each time, and the
+retro can measure it.</p>
+<h2 id="the-inputs">The inputs<a class="headerlink" href="#the-inputs" title="Permanent link">&para;</a></h2>
+<p>The table reads only signals WUWEI already computes for every item:</p>
+<ul>
+<li>the item's tier (<code>light</code>, <code>standard</code>, <code>full</code>), after the change failure rate rule raises it a
+  step;</li>
+<li>risky, owner or contract paths: the risky paths, the owner paths and the contract files the diff
+  touches (a wider set than the trust paths that raise a light item to standard);</li>
+<li>the item's history: failed fix rounds, gate blockers the builder missed, a park for a design
+  problem, a one-way decision.</li>
+</ul>
+<h2 id="why-each-row">Why each row<a class="headerlink" href="#why-each-row" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Seat</th>
+<th>Setting</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>lead</td>
+<td>Opus 5.5 xhigh</td>
+<td>ranking and red-teaming the plan is long-horizon reasoning, and a wrong plan wastes every seat after it</td>
+</tr>
+<tr>
+<td>builder</td>
+<td>Sonnet 5.5 medium at light, Opus 5.5 medium at standard, Opus 5.5 high at full or on risky, owner or contract paths</td>
+<td>Sonnet 5.5 is Anthropic's choice for everyday coding; Opus 5.5 for complex agentic coding; those paths are intelligence-sensitive</td>
+</tr>
+<tr>
+<td>sentinel-security</td>
+<td>Opus 5.5 high, xhigh at full or on risky, owner or contract paths</td>
+<td>a missed trust defect is the costliest escape</td>
+</tr>
+<tr>
+<td>sentinel-arch</td>
+<td>Opus 5.5 high</td>
+<td>coupling and contracts need reasoning across the whole design</td>
+</tr>
+<tr>
+<td>sentinel-quality</td>
+<td>Sonnet 5.5 high, Opus 5.5 high at full or on risky, owner or contract paths</td>
+<td>a second model family on routine heads; the stronger model where a missed test costs most</td>
+</tr>
+<tr>
+<td>sentinel-goal</td>
+<td>Sonnet 5.5 high</td>
+<td>reads the promise against the diff; a different model than the builder at full</td>
+</tr>
+<tr>
+<td>shepherd</td>
+<td>Sonnet 5.5 medium, Opus 5.5 high for a conflict where both sides changed logic</td>
+<td>most PR work is routine; a logic conflict is not</td>
+</tr>
+<tr>
+<td>steward</td>
+<td>Opus 5.5 high</td>
+<td>the retro weighs evidence across the day</td>
+</tr>
+<tr>
+<td>lookups and searches</td>
+<td>Haiku 5.5 low</td>
+<td>Anthropic names Haiku 5.5 for simple, speed-critical work and low effort for simple subagent tasks</td>
+</tr>
+</tbody>
+</table>
+<p>Where two settings in a row apply, the later one holds. The session's own model is yours. The table
+never names it.</p>
+<h2 id="escalation-and-diversity">Escalation and diversity<a class="headerlink" href="#escalation-and-diversity" title="Permanent link">&para;</a></h2>
+<p>The ladder runs Haiku 5.5, Sonnet 5.5, Opus 5.5 at medium, high and xhigh, then Fable 5.1. A seat
+moves up one step after a failed fix round or after a gate finds a blocker the builder missed.
+Fable 5.1, Anthropic's most capable model, is the step for an item parked as a design problem (two
+failed fix rounds) and for a one-way decision. Under zero data retention Fable may be unavailable;
+there the top step is Opus 5.5 at max. A step never lowers effort: Sonnet 5.5 at high steps to Opus
+5.5 at high.</p>
+<p>A seat class steps down only on retro evidence: 10 merged items on the lower setting with no
+escaped defect. The count makes the rule testable.</p>
+<p>At least one gate per head runs on a different model than the builder, so the reviews do not share
+every blind spot. When the table would put every gate on the builder's model (a light item, or a
+standard item on risky, owner or contract paths), the quality gate takes the other of Opus 5.5 and
+Sonnet 5.5, at high.</p>
+<p>After a fix, a delta is re-read by one gate, and the passes from the earlier head carry to it. Those
+carried passes count toward diversity, so the gate that re-reads keeps its own model. The limit: if
+the gate on the other model passed the earlier head and the fix changed what it read, the delta has
+no fresh review from another model.</p>
+<p>Haiku 5.5, the weakest tier, never runs a gate on risky, owner or contract paths. That floor is not a
+departure the planner can record with a reason: breaking it is an <code>exception:</code> for you.</p>
+<h2 id="effort">Effort<a class="headerlink" href="#effort" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Set effort on every call. Opus 5.5 defaults to medium, and defaults differ between models and
+  between the API and Claude Code (Sonnet 5.5 is high on the API, medium in Claude Code).</li>
+<li>Use at least high for intelligence-sensitive work, max when correctness matters more than cost,
+  and low for simple subagent tasks.</li>
+<li>Before moving a seat to a cheaper model, measure the stronger model at a lower effort. Anthropic
+  reports that tuning effort is often a better lever than switching models.</li>
+<li>Judge cost per completed item, not per request: a cheap seat that needs a second round costs
+  more.</li>
+</ul>
+<h2 id="how-claude-code-applies-it">How Claude Code applies it<a class="headerlink" href="#how-claude-code-applies-it" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The planner passes <code>model</code> and <code>effort</code> on each Agent call, with full model IDs
+  (<code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code>, <code>claude-haiku-5-5</code>, <code>claude-fable-5-1</code>). A family alias
+  such as <code>opus</code> can resolve to the session's own model when it is in that family, and <code>sonnet</code>
+  resolves to an older version on some providers. The per-call <code>effort</code> parameter needs Claude
+  Code v2.1.292 or later.</li>
+<li>On Amazon Bedrock, Google Cloud's Agent Platform and Microsoft Foundry, model IDs are the
+  provider's own, so <code>claude-sonnet-5-5</code> may not resolve and the seat can fall back to the session's
+  model without notice. There, set your <code>models</code> rows to the provider's IDs, or pass the aliases
+  with <code>ANTHROPIC_DEFAULT_OPUS_MODEL</code>, <code>ANTHROPIC_DEFAULT_SONNET_MODEL</code> and
+  <code>ANTHROPIC_DEFAULT_HAIKU_MODEL</code> pinned.</li>
+<li>The brief's first line is <code>Model: &lt;model&gt; &lt;effort&gt; (&lt;row&gt;)</code>. A departure adds
+  <code>Model reason: &lt;one line&gt;</code>.</li>
+<li>Model precedence: the call's <code>model</code> parameter, then the agent file's <code>model</code> frontmatter, then
+  <code>CLAUDE_CODE_SUBAGENT_MODEL</code>, then the session model. Four cases change that order:</li>
+<li>setting <code>CLAUDE_CODE_SUBAGENT_MODEL_FORCE</code> puts the variable first;</li>
+<li>before Claude Code v2.1.251, the variable came first anyway;</li>
+<li>an installed mod that sets a model in its <code>agent.spawn</code> hook replaces the per-call parameter;</li>
+<li>a value your organization's <code>availableModels</code> blocks is substituted: a family alias takes the
+    newest permitted version of that family, and a full ID runs on the session's model.</li>
+<li>Effort precedence: <code>CLAUDE_CODE_EFFORT_LEVEL</code> beats every other effort setting, the per-call
+  parameter included. A workspace that sets it turns WUWEI's effort advice off. A managed
+  <code>maxEffortLevel</code>, or an organization effort cap, still limits the level a seat runs at.</li>
+<li>What a hook can see: the hooks page lists <code>model</code> in the Agent call's <code>tool_input</code> and not
+  <code>effort</code>, though a session transcript of 2026-10-18 shows the call's input holds <code>effort</code> when
+  the planner passes it. The brief's first line records the effort asked for either way. What ran
+  is visible too: the PostToolUse response carries <code>resolvedModel</code>, the model the seat started on,
+  and PreToolUse, PostToolUse, Stop and SubagentStop inputs carry <code>effort.level</code>, the level in
+  effect (also <code>$CLAUDE_EFFORT</code> in Bash).</li>
+<li><code>wuwei agents build</code> writes each role's default (the row's first setting, standard for the
+  builder) into its agent file as <code>model:</code> and <code>effort:</code>, so a launch with no <code>model</code> still runs
+  on the table.</li>
+<li>On each Agent launch the hook compares the role, model and effort with the table at the item's
+  tier (from the brief's <code>Item:</code> line, raised one step when the cached change failure rate says
+  so). On a departure with no <code>Model reason:</code> line it adds a note naming the table's setting; it
+  never refuses or rewrites the call. It cannot see the diff's paths at launch, so a setting the
+  row gives on risky, owner or contract paths, or for a logic conflict, counts as a fit. A Haiku
+  gate gets the note even with a reason line or a <code>models</code> row.</li>
+<li>Each launch records the model that ran, the model and effort asked for, the reason and the item
+  (<code>unrecorded</code> or <code>unmeasured</code> where the hook cannot read them). A gate's verdict row copies the
+  model and effort.</li>
+<li>Your own <code>models</code> rows in <code>.wuwei/config.toml</code> override any table row, for example
+  <code>models = {"builder light" = "opus medium"}</code>. A row for a role and tier wins over one for the
+  role alone. A <code>models</code> row that puts Haiku 5.5 on a gate does not break the floor: only your
+  <code>exception:</code> answer does.</li>
+<li><code>wuwei doctor</code> names <code>CLAUDE_CODE_EFFORT_LEVEL</code> and <code>CLAUDE_CODE_SUBAGENT_MODEL</code> in a <code>note</code> row when
+  they are set. A note never changes the doctor's exit code.
+  With the first set, the hook leaves effort out of its note; with the second, the model.</li>
+<li><code>/wuwei-watch</code> may run on Sonnet 5.5 at medium effort through its own frontmatter. The skill offers
+  that as an option, not a default.</li>
+</ul>
+<h2 id="on-codex">On Codex<a class="headerlink" href="#on-codex" title="Permanent link">&para;</a></h2>
+<p>The same table holds on Codex. The Codex column is the planner's reading of the Codex catalog:</p>
+<table>
+<thead>
+<tr>
+<th>Claude</th>
+<th>Codex</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fable 5.1</td>
+<td>gpt-6-astra</td>
+</tr>
+<tr>
+<td>Opus 5.5</td>
+<td>gpt-6.1-sol</td>
+</tr>
+<tr>
+<td>Sonnet 5.5</td>
+<td>gpt-6.1-sol at a lower effort, or gpt-6-luna for checklist seats</td>
+</tr>
+<tr>
+<td>Haiku 5.5</td>
+<td>gpt-6-luna low</td>
+</tr>
+</tbody>
+</table>
+<p>It reads the descriptions in Codex's model catalog ("frontier intelligence for
+the most demanding work", "latest workhorse model for coding and everyday work", "fast and
+affordable model for easier tasks"). It is not OpenAI guidance on seats, and it is unmeasured: no
+outcome on Codex has been recorded against it.</p>
+<ul>
+<li>Effort keeps the same names. gpt-6-astra and gpt-6.1-sol add <code>ultra</code> above <code>max</code> ("maximum
+  reasoning with automatic task delegation"), the Codex top step; gpt-6-luna stops at <code>max</code>. The
+  catalog's default is <code>low</code> on gpt-6-astra and gpt-6.1-sol and <code>medium</code> on gpt-6-luna, so set
+  effort here too.</li>
+<li>A role file (<code>.codex/agents/&lt;role&gt;.toml</code>) accepts <code>model</code> and <code>model_reasoning_effort</code>, and the
+  <code>[agents]</code> config sets <code>default_subagent_model</code> and <code>default_subagent_reasoning_effort</code> for
+  spawned agents.</li>
+<li><code>spawn_agent</code> takes <code>model</code> and <code>reasoning_effort</code> only when the workspace turns on
+  <code>expose_spawn_agent_model_overrides</code> (off by default). Its own guidance tells the model that
+  spawned agents inherit the current model and not to set <code>model</code> unless the user asks.</li>
+<li>The role files <code>wuwei init --codex</code> writes still name no model; writing the table into them is
+  later work. A Codex launch is recorded with its model and effort unmeasured, and gets no note.</li>
+</ul>
+<h2 id="learning-from-it">Learning from it<a class="headerlink" href="#learning-from-it" title="Permanent link">&para;</a></h2>
+<p>At each close the steward reads outcomes by seat, model and effort. The report's Learning section
+gives one line for each: launches, fix rounds per item, blocking findings, escapes traced to a
+passing gate and tokens, and how many launches had no readable model or effort. Where the numbers back it, the retro proposes a change to a row,
+with those numbers, as advice. See <a href="../learning/">the learning loop</a>.</p>
+<h2 id="sources">Sources<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
+<p>The model ids and effort values above are the ones these pages name.</p>
+<ul>
+<li><a href="https://platform.claude.com/docs/en/about-claude/models/choosing-a-model">Choosing the right model</a>, Anthropic, read 2026-10-18: the selection matrix (Fable 5.1 for the highest capability, Opus 5.5 for complex agentic coding, Sonnet 5.5 for everyday coding and agent work, Haiku 5.5 for the lowest latency and sub-agent tasks), and effort as often a better lever than switching models.</li>
+<li><a href="https://platform.claude.com/docs/en/models/overview">Models overview</a>, Anthropic, read 2026-10-18: start with Opus 5.5 for most workloads, Fable 5.1 for demanding reasoning and long-horizon agentic work, and the API model ids.</li>
+<li><a href="https://platform.claude.com/docs/en/build-with-claude/effort">Effort</a>, Anthropic, read 2026-10-18: Opus 5.5 and Haiku 5.5 default to medium, set effort explicitly, low for simple subagent tasks, Sonnet 5.5 starts at medium for agentic coding.</li>
+<li><a href="https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence">Optimizing for cost and intelligence</a>, Anthropic, read 2026-10-18: compare models on cost per completed task, and sweep effort on the current model, then price the stronger model at low effort, before adding a second model.</li>
+<li><a href="https://code.claude.com/docs/en/sub-agents">Subagents</a>, Claude Code, read 2026-10-18: the model order and the cases that change it (<code>CLAUDE_CODE_SUBAGENT_MODEL_FORCE</code>, v2.1.251, a mod's <code>agent.spawn</code>, <code>availableModels</code>), the <code>effort</code> frontmatter field and per-call parameter, and family alias resolution.</li>
+<li><a href="https://code.claude.com/docs/en/model-config">Model configuration</a>, Claude Code, read 2026-10-18: aliases and the <code>ANTHROPIC_DEFAULT_*_MODEL</code> pins, provider-specific model IDs, the effort resolution order with <code>CLAUDE_CODE_EFFORT_LEVEL</code> first, <code>maxEffortLevel</code>, and the effort levels each model supports.</li>
+<li><a href="https://code.claude.com/docs/en/hooks">Hooks</a>, Claude Code, read 2026-10-18: the Agent tool input fields (<code>model</code>, no <code>effort</code>), <code>resolvedModel</code> in the PostToolUse response, the common <code>effort.level</code> input field and <code>$CLAUDE_EFFORT</code>, and the 10,000-character cap on hook context.</li>
+<li><a href="https://code.claude.com/docs/en/skills">Skills</a>, Claude Code, read 2026-10-18: a skill's <code>model</code> and <code>effort</code> frontmatter, which hold for the rest of the turn.</li>
+<li><a href="https://code.claude.com/docs/en/plugins/components">Plugin components</a>, Claude Code, read 2026-10-18: a plugin agent's frontmatter supports <code>model</code> and <code>effort</code>.</li>
+<li><a href="https://github.com/openai/codex/blob/8c07694/codex-rs/models-manager/models.json">Codex model catalog</a>, OpenAI Codex source at commit 8c07694, read 2026-10-18: the model descriptions, effort levels and defaults. Codex's source stands in for OpenAI documentation here.</li>
+<li><a href="https://github.com/openai/codex/blob/8c07694/codex-rs/core/src/agent/role.rs">Codex agent roles</a>, OpenAI Codex source at commit 8c07694, read 2026-10-18: a role file's <code>model</code> and <code>model_reasoning_effort</code> overrides.</li>
+<li><a href="https://github.com/openai/codex/blob/8c07694/codex-rs/core/src/agent/child_config.rs">Codex spawned agent config</a> and <a href="https://github.com/openai/codex/blob/8c07694/codex-rs/core/src/tools/handlers/multi_agents_spec.rs">spawn_agent tool text</a>, OpenAI Codex source at commit 8c07694, read 2026-10-18: the <code>[agents]</code> defaults, the per-call overrides and their exposure flag, and the inherit-by-default guidance.</li>
+<li><a href="https://code.claude.com/docs/en/zero-data-retention">Zero data retention</a>, Claude Code, read 2026-10-18: Fable 5.1 requires data retention by default, so a zero data retention organization may not reach it.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.indexes", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
