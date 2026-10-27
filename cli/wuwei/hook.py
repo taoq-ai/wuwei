@@ -277,6 +277,10 @@ def _verdict_problem(root, payload, role):
 
 def post_tool(root, payload):
     tool, data = payload.get('tool_name', ''), payload.get('tool_input') or {}
+    if tool == 'codex_spawn_unconfirmed':
+        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.'
+        ws.record(root, 'seat.unconfirmed', {'agent': payload['tool_response']['agentId'], 'session': payload.get('session_id'), 'reason': reason})
+        return context('PostToolUse', 'WUWEI: ' + reason)
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
@@ -481,7 +485,7 @@ HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'Sub
 PATCHED = re.compile(r'^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$', re.M)
 
 
-def codex(payload):
+def codex(payload, event=None):
     """Codex's tool payloads in the shapes the guards read: apply_patch as an edit of the files it
     names, spawn_agent as a seat launch, request_user_input as an owner question."""
     tool, data = payload.get('tool_name'), payload.get('tool_input') or {}
@@ -489,9 +493,14 @@ def codex(payload):
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
     if tool == 'spawn_agent':
-        spawned = re.search(r'"agent_id"\s*:\s*"([^"]+)"', json.dumps(payload.get('tool_response')).replace('\\"', '"'))
-        return {**payload, 'tool_name': 'Agent', 'tool_response': {'agentId': spawned and spawned[1]},
-                'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
+        response = json.loads(raw) if isinstance(raw := payload.get('tool_response'), str) else raw
+        spawned = response.get('agent_id', response.get('task_name')) if isinstance(response, dict) else None
+        if event == 'PostToolUse' and (not isinstance(spawned, str) or not spawned.strip()):
+            raise ValueError('Codex spawn_agent response needs a nonblank string agent_id or task_name')
+        role = str(data.get('agent_type') or '').removeprefix('wuwei:')
+        return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
+                'tool_response': {'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
         response = payload.get('tool_response')
@@ -547,7 +556,7 @@ def handle(root, event, payload):
     except Exception as exc:
         _failed(root, event, exc)
     try:  # at PostToolUse the answers are recorded after it kept its own
-        out = handler(root, codex(payload))
+        out = handler(root, codex(payload, event))
         said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []
     except Exception as exc:  # a door that cannot judge stays shut
         message = _failed(root, event, exc)

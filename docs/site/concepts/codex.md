@@ -39,11 +39,21 @@ warns while the role files differ from the charters.
 | --- | --- | --- |
 | `Bash` | `Bash` (shell and exec) | the same command guards |
 | `Write`, `Edit` | `apply_patch` | the files the patch adds, updates, deletes or moves to; the ledger stays protected |
-| `Agent` with `subagent_type` | `spawn_agent` with `agent_type` | a running seat; the Stop hook stays quiet while it runs |
+| `Agent` with `subagent_type` | `spawn_agent` with a known `agent_type` and successful `agent_id` or `task_name` | a running seat; the Stop hook stays quiet while it runs |
 | `AskUserQuestion` | `request_user_input` | the same owner classes; answers recorded as `answer.unconfirmed` until WUWEI reads Codex's transcript |
 | `mcp__server__tool` | `mcp__server__tool` | the same leak and merge doors |
 | SubagentStop | SubagentStop | recorded as `seat.unconfirmed`, with no attestation, until WUWEI reads Codex's transcript |
 | `.claude/settings.json` rules | `.codex/rules/*.rules` | written by `wuwei init` and `wuwei init --codex` |
+
+Inspect the active `spawn_agent` schema before dispatch. Supply `agent_type` only when supported;
+a task name or role words in the message cannot supply a role. A successful identity without a
+known explicit role is recorded as `seat.unconfirmed`, with a role-capability diagnostic.
+Malformed or missing identities produce `hook.error` and no running seat. The adapter reads
+object results and JSON object strings, preserving legacy `agent_id` and native `task_name`.
+
+The requested message, model and reasoning effort survive normalization. The running-seat row
+records the requested model as `asked`, the effort as `effort`, and the model as `unmeasured`.
+This records dispatch settings; it does not attest a launch, stop or verdict.
 
 On Claude Code each seat's model and effort come from the [model table](models.md). On Codex the
 role files name no model: Codex chooses its own, and a Claude model name would not resolve there.

@@ -112,3 +112,55 @@ def test_a_codex_goal_met_answer_records_no_goal(root):
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input',
                                       'tool_input': asked, 'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
     assert ws.rows(root, 'ruling') == [] and 'not a transcript' in ws.rows(root, 'answer.unconfirmed')[0]['data']['reason']
+
+
+@pytest.mark.parametrize('identity_key', ['task_name', 'agent_id'])
+@pytest.mark.parametrize('encoded', [False, True])
+def test_native_dispatch_keeps_identity_role_and_requested_settings(root, identity_key, encoded):
+    payload = json.loads((PLUGIN / 'tests/fixtures/payloads/codex/native-spawn-agent-post.json').read_text())
+    payload['cwd'] = str(root)
+    response = {identity_key: '/root/identity_probe'}
+    payload['tool_response'] = json.dumps(response) if encoded else response
+    normalized = hook.codex(payload)
+    assert normalized['tool_input']['prompt'] == payload['tool_input']['message']
+    assert normalized['tool_input']['model'] == 'gpt-6.1-sol'
+    assert normalized['tool_input']['effort'] == 'high'
+    hook.handle(root, 'PostToolUse', payload)
+    seat = ws.rows(root, 'seat.started')[0]['data']
+    assert (seat['agent'], seat['role'], seat['item']) == ('/root/identity_probe', 'builder', 'I-1')
+    assert (seat['asked'], seat['effort'], seat['model']) == ('gpt-6.1-sol', 'high', 'unmeasured')
+    assert board.running(root)[0]['agent'] == '/root/identity_probe'
+    assert ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('role', [None, '', 'unknown', 7, ['builder']])
+def test_native_identity_without_a_valid_role_is_diagnosed_not_inferred(root, role):
+    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+               'tool_input': {'task_name': 'builder', 'agent_type': role, 'message': 'You are a builder. Item: I-1'},
+               'tool_response': {'task_name': '/root/builder'}}
+    normalized = hook.codex(payload)
+    assert normalized['tool_name'] != 'Agent'
+    assert normalized['tool_response']['agentId'] == '/root/builder'
+    out = hook.handle(root, 'PostToolUse', payload)
+    row = ws.rows(root, 'seat.unconfirmed')[0]['data']
+    assert row['agent'] == '/root/builder' and 'role unmeasured' in row['reason']
+    assert 'agent_type' in out['hookSpecificOutput']['additionalContext']
+    assert ws.rows(root, 'seat.started') == [] and board.running(root) == [] and ws.rows(root, 'attest') == []
+
+
+@pytest.mark.parametrize('response', [None, {}, [], 7, {'task_name': 7}, {'task_name': ''}, {'task_name': '  '},
+                                      {'agent_id': ' '}, {'error': {'agent_id': 'fake'}},
+                                      {'error': '{"agent_id": "fake"}'}, '{"task_name":', 'not JSON'])
+def test_invalid_native_dispatch_response_is_diagnosed_without_a_seat(root, response):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                      'tool_input': {'agent_type': 'builder'}, 'tool_response': response})
+    assert ws.rows(root, 'hook.error')
+    assert ws.rows(root, 'seat.started') == [] and board.running(root) == [] and ws.rows(root, 'attest') == []
+
+
+def test_namespaced_known_native_role_and_legacy_identity_precedence(root):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                      'tool_input': {'agent_type': 'wuwei:builder'},
+                                      'tool_response': {'agent_id': 'legacy', 'task_name': '/root/native'}})
+    seat = ws.rows(root, 'seat.started')[0]['data']
+    assert seat['role'] == 'builder' and seat['agent'] == 'legacy'

@@ -1,0 +1,20 @@
+# Tasks
+
+## Setup
+- [x] T001 Read approved item, native findings, callers and constitution; write spec and plan.
+
+## US1: Successful dispatches
+- [x] T002 [US1] Add native payload and failing requested-setting and identity tests in tests/test_codex.py (FR-001, FR-002, FR-003).
+- [x] T003 [US1] Normalize supported native and legacy dispatches in cli/wuwei/hook.py.
+
+## US2: Unsupported dispatches
+- [x] T004 [US2] Add failing missing-role and malformed-response consumer tests in tests/test_codex.py (FR-004, FR-005).
+- [x] T005 [US2] Record precise diagnostics without running seats in cli/wuwei/hook.py.
+
+## Validation
+- [x] T006 Update skills/wuwei-run/SKILL.md, docs/site/concepts/codex.md and vendor copies (FR-006).
+- [ ] T007 Run focused tests, checks and main/head route differential; record evidence and runtime budget.
+
+Dependencies: T001 precedes all tests. T002 and T004 precede runtime edits. T003 and T005 precede T006 and T007.
+Parallel work: none; one small adapter and its consumer change together.
+Implementation strategy: deliver the two supported surfaces and diagnostics as one tested patch.
