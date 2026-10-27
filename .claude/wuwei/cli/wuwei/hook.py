@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+from stat import S_ISREG
 import sys
 import time
 
@@ -186,6 +187,19 @@ def _report(root, payload, text):
     return None
 
 
+def _kept_report(path, folder):
+    try:
+        if path.name.count('--') != 3 or not re.fullmatch(
+                r'[\w-]+--[\w-]+--(?:' + '|'.join(agents.TABLE) + r')--[1-9][0-9]*\.md', path.name) or not S_ISREG(path.stat(follow_symlinks=False).st_mode):
+            return None
+        text = path.read_bytes().decode('utf-8')
+        return (path, text) if text.strip() else None
+    except FileNotFoundError:
+        return _kept_report(folder / path.name, folder) if path.parent != folder else None
+    except (OSError, UnicodeError):
+        return None
+
+
 def subagent_stop(root, payload):
     """A stop counts only when the seat's own transcript holds its report (_report); else seat.unconfirmed, and nothing more."""
     role, text = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], payload.get('last_assistant_message')
@@ -196,10 +210,11 @@ def subagent_stop(root, payload):
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
-        if not any(p.is_file() and p.read_bytes() == payload['last_assistant_message'].encode() for p in (Path(root) / ws.DIR / 'reports').rglob(
-                f'{name}--*.md')):  # a seat that stops again with the same report keeps it once; only regular files are read (#1208)
-            ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
-                            payload['last_assistant_message'], Path(root))
+        folder = Path(root) / ws.DIR / 'reports'
+        kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
+                   key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
+        if kept is None or kept[1] != payload['last_assistant_message']:  # only the latest valid version can repeat
+            ws.atomic_write(folder / 'pending' / f'{name}--{time.time_ns()}.md', payload['last_assistant_message'], Path(root))
     return out
 
 
@@ -521,17 +536,24 @@ def deliver(root, event, payload, out, said):
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
-    for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
+    pending, found, session, latest = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), {}
+    paths = [*pending.glob(f'{session}--*.md'), *pending.parent.glob(f'{session}--*.md')]  # pending first: a claim cannot disappear
+    for path, text in sorted((r for p in paths if (r := _kept_report(p, pending.parent))),
+                             key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), reverse=True):
         try:
-            (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
+            seat = tuple(path.stem.split('--', 3)[:2])
+            if latest.setdefault(seat, path.name) != path.name or path.parent != pending:
+                if path.parent == pending:
+                    os.replace(path, pending.parent / path.name)  # keep every version beside the latest report's kept path
+                continue
+            _, agent, role, _ = path.stem.split('--', 3)
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
             told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
-            if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
+            if told and event == 'Stop' or ws.take(root, path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
             continue

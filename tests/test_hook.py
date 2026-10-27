@@ -1490,17 +1490,287 @@ def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(r
     assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
 
 
+INVALID_REPORTS = ['folder', 'dangling', 'symlink', 'binary', 'empty', 'blank', 'unreadable',
+                   pytest.param('fifo', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO'))]
+INVALID_NAMES = {'bad-agent': 's1--lead1!--lead--9999999999999999999.md',
+                 'empty-agent': 's1----lead--9999999999999999999.md',
+                 'bad-role': 's1--lead1--unknown--9999999999999999999.md',
+                 'bad-version': 's1--lead1--lead--latest.md', 'zero-version': 's1--lead1--lead--0.md',
+                 'extra-field': 's1--lead1--lead--9999999999999999999--extra.md'}
+
+
+def plant_invalid_report(path, kind):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    if kind == 'folder':
+        path.mkdir()
+    elif kind in ('dangling', 'symlink'):
+        target = path.with_suffix('.target')
+        if kind == 'symlink':
+            target.write_text('PLANTED')
+        path.symlink_to(target)
+    elif kind == 'fifo':
+        os.mkfifo(path)
+    else:
+        path.write_bytes({'binary': b'\xff\xfe', 'empty': b'', 'blank': b' \r\n\t'}.get(kind, b'PLANTED'))
+
+
+def reject_fifo_read(monkeypatch, target, kind):
+    opened, open_file = [], Path.open
+
+    def guarded(path, *args, **kwargs):
+        if kind == 'fifo' and path == target:
+            opened.append(path)
+            raise OSError('a report reader must not open a FIFO')
+        return open_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', guarded)
+    return opened
+
+
+@pytest.mark.parametrize('place', ['pending', 'archive'])
+@pytest.mark.parametrize('kind', INVALID_REPORTS + list(INVALID_NAMES))
+def test_invalid_report_entries_never_suppress_an_authentic_final(root, tmp_path, monkeypatch, place, kind):
+    reports = root / ws.DIR / 'reports'
+    planted = (reports / 'pending' if place == 'pending' else reports) / INVALID_NAMES.get(
+        kind, 's1--lead1--lead--9999999999999999999.md')
+    plant_invalid_report(planted, kind)
+    opened = reject_fifo_read(monkeypatch, planted, kind)
+    read_bytes = Path.read_bytes
+
+    def readable(path):
+        if kind == 'unreadable' and path == planted:
+            raise PermissionError('temporary unreadable report')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', readable)
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    out = planner_call(root)
+    assert out is not None
+    note = out['hookSpecificOutput']['additionalContext']
+    assert 'AUTHENTIC FINAL' in note and 'PLANTED' not in note
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+    assert not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+@pytest.mark.parametrize('kind', INVALID_REPORTS)
+def test_invalid_moved_report_copy_never_establishes_a_delivery_watermark(root, tmp_path, monkeypatch, kind):
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    reports = root / ws.DIR / 'reports'
+    planted = reports / 'pending' / 's1--lead1--lead--9999999999999999999.md'
+    planted.write_text('PLANTED')
+    archived, stat, read_bytes, moved = reports / planted.name, Path.stat, Path.read_bytes, []
+    opened = reject_fifo_read(monkeypatch, archived, kind)
+
+    def claim(path, *args, **kwargs):
+        if path == planted and not moved:
+            os.replace(planted, archived)
+            plant_invalid_report(archived, kind)
+            moved.append(path)
+        return stat(path, *args, **kwargs)
+
+    def readable(path):
+        if kind == 'unreadable' and path == archived:
+            raise PermissionError('temporary unreadable moved report')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'stat', claim)
+    monkeypatch.setattr(Path, 'read_bytes', readable)
+    out = planner_call(root)
+    assert moved == [planted] and out is not None
+    assert 'AUTHENTIC FINAL' in out['hookSpecificOutput']['additionalContext']
+    assert planner_call(root, event='Stop') is None and not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+@pytest.mark.parametrize('kind', INVALID_REPORTS)
+def test_invalid_retention_fallback_never_repeats_a_delivered_final(root, tmp_path, monkeypatch, kind):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest = next((reports / 'pending').glob('*.md'))
+    archived, read_bytes, moved = reports / latest.name, Path.read_bytes, []
+    opened = reject_fifo_read(monkeypatch, archived, kind)
+
+    def claim_before_read(path):
+        if path == latest and not moved:
+            os.replace(latest, archived)
+            plant_invalid_report(archived, kind)
+            moved.append(path)
+        if kind == 'unreadable' and path == archived:
+            raise PermissionError('temporary unreadable fallback')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', claim_before_read)
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest] and not list((reports / 'pending').glob('*.md'))
+    assert planner_call(root) is None and not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+def test_legacy_positive_version_numbers_sort_numerically(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    reports = root / ws.DIR / 'reports'
+    current = next((reports / 'pending').glob('*.md'))
+    current.rename(current.with_name('s1--lead1--lead--10.md'))
+    (reports / 's1--lead1--lead--2.md').write_text('OLDER REPORT')
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'AUTHENTIC FINAL' in note and 'OLDER REPORT' not in note
+
+
 def test_a_repeated_report_with_carriage_returns_is_kept_once(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
     assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
 
 
-def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
+def test_three_stops_of_one_seat_deliver_only_the_latest_report_and_keep_every_version(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
     lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead3.jsonl', text='final round done'))
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
-    assert REPORT_1160 in note and 'second round done' in note
+    assert 'final round done' in note and REPORT_1160 not in note and 'second round done' not in note
+    kept = list((root / ws.DIR / 'reports').glob('*.md'))
+    assert {p.read_text() for p in kept} == {REPORT_1160, 'second round done', 'final round done'}
+    assert any(str(p) in note for p in kept if p.read_text() == 'final round done')
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+
+
+@pytest.mark.parametrize('delivered', [False, True])
+def test_a_final_report_matching_an_older_body_never_leaves_an_interim_report_pending(root, tmp_path, delivered):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='final result'))
+    if delivered:
+        assert 'final result' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='interim result'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='final result'))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'final result' in note and 'interim result' not in note
+    assert planner_call(root, event='Stop') is None
+
+
+def test_identical_latest_reports_in_separate_sessions_are_delivered_independently(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'), session='s2')
+    assert planner_call(root) is None
+    assert REPORT_1160 in planner_call(root, session='s2')['hookSpecificOutput']['additionalContext']
+
+
+def test_overlapping_report_delivery_never_emits_the_superseded_version(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    latest = max(pending.glob('*.md'))
+    replace, nested = hook.os.replace, []
+
+    def interleave(source, target, *args, **kwargs):
+        result = replace(source, target, *args, **kwargs)
+        if Path(source) == latest:
+            nested.append(planner_call(root, event='Stop'))
+        return result
+
+    monkeypatch.setattr(hook.os, 'replace', interleave)
+    assert 'LATEST B' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert nested == [None] and planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_temporary_archive_failure_never_makes_a_superseded_report_current(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    oldest, replace = min(pending.glob('*.md')), hook.os.replace
+
+    def blocked(source, target, *args, **kwargs):
+        if Path(source) == oldest:
+            raise PermissionError('temporary file lock on superseded report')
+        return replace(source, target, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hook.os, 'replace', blocked)
+        assert 'LATEST B' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_latest_report_moved_while_listing_is_still_visible(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    latest, glob = max(pending.glob('*.md')), Path.glob
+
+    def moved_before_pending_listing(path, pattern):
+        if path == pending and latest.exists():
+            os.replace(latest, pending.parent / latest.name)
+        return glob(path, pattern)
+
+    monkeypatch.setattr(Path, 'glob', moved_before_pending_listing)
+    assert planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_synthetic_role_change_does_not_override_the_latest_report_timestamp(root, tmp_path):
+    for role, text in [('steward', 'SUPERSEDED A'), ('builder', 'LATEST B')]:
+        hook.handle(root, 'SubagentStop', launched({
+            'session_id': 's1', 'agent_id': 'a1', 'agent_type': 'wuwei:' + role, 'cwd': str(root),
+            'agent_transcript_path': seat_transcript(tmp_path / f'{role}.jsonl', text=text)}))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'LATEST B' in note and 'SUPERSEDED A' not in note
+
+
+def test_a_claim_during_retention_listing_never_loses_returning_a(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest, glob, rglob, moved = next((reports / 'pending').glob('*.md')), Path.glob, Path.rglob, []
+
+    def claim_after_archive_listing(path, pattern):
+        snapshot = list(glob(path, pattern))
+        if path == reports and latest.exists():
+            os.replace(latest, reports / latest.name)
+            moved.append(latest)
+        return iter(snapshot)
+
+    def root_first(path, pattern):
+        if path != reports:
+            yield from rglob(path, pattern)
+            return
+        yield from claim_after_archive_listing(reports, pattern)
+        yield from claim_after_archive_listing(reports / 'pending', pattern)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'glob', claim_after_archive_listing)
+        patch.setattr(Path, 'rglob', root_first)
+        lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest]
+    assert [p.read_text() for p in (reports / 'pending').glob('*.md')] == ['FINAL A']
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'FINAL A' in note and 'INTERIM B' not in note
+
+
+def test_a_claim_before_retention_read_never_loses_returning_a(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest, read_bytes, moved = next((reports / 'pending').glob('*.md')), Path.read_bytes, []
+
+    def claim_before_read(path):
+        if path == latest and latest.exists():
+            os.replace(latest, reports / latest.name)
+            moved.append(latest)
+        return read_bytes(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'read_bytes', claim_before_read)
+        lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest]
+    assert [p.read_text() for p in (reports / 'pending').glob('*.md')] == ['FINAL A']
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'FINAL A' in note and 'INTERIM B' not in note
 
 
 
@@ -1559,9 +1829,10 @@ def test_a_seat_that_stops_again_after_its_handback_went_through_is_kept_quietly
     assert POINTER in note and 'nothing changes' not in note and 'auto mode' not in note
 
 
-def test_a_planted_report_name_is_read_literally_when_matching_its_notification(root, tmp_path):
-    """A pending file named outside the hook's [\\w-] names an agent with a regex character: it matches no other seat's frame."""
-    (pending := root / ws.DIR / 'reports' / 'pending').mkdir(parents=True)
+def test_a_planted_report_name_outside_the_writer_format_never_establishes_a_watermark(root, tmp_path):
+    """The approved selector rejects a dot that the writer's name normalization never produces."""
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text=REPORT_1198))
+    (pending := root / ws.DIR / 'reports' / 'pending').mkdir(parents=True, exist_ok=True)
     (pending / 's1--l.ad1--lead--1.md').write_text(REPORT_1198)
     (ws.PROJECTS / '-repo').mkdir(parents=True, exist_ok=True)
     notified('lxad1', f'x <task-id>l.ad1</task-id></result>\n<result>{REPORT_1198}', escape=False)
@@ -1634,13 +1905,21 @@ def test_two_seats_each_report_reaches_the_planner_once_across_its_call_and_stop
     assert planner_call(root, event='Stop') is None
 
 
-def test_a_seat_that_stopped_twice_with_both_reports_notified_gives_two_pointers(root, tmp_path):
+def test_a_notified_latest_report_suppresses_older_versions_even_at_stop(root, tmp_path):
     lead2_stop(root, tmp_path, 'first round done')
     lead2_stop(root, tmp_path, 'second round done')
-    notified('lead2', 'first round done')
     notified('lead2', 'second round done')
+    assert planner_call(root, event='Stop') is None
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
-    assert note.count('## lead lead2: report already notified; kept at ') == 2 and 'round done' not in note
+    assert note.count('## lead lead2: report already notified; kept at ') == 1 and 'round done' not in note
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+
+
+def test_the_real_no_report_delivered_notification_does_not_suppress_the_final_report(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    notified('lead1', 'The subagent ended without delivering a report through SubagentHandback, so no report was delivered')
+    assert REPORT_1160 in planner_call(root, event='Stop')['reason']
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
 
 
 def test_a_report_inside_an_earlier_result_of_its_seat_is_given_in_full(root, tmp_path):
@@ -2523,3 +2802,28 @@ def test_a_launch_over_the_seat_ceiling_passes_with_a_note_and_one_under_it_has_
         '.\nWUWEI: table says ' in both['hookSpecificOutput']['additionalContext'] and 'permissionDecision' not in both['hookSpecificOutput']
     (root / ws.DIR / 'standards.md').write_text('Seat ceiling: 10\n')
     assert go() is None
+
+
+def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, BrokenBarrierError
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='ONE WINDOWS CLAIM'))
+    replace, handles = hook.os.replace, Barrier(2)
+
+    def windows_replace(source, target, *args, **kwargs):
+        opened = Path(source).exists()  # two Windows handles can open the same source before either rename
+        try:
+            handles.wait(timeout=0.1)
+        except BrokenBarrierError:
+            pass
+        try:
+            return replace(source, target, *args, **kwargs)
+        except FileNotFoundError:
+            if not opened:
+                raise
+            # MoveFileEx can rename the already-opened file after another handle moved it.
+
+    monkeypatch.setattr(hook.os, 'replace', windows_replace)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        found = list(pool.map(lambda _: planner_call(root), range(4)))
+    assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1
