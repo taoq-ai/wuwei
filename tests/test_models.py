@@ -213,13 +213,18 @@ def test_an_environment_variable_turns_its_half_of_the_advice_off(root, monkeypa
     assert launch(root, 'sentinel-goal', model, effort) is None
 
 
-def test_no_advice_for_a_codex_spawn_or_a_role_outside_the_table(root):
+def test_codex_advice_names_policy_requests_and_capability_limits(root):
     plan_item(root, 'full')
     spawn = {'session_id': 's1', 'tool_name': 'spawn_agent', 'cwd': str(root),
              'tool_input': {'agent_type': 'builder', 'task_name': 'build I-1', 'message': 'Item: I-1'}}
-    assert hook.handle(root, 'PreToolUse', spawn) is None
-    ws.set_config(root, 'models', 'builder=sonnet medium')  # a row the agent file's default departs from
-    assert hook.handle(root, 'PreToolUse', spawn) is None
+    text = advice(hook.handle(root, 'PreToolUse', spawn))
+    assert 'gpt-6.1-sol high for builder at full' in text
+    assert 'requested: unrecorded unrecorded' in text and 'active schema' in text
+    ws.set_config(root, 'models', 'builder=gpt-6-astra ultra')
+    spawn['tool_input'].update(model='unavailable-model', reasoning_effort='low', fork_turns='all')
+    text = advice(hook.handle(root, 'PreToolUse', spawn))
+    assert 'gpt-6-astra ultra for builder at full' in text
+    assert 'requested: unavailable-model low' in text and 'fork policy: inherit' in text
     assert launch(root, 'Explore', 'haiku', 'low') is None
     assert ws.rows(root, 'hook.error') == []
 
@@ -414,3 +419,48 @@ def test_codex_role_settings_use_native_mapping_and_owner_tier_precedence(tier, 
     role = tomllib.loads(agents.render_codex(PLUGIN, 'builder', rows, tier))
     assert (role['model'], role['model_reasoning_effort']) == expected
     assert 'Builder charter' in role['developer_instructions']
+
+
+@pytest.mark.parametrize('fork, policy', [('all', 'inherit'), ('none', 'fresh'), (None, 'unmeasured')])
+@pytest.mark.parametrize('resolved', [None, 'provider-child-model'])
+def test_native_report_separates_requests_parent_turn_and_child_resolution(root, fork, policy, resolved):
+    payload = json.loads((PLUGIN / 'tests/fixtures/payloads/codex/native-spawn-agent-post.json').read_text())
+    payload.update(cwd=str(root), model='parent-turn-model', effort={'level': 'medium'})
+    payload['tool_input'].update(model='unavailable-child-model', reasoning_effort='ultra')
+    if fork:
+        payload['tool_input']['fork_turns'] = fork
+    payload['tool_response'] = {'task_name': '/root/native'}
+    if resolved:
+        payload['tool_response']['resolvedModel'] = resolved
+    hook.handle(root, 'PostToolUse', payload)
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert (row['asked'], row['effort'], row['model']) == ('unavailable-child-model', 'ultra', resolved or 'unmeasured')
+    assert (row['turn_model'], row['turn_effort'], row['fork_policy']) == ('parent-turn-model', 'medium', policy)
+    text = report.day(root)
+    assert 'requested: unavailable-child-model ultra' in text
+    assert f'resolved child: {resolved or "unmeasured"}' in text
+    assert 'launching parent turn: parent-turn-model medium' in text
+    assert f'fork policy: {policy}' in text
+    assert ws.rows(root, 'attest') == []
+
+
+def test_native_request_from_brief_does_not_measure_an_unavailable_override(root):
+    payload = {'session_id': 's1', 'tool_name': 'spawn_agent', 'cwd': str(root),
+               'tool_input': {'agent_type': 'builder', 'message': 'Item: I-1\nModel: gpt-6-astra ultra (requested; schema has no overrides)'},
+               'tool_response': {'task_name': '/root/no-overrides'}}
+    hook.handle(root, 'PostToolUse', payload)
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert (row['asked'], row['effort'], row['model']) == ('gpt-6-astra', 'ultra', 'unmeasured')
+    text = report.day(root)
+    assert 'requested: gpt-6-astra ultra' in text and 'launching parent turn: unmeasured unmeasured' in text
+    assert 'fork policy: unmeasured' in text
+
+
+@pytest.mark.parametrize('turn_effort, fork', [(None, ''), ('high', []), ({}, 'unknown'), ({'level': ''}, None)])
+def test_missing_or_malformed_native_metadata_stays_unmeasured(root, turn_effort, fork):
+    hook.handle(root, 'PostToolUse', {'tool_name': 'spawn_agent', 'cwd': str(root), 'effort': turn_effort,
+                                      'tool_input': {'agent_type': 'builder', 'fork_turns': fork},
+                                      'tool_response': {'task_name': '/root/metadata'}})
+    assert ws.rows(root, 'hook.error') == []
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert (row['turn_model'], row['turn_effort'], row['fork_policy'], row['model']) == ('unmeasured',) * 4

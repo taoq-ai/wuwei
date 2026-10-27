@@ -126,7 +126,9 @@ def learning(root):
     for row in ws.rows(root, 'seat.stopped'):
         spent[row['data'].get('role')] += row['data'].get('tokens') or 0
     out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
-    started, key = [r['data'] for r in ws.rows(root, 'seat.started')], lambda d: ' '.join(str(d.get(k, 'unrecorded')) for k in ('role', 'model', 'effort'))
+    started, key = [r['data'] for r in ws.rows(root, 'seat.started')], lambda d: ' '.join(str(d.get(k, 'unrecorded')) for k in ('role', 'model', 'effort')) + (
+        f" (requested: {d.get('asked', 'unrecorded')} {d.get('effort', 'unrecorded')}; resolved child: {d.get('model', 'unmeasured')}; "
+        f"launching parent turn: {d.get('turn_model', 'unmeasured')} {d.get('turn_effort', 'unmeasured')}; fork policy: {d['fork_policy']})" if 'fork_policy' in d else '')
     tokens = {r['data'].get('agent'): r['data'].get('tokens') or 0 for r in ws.rows(root, 'seat.stopped')}
     for group in sorted({key(d) for d in started}):  # each seat by the model that ran and the effort asked for
         seats = [d for d in started if key(d) == group]

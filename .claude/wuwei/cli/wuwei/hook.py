@@ -77,7 +77,7 @@ def pre_tool(root, payload):
 def asked(data):
     """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max|ultra)\b', r'^Model reason:[ \t]*(\S.*)$'))
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
 
 
@@ -90,12 +90,16 @@ def crowded(root, payload):  # advice on a launch past the seat ceiling, never a
 def advise(root, data, note=''):
     """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
-    if role not in agents.TABLE or not data.get('prompt') or 'agent_type' in data:  # Codex policy remains unmeasured
+    if role not in agents.TABLE or not data.get('prompt'):
         return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
     if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
         tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
+    if 'agent_type' in data:
+        return context('PreToolUse', note + f"\nWUWEI: Codex table says {' '.join(agents.codex_setting(role, rows, tier))} for {role} at {tier}; "
+                       f"requested: {data.get('model') or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {'inherit' if data.get('fork_turns') == 'all' else 'unmeasured'}. "
+                       'Resolved child model is unmeasured until provider metadata; use overrides only when the active schema supports them.')
     allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
     fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
@@ -293,7 +297,9 @@ def post_tool(root, payload):
         ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
                                          'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
                                          'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
+                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
+                                         **({'turn_model': payload.get('model') or 'unmeasured', 'turn_effort': (payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level') or 'unmeasured',
+                                             'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})})
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
@@ -499,7 +505,8 @@ def codex(payload, event='PostToolUse'):
             raise ValueError('Codex spawn_agent response needs a nonblank string agent_id or task_name')
         role = str(data.get('agent_type') or '').removeprefix('wuwei:')
         return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
-                'tool_response': {'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'tool_response': {**(response or {}), 'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'model': data.get('model') or (re.findall(r'^Model:[ \t]*(\S+)', str(data.get('message') or ''), re.M) or [None])[0],
                 'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}

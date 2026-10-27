@@ -11,8 +11,8 @@
 
 ## US2: dispatch visibility
 
-- [ ] T004 [US2] Rebase onto pushed 1254 and add failing native metadata/report tests in tests/test_models.py.
-- [ ] T005 [US2] Preserve resolution and requested fork policy in cli/wuwei/hook.py and expose labels in cli/wuwei/report.py; run focused tests green.
+- [x] T004 [US2] Rebase onto pushed 1254 and add failing native metadata/report tests in tests/test_models.py.
+- [x] T005 [US2] Preserve resolution and requested fork policy in cli/wuwei/hook.py and expose labels in cli/wuwei/report.py; run focused tests green.
 
 ## Verification
 
