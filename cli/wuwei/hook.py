@@ -521,11 +521,14 @@ def deliver(root, event, payload, out, said):
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
     pending, found, session, seen = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), set()
-    for path in sorted(pending.glob(f'{session}--*.md'), reverse=True) if pending.is_dir() else ():
+    for path in sorted([*pending.glob(f'{session}--*.md'), *pending.parent.glob(f'{session}--*.md')],
+                       key=lambda p: p.stem.rsplit('--', 1)[-1], reverse=True):  # pending first: a claim cannot disappear between listings
         try:
             seat = tuple(path.stem.split('--', 3)[:2])
-            if seat in seen:
-                os.replace(path, pending.parent / path.name)  # superseded versions stay beside the latest report's kept path
+            if seat in seen or path.parent != pending:
+                seen.add(seat)  # archived versions still supersede older pending files, even if retirement failed
+                if path.parent == pending:
+                    os.replace(path, pending.parent / path.name)  # keep every version beside the latest report's kept path
                 continue
             seen.add(seat)
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
