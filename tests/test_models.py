@@ -2,6 +2,7 @@
 the doctor and the report (item models-record)."""
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -70,8 +71,10 @@ def test_the_planner_and_the_page_say_the_hook_notes_a_departure_and_never_refus
     assert 'A `models` row that puts Haiku 5.5 on a gate does not break the floor: only your `exception:` answer does.' in page
 
 
-def test_a_codex_role_file_still_names_no_model():
-    assert 'model' not in agents.render_codex(PLUGIN, 'builder').split("developer_instructions", 1)[0]
+def test_a_codex_role_file_names_native_defaults_without_changing_claude_generation():
+    role = tomllib.loads(agents.render_codex(PLUGIN, 'builder'))
+    assert (role['model'], role['model_reasoning_effort']) == ('gpt-6.1-sol', 'medium')
+    assert 'model: claude-opus-5-5\neffort: medium' in agents.render(PLUGIN, 'builder', [])
 
 
 # US2: the advice
@@ -397,3 +400,17 @@ def test_learning_shows_each_seat_by_model_and_effort(root, fake):
     assert '- seat builder unmeasured unrecorded: 1 launches' in text
     assert '- seat sentinel-goal unmeasured high: 1 launches' in text
     assert '- model or effort unrecorded on 3 launches' in text
+
+
+@pytest.mark.parametrize('tier, rows, expected', [
+    ('standard', {}, ('gpt-6.1-sol', 'medium')),
+    ('light', {}, ('gpt-6-luna', 'medium')),
+    ('full', {}, ('gpt-6.1-sol', 'high')),
+    ('full', {'builder': 'gpt-6-astra max'}, ('gpt-6-astra', 'max')),
+    ('full', {'builder': 'gpt-6-astra max', 'builder full': 'gpt-6.1-sol ultra'}, ('gpt-6.1-sol', 'ultra')),
+    ('standard', {'builder': 'unavailable-provider-model high'}, ('unavailable-provider-model', 'high')),
+])
+def test_codex_role_settings_use_native_mapping_and_owner_tier_precedence(tier, rows, expected):
+    role = tomllib.loads(agents.render_codex(PLUGIN, 'builder', rows, tier))
+    assert (role['model'], role['model_reasoning_effort']) == expected
+    assert 'Builder charter' in role['developer_instructions']
