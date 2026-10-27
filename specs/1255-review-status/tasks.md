@@ -15,5 +15,5 @@
 - [x] T006 [US3] Keep classifier failures unreadable in cli/wuwei/evidence.py and preserve other safety refusals.
 
 ## Validation
-- [ ] T007 Update docs/design.md and run focused suites plus main/head route comparison.
-- [ ] T008 Recheck spec consistency, source/vendor parity and runtime budget; commit and push the draft PR.
+- [x] T007 Update docs/design.md and run focused suites plus main/head route comparison.
+- [x] T008 Recheck spec consistency, source/vendor parity and runtime budget; commit and push the draft PR.
