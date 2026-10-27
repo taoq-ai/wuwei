@@ -13,6 +13,7 @@ only its latest undelivered final report, once, isolated by session and agent.
 6. Superseded files remain available for audit beside the retained report path.
 7. An overlapping delivery or temporary failure to archive an old version never makes it current.
 8. Moving the latest file between pending and archive cannot hide its supersession watermark.
+9. A concurrent claim during retention listing or reading never loses the returning final in A/B/A.
 
 ## Assumptions
 
