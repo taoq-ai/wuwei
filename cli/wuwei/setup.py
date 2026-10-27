@@ -75,7 +75,7 @@ def codex_files(directory):
     from wuwei import agents
     base = Path(directory) / '.codex'
     for role in agents.DESCRIPTIONS:
-        ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(ws.PLUGIN, role))
+        ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(ws.PLUGIN, role, ws.config(directory)['models']))
     pattern = lambda rule: json.dumps(rule[len('Bash('):-len(':*)')].split())  # noqa: E731
     rules = [f'prefix_rule(pattern = {pattern(r)}, decision = "forbidden")' for r in DENY if r.startswith('Bash(')]
     rules += [f'prefix_rule(pattern = {pattern(r)}, decision = "prompt")' for r in ASK]
@@ -134,7 +134,7 @@ def doctor(root):
     if (roles := Path(root) / '.codex' / 'agents').is_dir():
         from wuwei import agents
         stale = [r for r in agents.DESCRIPTIONS if not (roles / f'{r}.toml').is_file()
-                 or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r)]
+                 or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r, config['models'])]
         rows.append(('codex roles', 'warn' if stale else 'ok',
                      f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
     rows += [(var, 'note', f'set to {os.environ[var]}: {half} advice is off') for var, half in (  # a note: the exit code ignores it
