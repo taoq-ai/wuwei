@@ -91,8 +91,10 @@ A `codex-companion` task job started from another session has no native Subagent
 verdict file stays unattested. A job id cannot supply launch or report proof. Moved native roots
 (`CODEX_HOME`), unsupported schemas and unavailable account records are unsupported sources.
 
-Native reports reuse the existing latest-valid report store and atomic claims. Canonical path
-hashes avoid filename collisions. Only an exact native final-answer notification with the matching
+Native reports reuse the existing latest-valid report store and atomic claims. Ordinary canonical
+IDs stay unchanged. Credential/canary-bearing IDs use a stable SHA256 key at launch and verified
+stop, keeping distinct seats separate. Report filenames hash the persisted key; notification
+comparison maps the raw canonical sender to the same key. Only an exact native final-answer notification with the matching
 author, recipient, report body and a suitable timestamp suppresses repeated delivery.
 
 A brief for a seat on Codex tells it not to use MCP tools. Codex can deny an MCP call without

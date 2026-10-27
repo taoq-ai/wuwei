@@ -8,4 +8,4 @@ The latest own assistant message with phase final_answer supplies report text. A
 
 Child turn_context supplies recorded model and reasoning effort after the fork and before the report. Missing settings remain unmeasured. Existing seat.started requested and parent fields stay intact; attestation uses child recorded settings separately from provider-resolved model.
 
-Native canonical paths are hashed only for existing report filenames. Ledger and board identity stays canonical and session scoped. Existing pending/kept report versions and atomic os.replace claims are reused.
+Ordinary native canonical paths remain the ledger and board identity, scoped by session. Credential/canary-bearing identities instead use a stable SHA256 key at both start and verified stop. Existing report filenames hash the persisted identity; native notification authors use the same mapping for comparison. Existing pending/kept report versions and atomic os.replace claims are reused.

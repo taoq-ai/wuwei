@@ -26,4 +26,6 @@ Dependencies: T001 and T002 precede tests; each test runs red before its impleme
 ## Combined review fix round
 
 - [x] T010 Add the minimized genuine fork-all inherited metadata/report/model regression, run red, and move extra-metadata rejection after the fork boundary; preserve root, schema and ordinal checks.
-- [ ] T011 Replay the genuine producer through the pure reader, repeat focused/full validation and route/probe evidence, then hand the serialized mutant slot to the delta gates.
+- [ ] T011 Repeat full validation, genuine producer replay and route/probe evidence after both initial findings, then hand the serialized mutant slot to the delta gates.
+
+- [x] T012 Add both initial identity-disclosure regressions and distinct token/canary identity isolation plus notification consumers; run red, then share stable sensitive identity keys across launch and verified stop. Ordinary IDs stay unchanged.

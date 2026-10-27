@@ -219,6 +219,10 @@ def _native_report(payload, supplied):
     return None
 
 
+def seat_identity(value, canary=''):
+    return 'sha256-' + hashlib.sha256(value.encode()).hexdigest() if guards.SECRETS.search(value) or canary and canary in value else value
+
+
 def _report(root, payload, text):
     """The seat's report as its own transcript holds it (#962): the text the payload carries, else its last. The transcript is
     read only when the harness shows the launch: the meta file beside it names the seat's type and an Agent tool_use the
@@ -227,13 +231,13 @@ def _report(root, payload, text):
     path = str(payload.get('agent_transcript_path') or  # a PreToolUse payload names the session's: the seat's lies beside it
                Path(str(payload.get('transcript_path')).removesuffix('.jsonl'), 'subagents', f'agent-{agent}.jsonl'))
     if Path(path).is_relative_to(ws.SESSIONS):
+        canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
         for _ in range(9):
             if found := _native_report(payload, text):
-                canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
-                payload.update(agent_id=found[1], **{k: guards.SECRETS.sub('***', v).replace(canary or '\0', '***') for k, v in found[2].items()})
+                payload.update(agent_id=seat_identity(found[1], canary), **{k: guards.SECRETS.sub('***', v).replace(canary or '\0', '***') for k, v in found[2].items()})
                 return found[0]
             time.sleep(0.25)
-        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': agent, 'session': payload.get('session_id'), 'reason': 'native parent, role, identity or latest final report did not match the stop'})
+        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': seat_identity(str(agent or ''), canary), 'session': payload.get('session_id'), 'reason': 'native parent, role, identity or latest final report did not match the stop'})
         return None
     meta = (transcript_rows(path.removesuffix('.jsonl') + '.meta.json', 'toolUseId') or [{}])[0] if Path(path).name == f'agent-{agent}.jsonl' else {}
     use = meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None
@@ -375,7 +379,7 @@ def post_tool(root, payload):
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
         measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
         seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
-                'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                'session': payload.get('session_id'), 'agent': seat_identity(response['agentId'], canary), 'model': str(response.get('resolvedModel') or 'unmeasured'),
                 'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
                 **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
                     'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
@@ -600,11 +604,11 @@ def codex(payload, event='PostToolUse'):
     return payload
 
 
-def _native_told(path, agent, text, at):
+def _native_told(path, agent, text, at, canary=''):
     try:
         meta, rows = native_rows(transcript_rows(path, ''))
         return any(r['type'] == 'response_item' and r['payload'].get('type') == 'agent_message' and isinstance(author := r['payload'].get('author'), str)
-                   and (author == agent or hashlib.sha256(author.encode()).hexdigest() == agent)
+                   and ((identity := seat_identity(author, canary)) == agent or hashlib.sha256(identity.encode()).hexdigest() == agent)
                    and r['payload'].get('recipient') == meta.get('agent_path', '/root') and datetime.datetime.fromisoformat(r['timestamp']) >= datetime.datetime.fromisoformat(at)
                    and native_text(r) == f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text for r in rows)
     except (OSError, KeyError, IndexError, TypeError, ValueError, AttributeError):
@@ -636,7 +640,8 @@ def deliver(root, event, payload, out, said):
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
             told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
-            told = told or _native_told(payload.get('transcript_path'), agent, text, at)
+            canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+            told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)
             if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:

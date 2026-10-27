@@ -157,7 +157,7 @@ Native Codex stops use the same account lookup and protection, including Windows
 `HOME`, `USERPROFILE` and `CODEX_HOME` cannot move the accepted default root. The first metadata row
 must identify the child, parent, role and canonical path. Its fork boundary excludes inherited rows.
 A matching parent collaboration.spawn_agent call and result proves the requested role and task path.
-The stop UUID maps to that path only after proof. The last own assistant final_answer supplies the
+The stop UUID maps to that path only after proof. Persisted identity keeps ordinary task paths unchanged; a credential/canary-bearing path uses a stable SHA256 key at launch and verified stop. Report filenames hash that key, and notification comparison applies the same mapping to the raw canonical author. The last own assistant final_answer supplies the
 report; a later available task_complete must agree. The trusted SubagentStop itself supplies
 completion when that later row has not been written yet. Child turn_context model/effort is recorded
 separately from requested, parent and provider-resolved settings. This does not authenticate ordinary
