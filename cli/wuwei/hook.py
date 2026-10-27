@@ -508,7 +508,7 @@ def codex(payload, event='PostToolUse'):
     if tool == 'apply_patch':
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
-    if tool == 'spawn_agent':
+    if tool in ('spawn_agent', 'collaborationspawn_agent'):
         response = json.loads(raw) if isinstance(raw := payload.get('tool_response'), str) else raw
         spawned = response.get('agent_id', response.get('task_name')) if isinstance(response, dict) else None
         if event == 'PostToolUse' and (not isinstance(spawned, str) or not spawned.strip()):
