@@ -90,3 +90,22 @@ def test_native_identity_is_stable_distinct_and_matches_start_stop_consumers(roo
     out=hook.deliver(root,'PreToolUse',{'session_id':'id-1','transcript_path':payload['transcript_path']},None,[])
     note=out['hookSpecificOutput']['additionalContext']
     assert note.count('report already notified')==2 and '\nREPORT ' not in note
+
+
+@pytest.mark.parametrize('shape', ['token', 'canary'])
+def test_rejected_native_proof_keeps_unconfirmed_identity_private(root, native, shape):
+    payload, parent, child, save = native
+    secret = 'ghp_'+'a'*36 if shape == 'token' else 'wuweicanaryidentity'
+    if shape == 'canary': (root/'.wuwei/canary').write_text(secret)
+    task = '/root/'+secret
+    child[0]['payload'].update(agent_path=task, parent_thread_id='mismatched-parent')
+    args = json.loads(parent[1]['payload']['arguments'])
+    parent[1]['payload']['arguments'] = json.dumps({**args, 'task_name':secret})
+    parent[2]['payload']['output'] = json.dumps({'task_name':task})
+    payload['agent_id'] = task
+    save()
+    hook.handle(root, 'SubagentStop', payload)
+    [row] = ws.rows(root, 'seat.unconfirmed')
+    assert row['data']['agent'].startswith('sha256-')
+    assert secret not in json.dumps(row)
+    assert not ws.rows(root, 'seat.stopped') and not ws.rows(root, 'attest')

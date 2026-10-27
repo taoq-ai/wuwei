@@ -17,6 +17,12 @@ Both initial gate findings were corrected in one combined fix round. Further cha
 
 The earlier 997a2a75 full run is incomplete: its exec session disappeared when the agent ended, its log stops at 95 percent and its exit is unmeasured. It is not counted. An earlier interrupted pre-root-fix run is also superseded. Final logs, exit JSON and probe records remain under the builder's `builder-1258` scratch evidence. No test used real GitHub credentials; the repository's offline fixture remained active.
 
+## Final test-only coverage completion
+
+The LOW review note requested checked-in coverage for rejected-proof identity privacy. Two token/canary cases now supply a mismatched parent and assert a mapped private seat.unconfirmed identity with no seat.stopped or attest row. `uv run --no-project --with pytest python -m pytest -q tests/test_native_identity_privacy.py`: 7 passed in 0.06 seconds, including the two added cases.
+
+A fresh archive of 0b630d40 received the new test and reversed only the rejected-proof seat_identity call in both runtime copies. The two added cases failed behaviorally (2 failed, 5 deselected, exit1). This proves coverage of that consumer rather than vendor drift. Runtime remains byte-identical to ea78a08d. The actual full result remains 4,356 passed and 7 skipped; the added-test run is reported separately, with no new full-suite claim.
+
 ## Route differential
 
 Command: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/run_differential_private.py`.
