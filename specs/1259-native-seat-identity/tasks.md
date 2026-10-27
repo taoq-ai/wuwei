@@ -13,7 +13,7 @@
 
 ## Validation
 - [x] T006 Update skills/wuwei-run/SKILL.md, docs/site/concepts/codex.md and vendor copies (FR-006).
-- [ ] T007 Run focused tests, checks and main/head route differential; record evidence and runtime budget.
+- [x] T007 Run focused tests, checks and main/head route differential; record evidence and runtime budget.
 
 Dependencies: T001 precedes all tests. T002 and T004 precede runtime edits. T003 and T005 precede T006 and T007.
 Parallel work: none; one small adapter and its consumer change together.
