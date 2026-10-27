@@ -126,32 +126,43 @@ departure the planner can record with a reason: breaking it is an `exception:` f
 
 ## On Codex
 
-The same table holds on Codex. The Codex column is the planner's reading of the Codex catalog:
+The same table holds on Codex. The mapping below is the planner's reading of the Codex catalog,
+not OpenAI guidance on seats. Delivery outcomes for this policy remain unmeasured.
 
 | Claude | Codex |
 | --- | --- |
 | Fable 5.1 | gpt-6-astra |
 | Opus 5.5 | gpt-6.1-sol |
-| Sonnet 5.5 | gpt-6.1-sol at a lower effort, or gpt-6-luna for checklist seats |
+| Sonnet 5.5 | gpt-6-luna |
 | Haiku 5.5 | gpt-6-luna low |
 
-It reads the descriptions in Codex's model catalog ("frontier intelligence for
-the most demanding work", "latest workhorse model for coding and everyday work", "fast and
-affordable model for easier tasks"). It is not OpenAI guidance on seats, and it is unmeasured: no
-outcome on Codex has been recorded against it.
+The mapping chooses one native model per table family and preserves its effort. Sonnet maps to
+Luna, which gives routine review seats a different model from an Opus-mapped Sol builder. The
+planner still chooses a different gate model when the item's selected settings share one model.
 
-- Effort keeps the same names. gpt-6-astra and gpt-6.1-sol add `ultra` above `max` ("maximum
-  reasoning with automatic task delegation"), the Codex top step; gpt-6-luna stops at `max`. The
-  catalog's default is `low` on gpt-6-astra and gpt-6.1-sol and `medium` on gpt-6-luna, so set
-  effort here too.
-- A role file (`.codex/agents/<role>.toml`) accepts `model` and `model_reasoning_effort`, and the
-  `[agents]` config sets `default_subagent_model` and `default_subagent_reasoning_effort` for
-  spawned agents.
-- `spawn_agent` takes `model` and `reasoning_effort` only when the workspace turns on
-  `expose_spawn_agent_model_overrides` (off by default). Its own guidance tells the model that
-  spawned agents inherit the current model and not to set `model` unless the user asks.
-- The role files `wuwei init --codex` writes still name no model; writing the table into them is
-  later work. A Codex launch is recorded with its model and effort unmeasured, and gets no note.
+- `wuwei init --codex` writes `model` and `model_reasoning_effort` into each role file. Files use
+  the **standard** tier because they have no item context. Owner `models` rows use the existing
+  precedence: `<role> standard`, then `<role>`, then the mapped table default. Regenerate after
+  changing rows; `wuwei doctor` compares against the same configured output.
+- For an item's tier, choose `<role> <tier>`, then `<role>`, then the mapped tier setting. Native
+  owner IDs pass through as requests. Availability and provider substitution are unmeasured until
+  Codex supplies resolution metadata. Claude family names in a row use the mapping above.
+- Effort keeps the same names. Sol and Astra support through `ultra`; Luna stops at `max`. The
+  installed catalog read on 2026-10-27 defaults Sol to low and Astra and Luna to medium. Role files
+  set effort explicitly. This does not change the owner session's model or effort.
+- Inspect the active `spawn_agent` schema. This session exposes `agent_type`, `model`,
+  `reasoning_effort` and `fork_turns`. Other surfaces may omit overrides. A full-history fork
+  inherits settings and does not accept model or effort overrides here. Use per-call settings
+  only when supported, and state the requested setting in the brief's `Model:` line otherwise.
+  Generated role settings are defaults; neither a request nor a fork policy proves what ran.
+- The hook's note names the tier policy and requested settings without claiming enforcement.
+  `asked` and `effort` record requests from the call or brief. `model` records only the child's
+  supplied `resolvedModel`, else `unmeasured`. The launching parent's turn model and effort have
+  separate fields and report labels. They never supply a missing child model.
+- The report labels **requested**, **resolved child**, **launching parent turn**, and **fork
+  policy** separately. Explicit `fork_turns=all` means a requested `inherit` policy; `none` means
+  `fresh`. An omitted or unknown value stays `unmeasured`. Native telemetry supplies no answer,
+  stop or verdict attestation.
 
 ## Learning from it
 

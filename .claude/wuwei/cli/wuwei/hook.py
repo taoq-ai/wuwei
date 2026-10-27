@@ -78,8 +78,14 @@ def pre_tool(root, payload):
 def asked(data):
     """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
-    return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:[ \t]*(\S[^\r\n]*)', r'^Model reason:[ \t]*(\S.*)$'))
+    words = re.split(r'[ \t]+', line[1])[1:] if line else ()
+    effort = next((v for word in words if (v := word.partition('(')[0]) in ('low', 'medium', 'high', 'xhigh', 'max', 'ultra')), None)
+    return item and item[1].rstrip('.'), str(data.get('effort') or '') or effort, reason and reason[1].strip()[:200]
+
+
+def requested(data):
+    return data.get('model') or ((re.findall(r'^Model:[ \t]*(\S+)', str(data.get('prompt', '')), re.M) or [None])[0] if 'agent_type' in data else None)
 
 
 def crowded(root, payload):  # advice on a launch past the seat ceiling, never a door
@@ -91,12 +97,16 @@ def crowded(root, payload):  # advice on a launch past the seat ceiling, never a
 def advise(root, data, note=''):
     """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
-    if role not in agents.TABLE or not data.get('prompt') or 'agent_type' in data:  # Codex policy remains unmeasured
+    if role not in agents.TABLE or not data.get('prompt'):
         return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
     if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
         tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
+    if 'agent_type' in data:
+        return context('PreToolUse', note + f"\nWUWEI: Codex table says {' '.join(agents.codex_setting(role, rows, tier))} for {role} at {tier}; "
+                       f"requested: {requested(data) or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {dict(all='inherit', none='fresh').get(str(data.get('fork_turns')), 'unmeasured')}. "
+                       'Resolved child model is unmeasured until provider metadata; use overrides only when the active schema supports them.')
     allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
     fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
@@ -302,11 +312,14 @@ def post_tool(root, payload):
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
         canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
         redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
-        item, effort, reason = asked({**data, 'prompt': redact(str(data.get('prompt', '')))})
+        item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
         seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
                 'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item}
+                'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
+                **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
+                    'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
         ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
                   {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
         return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
@@ -515,7 +528,7 @@ def codex(payload, event='PostToolUse'):
             raise ValueError('Codex spawn_agent response needs a nonblank string agent_id or task_name')
         role = str(data.get('agent_type') or '').removeprefix('wuwei:')
         return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
-                'tool_response': {'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'tool_response': {**(response or {}), 'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
                 'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}

@@ -89,7 +89,7 @@ def test_init_codex_writes_the_role_agents_and_the_door_rules(tmp_path, monkeypa
     setup.init(tmp_path, codex=True)
     role = tomllib.loads((tmp_path / '.codex' / 'agents' / 'sentinel-quality.toml').read_text())
     assert role['name'] == 'sentinel-quality' and 'Quality sentinel charter' in role['developer_instructions']
-    assert 'model' not in role  # Codex picks its own models; a Claude model name would not resolve there
+    assert (role['model'], role['model_reasoning_effort']) == ('gpt-6-luna', 'high')
     assert len(list((tmp_path / '.codex' / 'agents').glob('*.toml'))) == 8
     rules = (tmp_path / '.codex' / 'rules' / 'wuwei.rules').read_text()
     assert 'pattern = ["git", "push", "--force"], decision = "forbidden"' in rules
@@ -195,6 +195,18 @@ def test_namespaced_known_native_role_and_legacy_identity_precedence(root):
 def test_direct_normalization_never_returns_an_apparently_valid_blank_agent(response):
     with pytest.raises(ValueError, match='Codex spawn_agent response needs'):
         hook.codex({'tool_name': 'spawn_agent', 'tool_input': {'agent_type': 'builder'}, 'tool_response': response})
+
+
+def test_codex_regeneration_and_doctor_share_owner_override_precedence(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: 'ok')
+    setup.init(tmp_path, codex=True)
+    ws.set_config(tmp_path, 'models', 'builder=gpt-6-luna low, builder standard=gpt-6-astra xhigh')
+    assert ('codex roles', 'warn', 'stale: builder: run wuwei init --codex') in setup.doctor(tmp_path)
+    setup.init(tmp_path, codex=True)
+    role = tomllib.loads((tmp_path / '.codex/agents/builder.toml').read_text())
+    assert (role['model'], role['model_reasoning_effort']) == ('gpt-6-astra', 'xhigh')
+    assert ('codex roles', 'ok', 'match the charters') in setup.doctor(tmp_path)
 
 
 @pytest.mark.parametrize('surface', ['native', 'native-unconfirmed', 'legacy'])

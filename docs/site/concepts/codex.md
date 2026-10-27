@@ -52,15 +52,24 @@ Malformed or missing identities produce `hook.error` and no running seat. The ad
 object results and JSON object strings, preserving legacy `agent_id` and native `task_name`.
 Native task paths keep the harness value; stops match them within their session.
 
-The requested message, model and reasoning effort survive normalization. The running-seat row
-records the requested model as `asked`, the effort as `effort`, and the model as `unmeasured`.
-This records dispatch settings; it does not attest a launch, stop or verdict.
+The requested message, model and reasoning effort survive normalization. `asked` and `effort`
+record the request; a brief's `Model:` line can name it when the schema has no override fields.
+`model` records only a supplied provider-resolved child model, else `unmeasured`. The report shows
+those settings separately from the launching parent's turn metadata and the requested fork policy.
+A parent's model cannot measure a child's model. This telemetry does not attest a launch, stop or
+verdict.
 
-On Claude Code each seat's model and effort come from the [model table](models.md). On Codex the
-role files name no model: Codex chooses its own, and a Claude model name would not resolve there.
-The models page maps each step of the table to a Codex model. That column is the planner's reading
-of the Codex catalog, not OpenAI guidance on seats. It is unmeasured, and writing it into the role
-files is later work.
+`wuwei init --codex` writes native role `model` and `model_reasoning_effort` defaults from the
+[model table](models.md). Role files use the standard tier. Existing owner `models` rows override
+the mapped table: role-and-standard before role alone. Regenerate after changing rows; doctor
+uses the same configured comparison. The owner session keeps its settings.
+
+Inspect the active tool schema before selecting an item's tier per call. Some surfaces omit
+model overrides, and full-history forks can require inheritance. State the requested policy in the
+brief when an override is unavailable. Explicit `fork_turns=all` records `fork policy: inherit`,
+which describes the request; actual child resolution stays unmeasured without provider metadata.
+The models page documents the deterministic catalog mapping and owner precedence. The mapping is
+WUWEI policy, with delivery outcomes still unmeasured.
 
 ## Gates on Codex
 
