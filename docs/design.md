@@ -262,7 +262,7 @@ or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program name
 `-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
-removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, or `.claude` itself) in the
+removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, `.codex/sessions`, or their parent configuration folders) in the
 same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
 a literal `-m wuwei hook` through any interpreter; an
 owner question without a class.
@@ -326,9 +326,13 @@ call) reads as unconfirmed. Each answer id is recorded once: a replay records no
 type and Agent tool_use and the session transcript holds that tool_use, and a gate's report, at its
 hand-back and its stop, counts only as that seat transcript holds it: the payload's text when it is the
 transcript's last report (an earlier one is a replay), else the transcript's last report (a PreToolUse payload names no seat transcript,
-so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Codex answers and stops, a
-moved Claude Code folder (`CLAUDE_CONFIG_DIR`) and an account with no password-database entry are
-recorded as unconfirmed until a reader for those transcripts exists. A process that writes the
+so the hook reads the one beside the session's). Else `seat.unconfirmed`, with no attestation. Native Codex stops can count from account-derived
+`.codex/sessions`: first child metadata and fork boundary, a correlated parent spawn call/result,
+role, native UUID and canonical task path must match the last own final report. The real
+SubagentStop supplies completion; any later available task_complete must agree. Child recorded
+model/effort comes from its own turn_context and does not claim provider resolution. Reports reuse
+the existing store and exact native notification proof. Codex owner answers, companion jobs,
+moved transcript roots and an account with no password-database entry remain unconfirmed. A process that writes the
 transcript itself stays open (SECURITY.md).
 
 ## 9. Learning
@@ -358,7 +362,7 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 ## 11. Configuration and budgets
 
 Six keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`, `models`. Runtime at
-most 3,800 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
+most 4,000 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something
 first.
 
 Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and

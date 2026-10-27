@@ -42,7 +42,7 @@ warns while the role files differ from the charters.
 | `Agent` with `subagent_type` | `spawn_agent` with a known `agent_type` and successful `agent_id` or `task_name` | a running seat; the Stop hook stays quiet while it runs |
 | `AskUserQuestion` | `request_user_input` | the same owner classes; answers recorded as `answer.unconfirmed` until WUWEI reads Codex's transcript |
 | `mcp__server__tool` | `mcp__server__tool` | the same leak and merge doors |
-| SubagentStop | SubagentStop | recorded as `seat.unconfirmed`, with no attestation, until WUWEI reads Codex's transcript |
+| SubagentStop | SubagentStop | attested only with protected native launch, identity and latest own report proof |
 | `.claude/settings.json` rules | `.codex/rules/*.rules` | written by `wuwei init` and `wuwei init --codex` |
 
 Inspect the active `spawn_agent` schema before dispatch. Supply `agent_type` only when supported;
@@ -74,23 +74,36 @@ WUWEI policy, with delivery outcomes still unmeasured.
 ## Gates on Codex
 
 A gate counts only when WUWEI attests its verdict from the seat's own hand-back or SubagentStop.
-Gates never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts. A
-`codex-companion` task job started from a Claude session is not a seat: it has no SubagentStop, so
-its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078, #1181). Its job
-id does not change that: a job id is not a hand-back the harness recorded. A Codex-native seat
-(`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks, but its stop is
-recorded as `seat.unconfirmed` (#1172), so a Codex seat never counts either. Run gates as Claude
-seats; builders and fix rounds may run on Codex.
+Native Codex gates count only with protected parent/child proof from the account's default
+`.codex/sessions` root. The first child metadata, its fork boundary, the parent's matching
+`collaboration.spawn_agent` call and result, requested role, native UUID and canonical task path
+must agree. Only the child's last own assistant `final_answer` report counts. The real
+SubagentStop supplies completion; any later available `task_complete` must agree. A missing or
+mismatched record stays `seat.unconfirmed`.
+
+The hook transport also uses the observed `collaborationspawn_agent` name. The spawn result may be
+a JSON string containing `task_name`. A stop UUID maps to that canonical path only after proof.
+Child `recorded_model` and `recorded_effort` come from its own `turn_context` after the fork and
+before its report. These fields appear on the stop and attestation; they describe recorded child
+settings, not provider resolution. Missing settings remain `unmeasured`.
+
+A `codex-companion` task job started from another session has no native SubagentStop, so its
+verdict file stays unattested. A job id cannot supply launch or report proof. Moved native roots
+(`CODEX_HOME`), unsupported schemas and unavailable account records are unsupported sources.
+
+Native reports reuse the existing latest-valid report store and atomic claims. Ordinary canonical
+IDs stay unchanged. Credential/canary-bearing IDs use a stable SHA256 key at launch and verified
+stop, keeping distinct seats separate. Report filenames hash the persisted key; notification
+comparison maps the raw canonical sender to the same key. Only an exact native final-answer notification with the matching
+author, recipient, report body and a suitable timestamp suppresses repeated delivery.
 
 A brief for a seat on Codex tells it not to use MCP tools. Codex can deny an MCP call without
 asking, and a seat treats any denied call as a blocker, so one denial can stop a sound review.
 
-**Breaking change (hook-transcript, #1172):** before it, a Codex `request_user_input` answer was
-recorded as a ruling by its question and a Codex seat's stop was attested. Now both are recorded as
-`answer.unconfirmed` and `seat.unconfirmed`, because WUWEI cannot yet read Codex's transcript to
-confirm them. Ask owner questions (`owner review:`, `breaking:`, `exception:`, `plan:`, `goal:`) and
-run gates from a Claude Code session, or approve on the code host. The rows name why, so nothing is
-lost silently.
+Ordinary native owner replies and `request_user_input` answers remain unconfirmed here. Native
+seat proof does not establish owner-answer origin. Item #1260 owns that separate boundary.
+Owner questions require a supported confirmed answer path, or owner approval on the code host;
+existing human authorization remains valid even when this version cannot attest its receipt.
 
 **Why:** the process is the product, not the harness. The same evidence, doors and questions hold
 whichever agent does the work, and a team can run both without two rule books.

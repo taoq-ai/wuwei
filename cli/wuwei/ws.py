@@ -31,6 +31,7 @@ try:  # the harness's transcripts; never HOME or USERPROFILE, which a caller set
         PROJECTS = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude' / 'projects'
 except (KeyError, OSError):  # no account entry: nothing lies under /dev/null, so answers and stops record as unconfirmed
     PROJECTS = Path('/dev/null/.claude/projects')
+SESSIONS = PROJECTS.parent.parent / '.codex' / 'sessions'
 
 
 def find(start=None):

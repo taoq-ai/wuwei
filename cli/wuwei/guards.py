@@ -64,7 +64,7 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
-HARNESS = ("the harness's session transcripts (.claude/projects) are written only by the harness: WUWEI confirms owner answers and "
+HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions) are written only by the harness: WUWEI confirms owner answers and "
            'seat stops against them. Reading passes: the Read tool, cat, grep, or python3 - < <path>. Claude Code\'s memory '
            '(<project>/memory/<file>) takes Write, Edit, a redirect, tee, sed -i, truncate or rm on its literal path, from outside memory.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
@@ -97,10 +97,10 @@ def _records(path, below, cap, name):
         named(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
-def harness(path, cap=512, keep=False):  # the harness's transcripts: .claude/projects or .claude itself, in the spellings records reads
+def harness(path, cap=512, keep=False):  # protected transcript roots and their parents, in the spellings records reads
     full = re.sub(r'^(~|\$HOME|\$\{HOME\})(?=/)', lambda m: os.environ.get('HOME') or str(Path.home()), path)  # keep: a file in
     full = full.replace('\\', '/') if WINDOWS else full  # <project>/memory, as a literal path; \ is a separator on Windows only
-    return records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*' if WINDOWS else r'/[\w./@+-]*', full) and (  # resolves, links read
+    return records(path, ('sessions',), cap, '.codex') or records(path, ('projects',), cap, '.claude') and not (keep and re.fullmatch(r'([A-Za-z]:)?/[\w./@+-]*' if WINDOWS else r'/[\w./@+-]*', full) and (  # resolves, links read
         real := Path(realpath(full))).parent.name == 'memory' and real.parent.parent.parent == Path(realpath(ws.PROJECTS)))
 
 
