@@ -13,6 +13,9 @@ only its latest undelivered final report, once, isolated by session and agent.
 6. Superseded files remain available for audit beside the retained report path.
 7. An overlapping delivery or temporary failure to archive an old version never makes it current.
 8. Moving the latest file between pending and archive cannot hide its supersession watermark.
+9. A concurrent claim during retention listing or reading never loses the returning final in A/B/A.
+10. Only a readable, nonblank UTF-8 regular file with the writer's session/agent/role/version name
+    establishes a latest-version marker. Invalid pending, archived, and moved copies suppress nothing.
 
 ## Assumptions
 
@@ -33,3 +36,11 @@ Each session and agent contributes at most one report body per delivery. Subsequ
 remain quiet until that seat produces another final report. All retained versions remain readable.
 
 Rollback: revert this change.
+
+## Approved selection reconsideration
+
+The owner approved revised report selection after the first delta found filename-only archive
+watermarks could hide authentic finals. Validate filename, file type, UTF-8 readability, and nonblank
+content before selecting a version in retention or delivery. Validate a moved archive copy by the
+same rule. Keep pending-first enumeration and claim fallback. Existing positive integer version
+filenames remain supported. This is filesystem robustness, not a new authenticity protocol.
