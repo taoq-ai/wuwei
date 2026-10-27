@@ -1496,11 +1496,36 @@ def test_a_repeated_report_with_carriage_returns_is_kept_once(root, tmp_path):
     assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
 
 
-def test_two_stops_of_one_seat_keep_both_reports(root, tmp_path):
+def test_three_stops_of_one_seat_deliver_only_the_latest_report_and_keep_every_version(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
     lead_stop(root, seat_transcript(tmp_path / 'lead2.jsonl', text='second round done'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead3.jsonl', text='final round done'))
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
-    assert REPORT_1160 in note and 'second round done' in note
+    assert 'final round done' in note and REPORT_1160 not in note and 'second round done' not in note
+    kept = list((root / ws.DIR / 'reports').glob('*.md'))
+    assert {p.read_text() for p in kept} == {REPORT_1160, 'second round done', 'final round done'}
+    assert any(str(p) in note for p in kept if p.read_text() == 'final round done')
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+
+
+@pytest.mark.parametrize('delivered', [False, True])
+def test_a_final_report_matching_an_older_body_never_leaves_an_interim_report_pending(root, tmp_path, delivered):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='final result'))
+    if delivered:
+        assert 'final result' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='interim result'))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='final result'))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'final result' in note and 'interim result' not in note
+    assert planner_call(root, event='Stop') is None
+
+
+def test_identical_latest_reports_in_separate_sessions_are_delivered_independently(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'), session='s2')
+    assert planner_call(root) is None
+    assert REPORT_1160 in planner_call(root, session='s2')['hookSpecificOutput']['additionalContext']
 
 
 
@@ -1634,13 +1659,21 @@ def test_two_seats_each_report_reaches_the_planner_once_across_its_call_and_stop
     assert planner_call(root, event='Stop') is None
 
 
-def test_a_seat_that_stopped_twice_with_both_reports_notified_gives_two_pointers(root, tmp_path):
+def test_a_notified_latest_report_suppresses_older_versions_even_at_stop(root, tmp_path):
     lead2_stop(root, tmp_path, 'first round done')
     lead2_stop(root, tmp_path, 'second round done')
-    notified('lead2', 'first round done')
     notified('lead2', 'second round done')
+    assert planner_call(root, event='Stop') is None
     note = planner_call(root)['hookSpecificOutput']['additionalContext']
-    assert note.count('## lead lead2: report already notified; kept at ') == 2 and 'round done' not in note
+    assert note.count('## lead lead2: report already notified; kept at ') == 1 and 'round done' not in note
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+
+
+def test_the_real_no_report_delivered_notification_does_not_suppress_the_final_report(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl'))
+    notified('lead1', 'The subagent ended without delivering a report through SubagentHandback, so no report was delivered')
+    assert REPORT_1160 in planner_call(root, event='Stop')['reason']
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
 
 
 def test_a_report_inside_an_earlier_result_of_its_seat_is_given_in_full(root, tmp_path):

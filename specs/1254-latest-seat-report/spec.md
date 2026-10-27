@@ -1,0 +1,33 @@
+# One latest seat report
+
+Promise: when handback is unavailable, a seat ends with a plain-text report. The planner receives
+only its latest undelivered final report, once, isolated by session and agent.
+
+## Acceptance scenarios
+
+1. A refused handback followed by a final message delivers that report once, without a retry.
+2. Three retained versions produce only the latest report. Earlier bodies cannot displace it.
+3. A matching real notification or previous delivery prevents another delivery of that final.
+4. Similar text from separate agents or sessions never suppresses either report.
+5. A cancelled notification or the real error saying no report was delivered gives no delivery credit.
+6. Superseded files remain available for audit beside the retained report path.
+
+## Assumptions
+
+The existing timestamped filenames order versions within a seat. They are generated from time_ns;
+a native producer that supplies a different ordering would overturn this choice.
+Repeated identical latest reports are one final report. A changed latest report supersedes earlier
+pending versions, even when its text matches an older version. This prevents historical body deduplication
+from losing the final report.
+
+## Scope
+
+Reuse report retention and delivery in hook.py. Preserve launch verification, notification frame
+matching, cancellation handling, guard decisions, and the existing outside-auto guidance.
+
+## Success criteria
+
+Each session and agent contributes at most one report body per delivery. Subsequent calls and Stop
+remain quiet until that seat produces another final report. All retained versions remain readable.
+
+Rollback: revert this change.

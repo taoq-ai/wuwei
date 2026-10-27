@@ -196,8 +196,8 @@ def subagent_stop(root, payload):
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
-        if not any(p.is_file() and p.read_bytes() == payload['last_assistant_message'].encode() for p in (Path(root) / ws.DIR / 'reports').rglob(
-                f'{name}--*.md')):  # a seat that stops again with the same report keeps it once; only regular files are read (#1208)
+        kept = max((p for p in (Path(root) / ws.DIR / 'reports').rglob(f'{name}--*.md') if p.is_file()), key=lambda p: p.name, default=None)
+        if kept is None or kept.read_bytes() != payload['last_assistant_message'].encode():  # only the latest version can repeat
             ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
                             payload['last_assistant_message'], Path(root))
     return out
@@ -520,9 +520,14 @@ def deliver(root, event, payload, out, said):
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
-    for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
+    pending, found, session, seen = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), set()
+    for path in sorted(pending.glob(f'{session}--*.md'), reverse=True) if pending.is_dir() else ():
         try:
+            seat = tuple(path.stem.split('--', 3)[:2])
+            if seat in seen:
+                os.replace(path, pending.parent / path.name)  # superseded versions stay beside the latest report's kept path
+                continue
+            seen.add(seat)
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
