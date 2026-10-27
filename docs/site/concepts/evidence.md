@@ -39,9 +39,11 @@ unsettled status). A match is review evidence, not CI:
 | pending | `waiting on review: <context>` |
 | failure | `change request outstanding: <context>` |
 
-Both are actionable safety gaps: someone has to ask for a review or answer the change request, and
-the merge stays refused until then, with or without auto-merge. When the Actions host cannot be
-read, the status stays CI (`CI running` or `CI failing`), never a pass.
+Both are actionable safety gaps: someone has to ask for a review or answer the change request.
+A direct merge waits for either gap. Arming auto-merge may wait on pending review and permitted CI
+waits; GitHub holds the eventual merge. Failed review still holds auto-merge. An unreadable review
+classifier produces `evidence unreadable: review status classification unreadable`, which holds both
+merge routes. A status without a matching review workflow remains ordinary CI.
 
 **Why:** a review gate read as CI tells the team to wait for a build that already finished, or to
 fix a build that is not red.
