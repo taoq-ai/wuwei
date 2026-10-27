@@ -189,6 +189,8 @@ def native_text(row):
 
 def _native_report(payload, supplied):
     try:
+        if any(not Path(payload[k]).resolve().is_relative_to(ws.SESSIONS.resolve()) for k in ('transcript_path', 'agent_transcript_path')):
+            return None
         before, launches = native_rows(transcript_rows(payload.get('transcript_path'), ''))
         meta, own = native_rows(transcript_rows(payload.get('agent_transcript_path'), ''))
         role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
@@ -212,7 +214,7 @@ def _native_report(payload, supplied):
         if found.strip() and (not supplied or supplied == found) and all(r['type'] == 'event_msg' and r['payload']['last_agent_message'] == found for r in done):
             turn = next((r['payload'] for r in reversed(own) if r['type'] == 'turn_context' and r['ordinal'] < final['ordinal']), {})
             return found, meta['agent_path'], {f'recorded_{k}': v if isinstance(v := turn.get(k), str) and v.strip() else 'unmeasured' for k in ('model', 'effort')}
-    except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+    except (OSError, RuntimeError, KeyError, IndexError, TypeError, ValueError, AttributeError):
         pass
     return None
 

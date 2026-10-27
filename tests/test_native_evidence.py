@@ -13,7 +13,7 @@ from conftest import verdict_text
 from test_guards import TRANSCRIPT_WRITES
 from wuwei import guards, hook, ws
 
-FIXTURE = json.loads((Path(__file__).parent / "fixtures/native-evidence.json").read_text())
+FIXTURE = json.loads((Path(__file__).parent / "fixtures/native-evidence.json").read_text().replace("<task-root>", "/root"))
 
 @pytest.fixture
 def native(root, monkeypatch):
@@ -323,3 +323,14 @@ def test_native_boundary_identity_and_settings_edges(root, native, change):
         assert row['recorded_model'] == row['recorded_effort'] == 'unmeasured'
     else:
         assert not ws.rows(root, 'seat.stopped') and not ws.rows(root, 'attest')
+
+
+def test_native_parent_record_must_be_under_native_root_even_if_legacy_root_is_protected(root, native):
+    payload, parent, child, save = native
+    legacy = ws.PROJECTS/'native-shaped-parent.jsonl'
+    legacy.parent.mkdir(parents=True,exist_ok=True)
+    legacy.write_bytes(Path(payload['transcript_path']).read_bytes())
+    payload['transcript_path'] = str(legacy)
+    hook.handle(root, 'SubagentStop', payload)
+    assert not ws.rows(root, 'seat.stopped') and not ws.rows(root, 'attest')
+    assert ws.rows(root, 'seat.unconfirmed')

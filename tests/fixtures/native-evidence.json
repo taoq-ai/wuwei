@@ -41,7 +41,7 @@
     "payload": {
       "type": "function_call_output",
       "call_id": "call_6607120c180e4fe58cac358c438e439c",
-      "output": "{\"task_name\":\"/root/codex_transcript_probe\"}"
+      "output": "{\"task_name\":\"<task-root>/codex_transcript_probe\"}"
     },
     "metadata": {
       "client_authored": false,
@@ -65,7 +65,7 @@
           "thread_spawn": {
             "parent_thread_id": "id-1",
             "depth": 1,
-            "agent_path": "/root/codex_transcript_probe",
+            "agent_path": "<task-root>/codex_transcript_probe",
             "agent_nickname": "Averroes",
             "agent_role": "builder"
           }
@@ -73,7 +73,7 @@
       },
       "thread_source": "subagent",
       "agent_role": "builder",
-      "agent_path": "/root/codex_transcript_probe",
+      "agent_path": "<task-root>/codex_transcript_probe",
       "subagent_history_start_ordinal": 45,
       "multi_agent_version": "v2"
     }
@@ -138,12 +138,12 @@
     "type": "response_item",
     "payload": {
       "type": "agent_message",
-      "author": "/root/codex_transcript_probe",
-      "recipient": "/root",
+      "author": "<task-root>/codex_transcript_probe",
+      "recipient": "<task-root>",
       "content": [
         {
           "type": "input_text",
-          "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/codex_transcript_probe\nPayload:\n[Probe report](<workspace>/.wuwei/scratch/codex-transcript-probe/findings.md) completed.\n\nNative transcript parsing is feasible. Safe attestation still needs:\n\n- Actual WUWEI hook payload capture and execution verification.\n- Protection for `.codex/sessions`; current guards protect Claude transcripts only.\n- Correlation across parent launch, child identity, history boundary and final report.\n- A genuine owner reply bound to the displayed plan.\n\nThe real spawn result contains `task_name`, confirming the identity mismatch. `agent_type` is supported on this surface.\n\nRuntime is 3,745 of 3,800 lines. No source or ledger changes.\n\nConfidence: high for observed findings; implementation size remains estimated.\nBlocked: actual hook transport and approval rehearsal are unmeasured.\nGap: installation drift and missing workspace exec rules.\nChange: check active harness capabilities before promising attested approvals or gates."
+          "text": "Message Type: FINAL_ANSWER\nTask name: <task-root>\nSender: <task-root>/codex_transcript_probe\nPayload:\n[Probe report](<workspace>/.wuwei/scratch/codex-transcript-probe/findings.md) completed.\n\nNative transcript parsing is feasible. Safe attestation still needs:\n\n- Actual WUWEI hook payload capture and execution verification.\n- Protection for `.codex/sessions`; current guards protect Claude transcripts only.\n- Correlation across parent launch, child identity, history boundary and final report.\n- A genuine owner reply bound to the displayed plan.\n\nThe real spawn result contains `task_name`, confirming the identity mismatch. `agent_type` is supported on this surface.\n\nRuntime is 3,745 of 3,800 lines. No source or ledger changes.\n\nConfidence: high for observed findings; implementation size remains estimated.\nBlocked: actual hook transport and approval rehearsal are unmeasured.\nGap: installation drift and missing workspace exec rules.\nChange: check active harness capabilities before promising attested approvals or gates."
         }
       ],
       "internal_chat_message_metadata_passthrough": {
