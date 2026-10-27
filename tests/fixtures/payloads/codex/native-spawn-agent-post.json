@@ -1,0 +1,14 @@
+{
+  "session_id": "native-session",
+  "cwd": "/repo",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "spawn_agent",
+  "tool_input": {
+    "task_name": "identity_probe",
+    "agent_type": "builder",
+    "message": "Item: I-1\nModel reason: native identity probe",
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high"
+  },
+  "tool_response": "{\"task_name\": \"/task/identity_probe\"}"
+}

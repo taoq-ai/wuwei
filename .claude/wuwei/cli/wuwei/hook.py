@@ -90,7 +90,7 @@ def crowded(root, payload):  # advice on a launch past the seat ceiling, never a
 def advise(root, data, note=''):
     """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
-    if role not in agents.TABLE or not data.get('prompt'):  # a Codex spawn carries no brief and no model
+    if role not in agents.TABLE or not data.get('prompt') or 'agent_type' in data:  # Codex policy remains unmeasured
         return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
@@ -283,13 +283,18 @@ def post_tool(root, payload):
                         'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
-    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
-        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
+        canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
+        redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
+        item, effort, reason = asked({**data, 'prompt': redact(str(data.get('prompt', '')))})
+        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
+                'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item}
+        ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
+                  {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
+        return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
@@ -481,17 +486,22 @@ HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'Sub
 PATCHED = re.compile(r'^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$', re.M)
 
 
-def codex(payload):
+def codex(payload, event='PostToolUse'):
     """Codex's tool payloads in the shapes the guards read: apply_patch as an edit of the files it
     names, spawn_agent as a seat launch, request_user_input as an owner question."""
     tool, data = payload.get('tool_name'), payload.get('tool_input') or {}
     if tool == 'apply_patch':
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
-    if tool == 'spawn_agent':
-        spawned = re.search(r'"agent_id"\s*:\s*"([^"]+)"', json.dumps(payload.get('tool_response')).replace('\\"', '"'))
-        return {**payload, 'tool_name': 'Agent', 'tool_response': {'agentId': spawned and spawned[1]},
-                'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
+    if tool in ('spawn_agent', 'collaborationspawn_agent'):
+        response = json.loads(raw) if isinstance(raw := payload.get('tool_response'), str) else raw
+        spawned = response.get('agent_id', response.get('task_name')) if isinstance(response, dict) else None
+        if event == 'PostToolUse' and (not isinstance(spawned, str) or not spawned.strip()):
+            raise ValueError('Codex spawn_agent response needs a nonblank string agent_id or task_name')
+        role = str(data.get('agent_type') or '').removeprefix('wuwei:')
+        return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
+                'tool_response': {'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
         response = payload.get('tool_response')
@@ -547,7 +557,7 @@ def handle(root, event, payload):
     except Exception as exc:
         _failed(root, event, exc)
     try:  # at PostToolUse the answers are recorded after it kept its own
-        out = handler(root, codex(payload))
+        out = handler(root, codex(payload, event))
         said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []
     except Exception as exc:  # a door that cannot judge stays shut
         message = _failed(root, event, exc)
