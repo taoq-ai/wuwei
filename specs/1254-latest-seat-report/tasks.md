@@ -10,4 +10,7 @@
 - [x] T007 Merge corrected item 1259 parent and run hook/setup/Codex focused tests and exact-source route comparisons.
 - [x] T008 [US1] Reproduce and close retention scan/claim and read/rename races in tests/test_hook.py and cli/wuwei/hook.py.
 
+- [x] T009 [US1] Reproduce 44 invalid-entry cases and add shared validated selection under the owner-approved redesign.
+- [x] T010 Validate legacy numeric ordering, 767 focused tests, and exact-source route comparisons for source 6528988f.
+
 Dependencies: execute in order. This is one bug fix with shared hook state, so no parallel source work.
