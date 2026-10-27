@@ -20,3 +20,10 @@ Forty-four invalid-entry cases initially produced 40 failures and 4 passes. FIFO
 deterministic open guard so the regression fails without hanging. All 44 cases now pass, together
 with the six closed race cases. The legacy numeric-ordering case failed before its fix and passes.
 No open CRITICAL or HIGH finding remains in this analysis. Independent review is still required.
+
+## Approved Windows claim correction
+
+Windows CI exposed duplicate delivery when two callers had opened the source before either rename.
+The existing ws.take lock now serializes report moves, preserving its prior unlink behavior.
+A deterministic handle-semantics regression failed before the fix and passes afterward.
+The source adds zero runtime lines. Independent quality and security delta reviews remain required.

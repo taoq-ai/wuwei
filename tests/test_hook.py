@@ -2802,3 +2802,28 @@ def test_a_launch_over_the_seat_ceiling_passes_with_a_note_and_one_under_it_has_
         '.\nWUWEI: table says ' in both['hookSpecificOutput']['additionalContext'] and 'permissionDecision' not in both['hookSpecificOutput']
     (root / ws.DIR / 'standards.md').write_text('Seat ceiling: 10\n')
     assert go() is None
+
+
+def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, BrokenBarrierError
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='ONE WINDOWS CLAIM'))
+    replace, handles = hook.os.replace, Barrier(2)
+
+    def windows_replace(source, target, *args, **kwargs):
+        opened = Path(source).exists()  # two Windows handles can open the same source before either rename
+        try:
+            handles.wait(timeout=0.1)
+        except BrokenBarrierError:
+            pass
+        try:
+            return replace(source, target, *args, **kwargs)
+        except FileNotFoundError:
+            if not opened:
+                raise
+            # MoveFileEx can rename the already-opened file after another handle moved it.
+
+    monkeypatch.setattr(hook.os, 'replace', windows_replace)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        found = list(pool.map(lambda _: planner_call(root), range(4)))
+    assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1

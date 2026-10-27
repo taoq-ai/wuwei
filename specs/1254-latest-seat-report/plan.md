@@ -17,3 +17,7 @@ Approved redesign: share one report-file reader between retention and delivery. 
 writer-shaped filename, regular-file type, readable nonblank UTF-8 bytes, and any moved fallback
 copy before the file can establish a watermark. Preserve pending-first snapshots and immutable
 version fallback. Reject invalid entries without discarding the genuine final, and add no store.
+
+Approved Windows correction: serialize the final report move with the existing ws.take ledger lock.
+Retain file validation, pending-first selection, archive fallback, and ordinary answer unlink behavior.
+No new lock, store, or dependency is added; runtime line count is unchanged.

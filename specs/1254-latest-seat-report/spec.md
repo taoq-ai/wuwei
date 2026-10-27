@@ -44,3 +44,9 @@ watermarks could hide authentic finals. Validate filename, file type, UTF-8 read
 content before selecting a version in retention or delivery. Validate a moved archive copy by the
 same rule. Keep pending-first enumeration and claim fallback. Existing positive integer version
 filenames remain supported. This is filesystem robustness, not a new authenticity protocol.
+
+## Approved Windows claim correction
+
+Concurrent native Windows hooks must claim each pending report at most once, even when both callers
+opened the source before either rename. Reuse the existing cross-platform claim lock and retain
+answer unlink behavior. The owner explicitly approved this additional correction and delta review.

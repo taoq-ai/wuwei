@@ -135,3 +135,23 @@ The owner approved revised selection after the first delta, with the global cap 
 Rollback: revert this change.
 
 Draft PR: https://github.com/taoq-ai/wuwei/pull/1264 (stacked on item 1259). CI unread at handoff.
+
+## Approved Windows claim correction
+
+The owner approved one further shared-claim correction round after Windows 3.11 CI on PR 1266
+delivered one report twice. The same unprotected rename exists on original main and this item.
+Windows callers can each open the source before either rename completes, so rename success alone
+is not an exclusive delivery claim. The existing ws.take lock already handles this for answer unlinks.
+Its optional destination now moves a report under that same lock; answer unlink behavior is unchanged.
+
+At source e2de8816bf6872a85464abd4cf7f8080e50da90f, the tracked Windows handle-semantics test
+failed before implementation with two deliveries, then passed. The test also fails on a fresh
+archive of original main 3feedf5c. The regression and existing racing-unlink test passed together.
+Report, retention, notification and claim checks: 218 passed, 492 deselected in 46.07 seconds.
+The native integration proposal previously passed the actual native concurrency case as well.
+
+The route corpus against original main and the preceding item head 0d83e22 each has 288 routes,
+1,152 host cases, and zero verdict or reason movements. Corpus SHA256 remains
+`de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1`.
+Raw outputs are under `.wuwei/scratch/shepherd-1254/routes/`. Runtime changes add zero lines.
+Quality and security delta reviews and new-head CI are required before delivery.
