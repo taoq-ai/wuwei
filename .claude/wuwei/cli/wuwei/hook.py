@@ -277,23 +277,24 @@ def _verdict_problem(root, payload, role):
 
 def post_tool(root, payload):
     tool, data = payload.get('tool_name', ''), payload.get('tool_input') or {}
-    if tool == 'codex_spawn_unconfirmed':
-        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.'
-        ws.record(root, 'seat.unconfirmed', {'agent': payload['tool_response']['agentId'], 'session': payload.get('session_id'), 'reason': reason})
-        return context('PostToolUse', 'WUWEI: ' + reason)
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
                         'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
-    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
-        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
+        canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
+        redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
+        item, effort, reason = asked({**data, 'prompt': redact(str(data.get('prompt', '')))})
+        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
+                'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item}
+        ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
+                  {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
+        return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
