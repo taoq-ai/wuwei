@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.3.0](https://github.com/taoq-ai/wuwei/compare/v5.2.0...v5.3.0) (2026-10-27)
+
+
+### Features
+
+* **codex:** apply role model policy and expose requested settings ([#1265](https://github.com/taoq-ai/wuwei/issues/1265)) ([9e4665f](https://github.com/taoq-ai/wuwei/commit/9e4665f99029c621b672a0a07aa9a87bf3dc943f))
+* **codex:** attest protected native seat reports ([#1266](https://github.com/taoq-ai/wuwei/issues/1266)) ([0294eba](https://github.com/taoq-ai/wuwei/commit/0294eba8e94b281c2d24552a31771a46990ce4d6))
+
+
+### Bug Fixes
+
+* **codex:** preserve native seat identity and diagnose unsupported dispatch shapes ([#1263](https://github.com/taoq-ai/wuwei/issues/1263)) ([cbcbab5](https://github.com/taoq-ai/wuwei/commit/cbcbab5c08d348a63966f24beee63c2ff92ee171))
+* **evidence:** let auto-merge wait for identified review statuses ([#1262](https://github.com/taoq-ai/wuwei/issues/1262)) ([a73a0fc](https://github.com/taoq-ai/wuwei/commit/a73a0fca39f4efd4ae3c34dd82d1abe98b2eba0d))
+* **seats:** deliver one latest report per seat outside auto mode ([#1264](https://github.com/taoq-ai/wuwei/issues/1264)) ([34a9188](https://github.com/taoq-ai/wuwei/commit/34a91885a3e2424d30040b7e4950f434bbd7a283))
+
 ## [5.2.0](https://github.com/taoq-ai/wuwei/compare/v5.1.1...v5.2.0) (2026-10-23)
 
 
