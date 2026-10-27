@@ -164,3 +164,9 @@ def test_namespaced_known_native_role_and_legacy_identity_precedence(root):
                                       'tool_response': {'agent_id': 'legacy', 'task_name': '/root/native'}})
     seat = ws.rows(root, 'seat.started')[0]['data']
     assert seat['role'] == 'builder' and seat['agent'] == 'legacy'
+
+
+@pytest.mark.parametrize('response', [None, {}, {'task_name': ''}])
+def test_direct_normalization_never_returns_an_apparently_valid_blank_agent(response):
+    with pytest.raises(ValueError, match='Codex spawn_agent response needs'):
+        hook.codex({'tool_name': 'spawn_agent', 'tool_input': {'agent_type': 'builder'}, 'tool_response': response})

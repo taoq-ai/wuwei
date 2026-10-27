@@ -28,7 +28,7 @@ queue; this pass adds, drops or re-ranks.
    states (Linear, Jira) with your own MCP tools, and put the states as you read them in the
    lead's brief. Pass a measure you cannot read (no tool, no access, an error) as unmeasured,
    with the reason. The lead has no tracker tools; their names differ per workspace.
-6. Inspect the active dispatch schema, then launch the lead in the background with the goals,
+6. Launch the lead after inspecting the active dispatch schema, in the background with the goals,
    the plan, the board and the owner's words. On Codex, use `agent_type: lead` only when the
    active schema supports it or a supported role mapping supplies it. A task name or prompt
    cannot establish a role. Without role support, report the capability gap and keep the

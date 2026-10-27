@@ -28,3 +28,8 @@ Run bin/wuwei agents check. Record corpus hash and every moved result. No parser
 ## Scope
 
 Only hook.py, Codex tests and payloads, wuwei-run guidance, Codex documentation and vendor copies change. This plan embeds research, data model and quickstart to keep the required full-tier artifacts small. No new public interface contract is introduced.
+
+## Validation evidence
+
+The initial Codex regression run was 21 failed and 14 passed. The direct-normalization check then reproduced three failures for blank identities; all 38 Codex cases pass after the adapter change.
+The route differential uses archives of 3feedf5c and the implementation head, with the same tests folder. Corpus sha256: de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1. There are 288 routes and 1,152 host cases. No verdict or reason moved. Shell parser combinatorial probes are N.A.; shell parsing is unchanged.
