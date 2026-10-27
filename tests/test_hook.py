@@ -1528,6 +1528,68 @@ def test_identical_latest_reports_in_separate_sessions_are_delivered_independent
     assert REPORT_1160 in planner_call(root, session='s2')['hookSpecificOutput']['additionalContext']
 
 
+def test_overlapping_report_delivery_never_emits_the_superseded_version(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    latest = max(pending.glob('*.md'))
+    replace, nested = hook.os.replace, []
+
+    def interleave(source, target, *args, **kwargs):
+        result = replace(source, target, *args, **kwargs)
+        if Path(source) == latest:
+            nested.append(planner_call(root, event='Stop'))
+        return result
+
+    monkeypatch.setattr(hook.os, 'replace', interleave)
+    assert 'LATEST B' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert nested == [None] and planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_temporary_archive_failure_never_makes_a_superseded_report_current(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    oldest, replace = min(pending.glob('*.md')), hook.os.replace
+
+    def blocked(source, target, *args, **kwargs):
+        if Path(source) == oldest:
+            raise PermissionError('temporary file lock on superseded report')
+        return replace(source, target, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hook.os, 'replace', blocked)
+        assert 'LATEST B' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_latest_report_moved_while_listing_is_still_visible(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='SUPERSEDED A'))
+    lead_stop(root, seat_transcript(tmp_path / 'last.jsonl', text='LATEST B'))
+    pending = root / ws.DIR / 'reports' / 'pending'
+    latest, glob = max(pending.glob('*.md')), Path.glob
+
+    def moved_before_pending_listing(path, pattern):
+        if path == pending and latest.exists():
+            os.replace(latest, pending.parent / latest.name)
+        return glob(path, pattern)
+
+    monkeypatch.setattr(Path, 'glob', moved_before_pending_listing)
+    assert planner_call(root, event='Stop') is None
+    assert {p.read_text() for p in pending.parent.glob('*.md')} == {'SUPERSEDED A', 'LATEST B'}
+
+
+def test_a_synthetic_role_change_does_not_override_the_latest_report_timestamp(root, tmp_path):
+    for role, text in [('steward', 'SUPERSEDED A'), ('builder', 'LATEST B')]:
+        hook.handle(root, 'SubagentStop', launched({
+            'session_id': 's1', 'agent_id': 'a1', 'agent_type': 'wuwei:' + role, 'cwd': str(root),
+            'agent_transcript_path': seat_transcript(tmp_path / f'{role}.jsonl', text=text)}))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'LATEST B' in note and 'SUPERSEDED A' not in note
+
+
 
 REPORT_1198 = 'Verdict: PASS at <head> & CI green.\nBlocked: none\nGap: none'
 POINTER = '## lead lead1: report already notified; kept at '

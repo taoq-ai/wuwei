@@ -182,3 +182,73 @@ def test_codex_regeneration_and_doctor_share_owner_override_precedence(tmp_path,
     role = tomllib.loads((tmp_path / '.codex/agents/builder.toml').read_text())
     assert (role['model'], role['model_reasoning_effort']) == ('gpt-6-astra', 'xhigh')
     assert ('codex roles', 'ok', 'match the charters') in setup.doctor(tmp_path)
+
+
+@pytest.mark.parametrize('surface', ['native', 'native-unconfirmed', 'legacy'])
+def test_new_seat_metadata_redacts_credentials_and_canary_without_dropping_message(root, surface):
+    credential, canary = 'ghp_' + 'Z' * 36, 'wuwei-canary-review-1259'
+    (root / ws.DIR / 'canary').write_text(canary)
+    message = f'Item: I-1\nModel reason: credential {credential} canary {canary}'
+    payload = {'session_id': 'first', 'cwd': str(root), 'tool_name': 'spawn_agent',
+               'tool_input': {'agent_type': 'builder' if surface == 'native' else None,
+                              'task_name': canary, 'message': message, 'model': credential, 'reasoning_effort': 'high'},
+               'tool_response': {'task_name': '/root/builder'}}
+    if surface == 'legacy':
+        payload.update(tool_name='Agent', tool_input={'subagent_type': 'builder', 'description': canary,
+                       'prompt': message, 'model': credential, 'effort': 'high'}, tool_response={'agentId': 'legacy'})
+    else:
+        assert hook.codex(payload)['tool_input']['prompt'] == message
+    hook.handle(root, 'PostToolUse', payload)
+    rows = ws.rows(root, 'seat.unconfirmed' if surface == 'native-unconfirmed' else 'seat.started')
+    assert len(rows) == 1
+    assert credential not in json.dumps(rows) and canary not in json.dumps(rows)
+    assert rows[0]['data']['effort'] == 'high'
+    assert ws.rows(root, 'attest') == []
+
+
+def native_review_spawn(root, session, role='builder'):
+    return hook.handle(root, 'PostToolUse', {'session_id': session, 'cwd': str(root), 'tool_name': 'spawn_agent',
+                       'tool_input': {'agent_type': role, 'task_name': 'builder', 'message': 'Item: I-1'},
+                       'tool_response': {'task_name': '/root/builder'}})
+
+
+def test_native_unconfirmed_identity_does_not_hide_another_sessions_seat(root):
+    native_review_spawn(root, 'first')
+    native_review_spawn(root, 'second', role=None)
+    assert len(ws.rows(root, 'seat.unconfirmed')) == 1
+    assert [s['session'] for s in board.running(root)] == ['first']
+
+
+def test_native_task_path_can_run_in_a_new_session_after_an_unconfirmed_stop(root):
+    native_review_spawn(root, 'first')
+    hook.handle(root, 'SubagentStop', {'session_id': 'first', 'agent_id': '/root/builder',
+                                      'agent_type': 'builder', 'last_assistant_message': 'Done.'})
+    assert board.running(root) == []
+    native_review_spawn(root, 'second')
+    assert [s['session'] for s in board.running(root)] == ['second']
+
+
+@pytest.mark.parametrize('agent', ['legacy-id', '/root/builder'])
+def test_seat_stops_with_a_session_only_close_that_sessions_identity(root, agent):
+    for session in ('first', 'second'):
+        ws.record(root, 'seat.started', {'agent': agent, 'session': session, 'role': 'builder'})
+    ws.record(root, 'seat.stopped', {'agent': agent, 'session': 'first'})
+    assert [s['session'] for s in board.running(root)] == ['second']
+
+
+@pytest.mark.parametrize('agent, remaining', [('legacy-id', []), ('/root/builder', ['first'])])
+def test_sessionless_historical_stops_only_close_legacy_global_identities(root, agent, remaining):
+    ws.record(root, 'seat.started', {'agent': agent, 'session': 'first', 'role': 'builder'})
+    ws.record(root, 'seat.stopped', {'agent': agent})
+    assert [s['session'] for s in board.running(root)] == remaining
+
+
+def test_seat_metadata_redacts_before_reason_and_description_are_truncated(root):
+    credential, canary = 'ghp_' + 'Z' * 36, 'wuwei-canary-review-boundary'
+    (root / ws.DIR / 'canary').write_text(canary)
+    hook.handle(root, 'PostToolUse', {'session_id': 'first', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                'tool_input': {'agent_type': 'builder', 'task_name': 'x' * 110 + canary,
+                               'message': 'Model reason: ' + 'x' * 180 + credential},
+                'tool_response': {'task_name': '/root/builder'}})
+    text = json.dumps(ws.rows(root, 'seat.started'))
+    assert 'ghp_' not in text and 'wuwei-can' not in text

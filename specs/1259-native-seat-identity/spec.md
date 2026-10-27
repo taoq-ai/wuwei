@@ -24,6 +24,8 @@ A planner sees why a successful identity lacks role support, or why an unreadabl
 - FR-004: Retain identities with missing or unknown roles as unconfirmed diagnostics, never running seats.
 - FR-005: Diagnose missing, blank, non-string, malformed and nested-only identity responses without creating seats or attestations.
 - FR-006: Dispatch guidance must inspect active schema support before supplying role fields.
+- FR-007: Newly recorded seat metadata must redact recognized credentials and the workspace canary before any clipping, while normalization retains the requested message.
+- FR-008: A stopped or unconfirmed identity closes only its session. Sessionless historical stops retain compatibility for non-path legacy ids; native task paths require session matching.
 
 ## Edge cases
 
@@ -46,5 +48,7 @@ Only agent_type is currently validated as a role field. A captured supported alt
 1. A regex matches an id buried in an error and invents a running seat.
 2. Prompt text supplies a role that the harness never accepted.
 3. Requested model settings are mistaken for provider-resolved settings.
+
+Review clarification: board.py is an authorized native-identity consumer in this fix round. The planner reallocated one runtime line for redaction before clipping, raising the item allowance from +9 to +10 while keeping the overall 3,800 cap.
 
 Rollback: revert this change.

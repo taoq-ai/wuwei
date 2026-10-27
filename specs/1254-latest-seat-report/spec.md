@@ -11,6 +11,8 @@ only its latest undelivered final report, once, isolated by session and agent.
 4. Similar text from separate agents or sessions never suppresses either report.
 5. A cancelled notification or the real error saying no report was delivered gives no delivery credit.
 6. Superseded files remain available for audit beside the retained report path.
+7. An overlapping delivery or temporary failure to archive an old version never makes it current.
+8. Moving the latest file between pending and archive cannot hide its supersession watermark.
 
 ## Assumptions
 

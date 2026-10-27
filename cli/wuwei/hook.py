@@ -281,25 +281,27 @@ def _verdict_problem(root, payload, role):
 
 def post_tool(root, payload):
     tool, data = payload.get('tool_name', ''), payload.get('tool_input') or {}
-    if tool == 'codex_spawn_unconfirmed':
-        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.'
-        ws.record(root, 'seat.unconfirmed', {'agent': payload['tool_response']['agentId'], 'session': payload.get('session_id'), 'reason': reason})
-        return context('PostToolUse', 'WUWEI: ' + reason)
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
                         'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
-    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
-        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
-                                         **({'turn_model': payload.get('model') or 'unmeasured', 'turn_effort': (payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level') or 'unmeasured',
-                                             'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})})
+        canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
+        redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
+        item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
+        requested = data.get('model') or ((re.findall(r'^Model:[ \t]*(\S+)', prompt, re.M) or [None])[0] if 'agent_type' in data else None)
+        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
+                'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                'asked': str(requested or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
+                **({'turn_model': payload.get('model') or 'unmeasured', 'turn_effort': (payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level') or 'unmeasured',
+                    'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
+        ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
+                  {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
+        return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
@@ -506,7 +508,6 @@ def codex(payload, event='PostToolUse'):
         role = str(data.get('agent_type') or '').removeprefix('wuwei:')
         return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
                 'tool_response': {**(response or {}), 'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
-                'model': data.get('model') or (re.findall(r'^Model:[ \t]*(\S+)', str(data.get('message') or ''), re.M) or [None])[0],
                 'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
@@ -528,11 +529,14 @@ def deliver(root, event, payload, out, said):
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
     pending, found, session, seen = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), set()
-    for path in sorted(pending.glob(f'{session}--*.md'), reverse=True) if pending.is_dir() else ():
+    for path in sorted([*pending.glob(f'{session}--*.md'), *pending.parent.glob(f'{session}--*.md')],
+                       key=lambda p: p.stem.rsplit('--', 1)[-1], reverse=True):  # pending first: a claim cannot disappear between listings
         try:
             seat = tuple(path.stem.split('--', 3)[:2])
-            if seat in seen:
-                os.replace(path, pending.parent / path.name)  # superseded versions stay beside the latest report's kept path
+            if seat in seen or path.parent != pending:
+                seen.add(seat)  # archived versions still supersede older pending files, even if retirement failed
+                if path.parent == pending:
+                    os.replace(path, pending.parent / path.name)  # keep every version beside the latest report's kept path
                 continue
             seen.add(seat)
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')

@@ -20,3 +20,5 @@
 - [x] T007 Run focused and serialized full checks, runtime count and routes; record evidence in specs/1261-codex-model-policy/analysis.md and PR body.
 
 Dependencies: T001 -> T002 -> T003 -> T004 -> T005 -> T006 -> T007. No parallel agents: hook ownership is serialized after 1254. US1 is the MVP; US2 completes the approved promise.
+
+- [x] T008 Integrate parent shared metadata sanitizer in cli/wuwei/hook.py and verify new fields with credential/canary and clipping-boundary consumers in tests/test_models.py.

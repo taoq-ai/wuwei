@@ -65,10 +65,10 @@ def adopted(root, repo, prs, keep):
 
 
 def running(root, hours=6, hosted=False):
-    """The live seats of every session: started within hours under a named session, with no stop or unconfirmed row. Past that bound a seat is dead: a session that ended without a stop row holds nothing (1180-probe).
+    """Live seats started within hours, unmatched by a stop for that session and identity. Sessionless stops close only non-path legacy ids; stale seats hold nothing (1180-probe).
     hosted adds the builder of each open --host session item with a recorded session: its record is the seat (builder-host). The hook's held check leaves it out, so gates launch here."""
-    gone, since = {a for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k) if isinstance(a := r['data'].get('agent'), str)}, (ws.now() - datetime.timedelta(hours=hours)).isoformat(timespec='seconds')
-    return [d for r in ws.rows(root, 'seat.started') if r.get('ts', '') >= since and isinstance((d := r['data']).get('session'), str) and d['session'] and isinstance(a := d.get('agent'), str) and a not in gone] + [
+    gone, since = {(str(r['data'].get('session') or ''), a) for k in ('seat.stopped', 'seat.unconfirmed') for r in ws.rows(root, k) if isinstance(a := r['data'].get('agent'), str)}, (ws.now() - datetime.timedelta(hours=hours)).isoformat(timespec='seconds')
+    return [d for r in ws.rows(root, 'seat.started') if r.get('ts', '') >= since and isinstance((d := r['data']).get('session'), str) and d['session'] and isinstance(a := d.get('agent'), str) and (d['session'], a) not in gone and (a.startswith('/') or ('', a) not in gone)] + [
         {'role': 'builder', 'item': i['id'], 'session': i['session'], 'agent': 'session ' + i['session']} for i in (plan.items(root) if hosted else ())
         if i.get('host') == 'session' and i.get('status', 'open') == 'open' and isinstance(i.get('session'), str) and i['session']]
 

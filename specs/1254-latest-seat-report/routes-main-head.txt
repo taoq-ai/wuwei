@@ -1,0 +1,5 @@
+corpus sha256 de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (main) de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1 (head); 288 routes; 1152 cases; 0 moved
+green: 288 cases, 0 moved
+running: 288 cases, 0 moved
+red: 288 cases, 0 moved
+excepted: 288 cases, 0 moved
