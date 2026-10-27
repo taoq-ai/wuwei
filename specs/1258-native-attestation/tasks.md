@@ -22,3 +22,8 @@
 - [x] T009 Analyze completed artifacts with no open critical/high finding and complete the validation checklist.
 
 Dependencies: T001 and T002 precede tests; each test runs red before its implementation. T007 follows the behavior. T008 and T009 follow the final source. Required independent gates, CI and owner review occur at the draft head after builder handoff.
+
+## Combined review fix round
+
+- [x] T010 Add the minimized genuine fork-all inherited metadata/report/model regression, run red, and move extra-metadata rejection after the fork boundary; preserve root, schema and ordinal checks.
+- [ ] T011 Replay the genuine producer through the pure reader, repeat focused/full validation and route/probe evidence, then hand the serialized mutant slot to the delta gates.

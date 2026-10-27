@@ -175,10 +175,10 @@ def native_rows(rows):
         raise ValueError('missing first native metadata')
     meta = rows[0]['payload']
     if not isinstance(meta['id'], str) or not meta['id'] or any(not isinstance(r['payload'], dict) or type(
-            r['ordinal']) is not int or r['ordinal'] < 0 for r in rows) or any(b['ordinal'] <= a['ordinal'] or b.get('type') == 'session_meta' for a, b in zip(rows, rows[1:])):
+            r['ordinal']) is not int or r['ordinal'] < 0 for r in rows) or any(b['ordinal'] <= a['ordinal'] for a, b in zip(rows, rows[1:])):
         raise ValueError('invalid native rows')
     boundary = meta.get('subagent_history_start_ordinal', 0)
-    if type(boundary) is not int or boundary < 0:
+    if type(boundary) is not int or boundary < 0 or any(r['ordinal'] > boundary and r.get('type') == 'session_meta' for r in rows[1:]):
         raise ValueError('invalid native fork boundary')
     return meta, [r for r in rows[1:] if r['ordinal'] > boundary]
 

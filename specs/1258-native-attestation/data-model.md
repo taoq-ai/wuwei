@@ -1,6 +1,6 @@
 # Data model
 
-Native rows have increasing nonnegative ordinals, an outer type and an object payload. The first row is session_meta at ordinal zero. Its id identifies the native thread. A child carries parent_thread_id, agent_role, agent_path, thread_source=subagent and a nonnegative subagent_history_start_ordinal. Rows at or before the boundary are inherited and cannot prove the child report or settings.
+Native rows have increasing nonnegative ordinals, an outer type and an object payload. The first row is session_meta at ordinal zero. Its id identifies the native thread. A child carries parent_thread_id, agent_role, agent_path, thread_source=subagent and a nonnegative subagent_history_start_ordinal. Rows at or before the boundary are inherited and cannot prove the child report or settings. This includes inherited parent session_meta rows; first child metadata still owns identity. Additional metadata after the boundary is invalid.
 
 A parent function_call for collaboration.spawn_agent pairs with a later function_call_output by call_id. The requested role and task_name must match child metadata and the canonical path under the parent. Exactly one pair is accepted.
 

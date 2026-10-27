@@ -1,6 +1,6 @@
 # Builder validation
 
-Source head: `b5fb247c0512bb264c2b2b8ff672341fd557e7be`.
+Initial reviewed source head: `b5fb247c0512bb264c2b2b8ff672341fd557e7be`.
 Parent: `b6310c55f20a430110007f3050929881e8b68935`, merged normally before the final source freeze.
 
 ## Test-first evidence
@@ -68,3 +68,7 @@ Every mutant used a fresh archive under the builder's scratch folder, modified b
 Runtime is 3,872 lines: +74 from the 3,798-line parent, within the 111-line item budget and approved 4,000 cap. `git diff --check` passes. Generated agents were built and vendor parity passed.
 
 Independent gates, current-head CI and owner review remain required before readiness. Changed-plugin trust and a fresh native live rehearsal belong to the planner. No approval, old PASS or ledger attestation was imported. The owner-answer bridge is excluded after its separate origin probe found a counterexample. Companion jobs and unsupported transcript roots remain unconfirmed.
+
+## Combined review correction
+
+Security, quality and goal identified one shared blocker: the blanket second-metadata check rejected genuine inherited parent session_meta@1 before boundary45. The actual producer has 524 strictly increasing rows, one inherited metadata row and no metadata after the boundary. The minimized regression keeps inherited misleading report/model evidence and the child's own final and settings. It failed before the fix; the correction moves only additional-metadata rejection behind the history boundary. Existing own-metadata rejection remains covered. Focused recheck: 425 passed, including 423 native cases plus privacy and vendor parity. Final producer replay and full validation follow at the corrected source head.

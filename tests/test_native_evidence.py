@@ -334,3 +334,26 @@ def test_native_parent_record_must_be_under_native_root_even_if_legacy_root_is_p
     hook.handle(root, 'SubagentStop', payload)
     assert not ws.rows(root, 'seat.stopped') and not ws.rows(root, 'attest')
     assert ws.rows(root, 'seat.unconfirmed')
+
+
+def test_genuine_fork_all_history_keeps_first_child_metadata_and_ignores_parent_evidence(root, native):
+    """Minimized genuine 524-row producer: child meta@0, inherited parent meta@1, boundary45."""
+    payload, parent, child, save = native
+    inherited_meta = {**copy.deepcopy(parent[0]), 'ordinal':1}
+    inherited_report = {**copy.deepcopy(child[1]), 'ordinal':3}
+    inherited_report['payload']['content'][0]['text'] = 'MISLEADING PARENT FINAL'
+    inherited_turn = {'ordinal':4, 'type':'turn_context','payload':{'model':'parent-model','effort':'low'}}
+    own_turn = {'ordinal':181, 'type':'turn_context','payload':{'model':'own-child-model','effort':'high'}}
+    child[1:1] = [inherited_meta, inherited_report, inherited_turn, own_turn]
+    save()
+    found = hook._native_report(payload, payload['last_assistant_message'])
+    assert found and found[0] == payload['last_assistant_message']
+    assert found[1] == '/root/codex_transcript_probe'
+    assert found[2] == {'recorded_model':'own-child-model','recorded_effort':'high'}
+    hook.handle(root,'SubagentStop',payload)
+    [stopped] = ws.rows(root,'seat.stopped')
+    assert stopped['data']['agent'] == '/root/codex_transcript_probe'
+    assert stopped['data']['recorded_model'] == 'own-child-model'
+    assert not ws.rows(root,'seat.unconfirmed') and not ws.rows(root,'hook.error')
+    kept = list((root/'.wuwei/reports/pending').glob('*.md'))
+    assert len(kept) == 1 and kept[0].read_text() == payload['last_assistant_message']
