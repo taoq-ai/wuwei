@@ -90,7 +90,7 @@ def crowded(root, payload):  # advice on a launch past the seat ceiling, never a
 def advise(root, data, note=''):
     """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
-    if role not in agents.TABLE or not data.get('prompt'):  # only a known role with a brief has a policy row
+    if role not in agents.TABLE or not data.get('prompt') or 'agent_type' in data:  # Codex policy remains unmeasured
         return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))

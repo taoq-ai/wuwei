@@ -10,5 +10,5 @@
     "model": "gpt-6.1-sol",
     "reasoning_effort": "high"
   },
-  "tool_response": "{\"task_name\": \"/root/identity_probe\"}"
+  "tool_response": "{\"task_name\": \"/task/identity_probe\"}"
 }
