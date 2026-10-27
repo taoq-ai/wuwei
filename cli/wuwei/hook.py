@@ -98,7 +98,7 @@ def advise(root, data, note=''):
         tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
     if 'agent_type' in data:
         return context('PreToolUse', note + f"\nWUWEI: Codex table says {' '.join(agents.codex_setting(role, rows, tier))} for {role} at {tier}; "
-                       f"requested: {data.get('model') or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {'inherit' if data.get('fork_turns') == 'all' else 'unmeasured'}. "
+                       f"requested: {data.get('model') or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {dict(all='inherit', none='fresh').get(str(data.get('fork_turns')), 'unmeasured')}. "
                        'Resolved child model is unmeasured until provider metadata; use overrides only when the active schema supports them.')
     allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]

@@ -225,6 +225,8 @@ def test_codex_advice_names_policy_requests_and_capability_limits(root):
     text = advice(hook.handle(root, 'PreToolUse', spawn))
     assert 'gpt-6-astra ultra for builder at full' in text
     assert 'requested: unavailable-model low' in text and 'fork policy: inherit' in text
+    spawn['tool_input']['fork_turns'] = 'none'
+    assert 'fork policy: fresh' in advice(hook.handle(root, 'PreToolUse', spawn))
     assert launch(root, 'Explore', 'haiku', 'low') is None
     assert ws.rows(root, 'hook.error') == []
 
@@ -414,6 +416,7 @@ def test_learning_shows_each_seat_by_model_and_effort(root, fake):
     ('full', {'builder': 'gpt-6-astra max'}, ('gpt-6-astra', 'max')),
     ('full', {'builder': 'gpt-6-astra max', 'builder full': 'gpt-6.1-sol ultra'}, ('gpt-6.1-sol', 'ultra')),
     ('standard', {'builder': 'unavailable-provider-model high'}, ('unavailable-provider-model', 'high')),
+    ('standard', {'builder': '  gpt-6.1-sol  high  '}, ('gpt-6.1-sol', 'high')),
 ])
 def test_codex_role_settings_use_native_mapping_and_owner_tier_precedence(tier, rows, expected):
     role = tomllib.loads(agents.render_codex(PLUGIN, 'builder', rows, tier))

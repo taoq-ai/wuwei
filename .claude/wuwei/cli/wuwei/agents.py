@@ -35,7 +35,7 @@ def render(plugin, role, tools):
 
 def codex_setting(role, models=None, tier='standard'):
     setting = (models or {}).get(f'{role} {tier}') or (models or {}).get(role) or TABLE[role].get(tier, TABLE[role][''])
-    model, effort = setting.rsplit(' ', 1)
+    model, effort = setting.strip().rsplit(None, 1)
     family = model.lower().removeprefix('claude-').split()[0].split('-')[0]
     return {'opus': 'gpt-6.1-sol', 'sonnet': 'gpt-6-luna', 'haiku': 'gpt-6-luna', 'fable': 'gpt-6-astra'}.get(family, model), effort
 
