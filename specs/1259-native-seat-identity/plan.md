@@ -33,3 +33,7 @@ Only hook.py, Codex tests and payloads, wuwei-run guidance, Codex documentation 
 
 The initial Codex regression run was 21 failed and 14 passed. The direct-normalization check then reproduced three failures for blank identities; all 38 Codex cases pass after the adapter change.
 The route differential uses archives of 3feedf5c and the implementation head, with the same tests folder. Corpus sha256: de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1. There are 288 routes and 1,152 host cases. No verdict or reason moved. Shell parser combinatorial probes are N.A.; shell parsing is unchanged.
+
+Existing Codex launches remain outside Claude model-table advice. Preserving their message must not change that policy; native model policy belongs to the separate approved item. The first full suite exposed that regression and a fixture prefix rejected by sanitization. Both were corrected, then 103 targeted checks passed with exit 0.
+
+Final verification: `uv run --no-project --with pytest python -m pytest -q` passed with 3,789 tests and seven skips in 244.66 seconds, exit 0. Runtime is 3,754 lines, net +9. `bin/wuwei agents check`, vendor parity and `git diff --check` passed. The final source route differential at fa46883c again had zero moved verdicts or reasons across 1,152 cases.

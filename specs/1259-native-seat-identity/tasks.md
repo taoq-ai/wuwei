@@ -13,8 +13,13 @@
 
 ## Validation
 - [x] T006 Update skills/wuwei-run/SKILL.md, docs/site/concepts/codex.md and vendor copies (FR-006).
-- [ ] T007 Run focused tests, checks and main/head route differential; record evidence and runtime budget.
+- [x] T007 Run focused tests, checks and main/head route differential; record evidence and runtime budget.
 
 Dependencies: T001 precedes all tests. T002 and T004 precede runtime edits. T003 and T005 precede T006 and T007.
 Parallel work: none; one small adapter and its consumer change together.
 Implementation strategy: deliver the two supported surfaces and diagnostics as one tested patch.
+
+## Combined native review fix
+- [x] T008 Add consumer red regressions for credential/canary persistence, clipping boundaries and cross-session native identities in tests/test_codex.py (FR-007, FR-008).
+- [x] T009 Redact shared seat metadata before persistence and clipping in cli/wuwei/hook.py; scope board.py stop matching by session, retaining sessionless legacy history and raw native paths. Update both vendor copies.
+- [ ] T010 Run Codex, models, hook and board-consumer focused tests and the route differential at the pushed fix head; update PR and handoff evidence.
