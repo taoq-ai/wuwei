@@ -241,12 +241,12 @@ def _locked(handle):
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
-def take(root, path):
-    """Remove path as one caller's claim on it, under the ledger lock: two racing unlinks can both succeed on Windows."""
+def take(root, path, to=None):
+    """Remove or move path as one caller's claim, under the ledger lock: racing Windows handles can both succeed."""
     ledger = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with open(ledger, 'a+', encoding='utf-8', newline='') as handle, _locked(handle):
-        Path(path).unlink()
+        os.replace(path, to) if to is not None else Path(path).unlink()
 
 
 def record(root, kind, data):

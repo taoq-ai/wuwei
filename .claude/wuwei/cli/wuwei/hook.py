@@ -644,7 +644,7 @@ def deliver(root, event, payload, out, said):
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
             told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)
-            if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
+            if told and event == 'Stop' or ws.take(root, path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
             continue

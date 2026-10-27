@@ -14,3 +14,6 @@
 - [x] T010 Validate legacy numeric ordering, 767 focused tests, and exact-source route comparisons for source 6528988f.
 
 Dependencies: execute in order. This is one bug fix with shared hook state, so no parallel source work.
+
+- [x] T011 Reproduce Windows duplicate report claims and reuse ws.take locking under the approved additional round.
+- [x] T012 Run focused report/unlink checks and exact-source route comparisons for e2de8816.
