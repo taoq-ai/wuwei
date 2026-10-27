@@ -3,7 +3,7 @@
 Promise: Keep successful native task paths and legacy agent ids, explicit known roles and requested settings. Diagnose unsupported dispatch shapes without inventing a running seat or attesting work.
 
 Acceptance scenarios:
-1. A sanitized native launch retains its task path, explicit role, message, requested model and reasoning effort; resolved model stays unmeasured.
+1. A sanitized native launch through spawn_agent or the observed collaborationspawn_agent retains its task path, explicit role, message, requested model and reasoning effort; resolved model stays unmeasured.
 2. A legacy agent_id launch retains its identity and role.
 3. A task path without a validated role retains its identity in an unconfirmed diagnostic, regardless of role words in its message.
 4. Missing or malformed identity records a diagnostic and creates no running seat or attestation.
@@ -42,6 +42,8 @@ Approved plan and native probe settle scope. No owner question remains. This ite
 ## Assumptions:
 
 Only agent_type is currently validated as a role field. A captured supported alternative mapping would overturn this choice. The observed task_name is an opaque identity, not a role.
+
+The captured 2026-10-27 PostToolUse schema names collaborationspawn_agent, with task_name, agent_type and message input fields and a JSON string result. Support is limited to that spelling and the existing spawn_agent name. A captured additional spelling would require its own regression.
 
 ## How this fails:
 

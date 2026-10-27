@@ -50,6 +50,7 @@ a task name or role words in the message cannot supply a role. A successful iden
 known explicit role is recorded as `seat.unconfirmed`, with a role-capability diagnostic.
 Malformed or missing identities produce `hook.error` and no running seat. The adapter reads
 object results and JSON object strings, preserving legacy `agent_id` and native `task_name`.
+Native task paths keep the harness value; stops match them within their session.
 
 The requested message, model and reasoning effort survive normalization. `asked` and `effort`
 record the request; a brief's `Model:` line can name it when the schema has no override fields.

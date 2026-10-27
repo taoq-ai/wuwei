@@ -33,7 +33,7 @@ matching, cancellation handling, guard decisions, and the existing outside-auto 
 ## Success criteria
 
 Each session and agent contributes at most one report body per delivery. Subsequent calls and Stop
-remain quiet until that seat produces another final report. All retained versions remain readable.
+remain quiet until that seat produces another final report. All accepted report versions remain available for audit.
 
 Rollback: revert this change.
 
