@@ -139,7 +139,9 @@ Review statuses: a commit status whose `target_url` names a run of a workflow th
 `pull_request_review` is review evidence, not CI. Pending reads `waiting on review: <context>`, failure
 reads `change request outstanding: <context>`; both are actionable safety gaps. The review-triggered
 workflows come from the host (its last 100 `pull_request_review` runs, cached for a day), read only
-when the head has an unsettled status. An unreadable Actions host leaves the status CI, never a pass.
+when the head has an unsettled status. An unreadable review classifier leaves an explicit unreadable-evidence gap.
+Pending review permits arming auto-merge, alongside permitted CI waits; direct merge still waits for review.
+Failed review and unreadable classification hold both merge routes.
 
 CI not started: a head with no checks whose diff, read by both names of a renamed file, is empty or
 holds more than prose (`.md`, `.rst`, `.adoc`), `LICENSE`, `NOTICE`, `specs/` and `openspec/` (a
@@ -219,7 +221,7 @@ after each green step, so a restart loses at most one step.
 
 Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or
 `ccr/auto_merge` in any spelling of method, path, host or `{owner}/{repo}`, a GitHub MCP merge
-tool; arming auto-merge passes while only CI runs or only GitHub's own merge hold is left); a PR
+tool; arming auto-merge passes while only pending review, permitted CI waits or GitHub's own merge hold remains); a PR
 opened ready for review (`gh pr create`, `gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
 needs pass at the branch head, while a draft (`--draft`, `-F draft=true`, MCP `draft` true) opens so
 CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP

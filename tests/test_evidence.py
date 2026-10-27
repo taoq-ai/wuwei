@@ -190,11 +190,12 @@ def test_a_status_without_a_run_of_this_repo_stays_ci_unread(root, fake, url):
     assert not any('/actions/' in ' '.join(call) for call in fake.calls)
 
 
-@pytest.mark.parametrize('state, text', [('PENDING', 'CI running'), ('FAILURE', 'CI failing: Review Gate')])
-def test_an_unreadable_actions_host_leaves_the_status_ci(root, fake, state, text):
+@pytest.mark.parametrize('state', ['PENDING', 'FAILURE'])
+def test_an_unreadable_review_classifier_leaves_an_explicit_safety_gap(root, fake, state):
     review_gate(root, fake, state)
     fake.runs = None
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == [text]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'evidence unreadable: review status classification unreadable']
 
 
 def test_a_failing_review_gate_still_names_an_approval_at_an_older_commit(root, fake):
@@ -213,11 +214,12 @@ def test_a_repo_without_review_workflows_reads_no_run(root, fake):
 
 @pytest.mark.parametrize('reply, url', [({'workflow_runs': None}, GATE + '7'), ({'workflow_runs': []}, 7),
                                         ('not json', GATE + '7'), ({'id': 7}, GATE + '7')])
-def test_an_oddly_shaped_actions_reply_leaves_the_status_ci(root, monkeypatch, reply, url):
+def test_an_oddly_shaped_actions_reply_keeps_classification_unreadable(root, monkeypatch, reply, url):
     from wuwei import gh
     monkeypatch.setattr(gh, 'run', lambda args, timeout=30: reply)
     rollup = [{'context': 'Review Gate', 'state': 'PENDING', 'url': url}]
-    assert evidence.review_contexts(root, 'acme/app', rollup) == set()
+    with pytest.raises(gh.GhError, match='review status classification unreadable'):
+        evidence.review_contexts(root, 'acme/app', rollup)
 
 
 def test_the_review_workflows_are_read_once_a_day(root, fake):
