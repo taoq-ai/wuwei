@@ -10,3 +10,7 @@
 - [x] Runtime, vendor parity and approved cap are measured.
 - [x] Ordinary owner replies remain unconfirmed; trust and live rehearsal stay separate.
 - [x] Analysis covers requirements, tasks and the governing constitution.
+- [x] Both initial gate findings were corrected in the combined fix round and covered by fresh full validation.
+- [x] Sensitive identity keys match launch/stop, isolate distinct seats and retain notification behavior.
+- [x] Actual full exit status and source head are persisted; incomplete runs are not counted.
+- [x] Genuine same-workspace producer replay passes without a hook or attestation.

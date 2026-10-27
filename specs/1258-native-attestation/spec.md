@@ -51,7 +51,7 @@ Protected parent launch, protected child metadata and own rows, latest final rep
 ## Success Criteria
 
 - SC-001: Every specified negative proof case produces no attestation.
-- SC-002: Genuine native proof records the canonical identity and the exact final report.
+- SC-002: Genuine native proof records verified seat identity and the exact final report; ordinary IDs remain canonical, sensitive IDs use stable privacy keys.
 - SC-003: Existing legacy report and guard checks pass unchanged, except documented native protection reasons.
 - SC-004: Root runtime is at most 4,000 lines and this item adds at most 111 lines.
 

@@ -1,27 +1,29 @@
 # Builder validation
 
-Initial reviewed source head: `b5fb247c0512bb264c2b2b8ff672341fd557e7be`.
-Parent: `b6310c55f20a430110007f3050929881e8b68935`, merged normally before the final source freeze.
+Final source head: `ea78a08d7939360b053372fdadeeabedd6fc66dc`.
+Parent: `b6310c55f20a430110007f3050929881e8b68935`, merged normally before source validation.
+Both initial gate findings were corrected in one combined fix round. Further changes to this feature's evidence are prose only; runtime hashes must remain unchanged.
 
-## Test-first evidence
+## Tests and producer evidence
 
-- `uv run --no-project --with pytest python -m pytest -q tests/test_native_evidence.py`: initial red was 375 failed and 33 passed. The first native implementation passed 408 tests.
-- Added delivery, race, notification and boundary cases. The missing child boundary failed before the explicit check; the expanded suite then passed 421 tests.
-- The parent-root regression failed before requiring both native paths under SESSIONS. The latest native suite has 422 tests.
-- Final native, fixture-privacy and vendor-parity recheck: 424 passed.
-- Broader focused run: 1,900 passed, 1 skipped, with one initial vendor-parity failure. Supported-Python generation fixed parity; the focused recheck passed.
-- `uv run --no-project --with pytest python -m pytest -q`: final full run at the source head passed 4,350 tests, with 7 skips, in 253.35 seconds.
-- An earlier full run was interrupted before the native-root source fix and is superseded. It is not a pass. It also exposed the fixture policy matching canonical task identities as local paths; the fixture now uses an explicit task-root placeholder.
+- Initial native proof/protection red: 375 failed, 33 passed. The first implementation passed 408 native tests.
+- Missing-boundary and strict native-parent-root regressions ran red before their fixes. Broader focused checks exposed initial vendor drift, fixed by generation with supported Python.
+- The initial full run at b5fb247c passed 4,350 tests with 7 skips. It missed genuine inherited metadata and sensitive identity cases later found by the gates. It is not evidence that those cases worked.
+- The genuine fork-all regression preserves child metadata@0, inherited parent metadata/report/model before boundary45, and the child's own report/settings. It failed before moving extra-metadata rejection after the boundary. Own extra metadata remains rejected.
+- Both original identity-disclosure regressions plus two distinct-sensitive-identity consumers ran red: 4 failed, 1 ordinary-identity control passed. Shared stable keys at launch and verified stop then preserved isolated board state, unique filenames and exact notification matching.
+- Corrected focused run: `uv run --no-project --with pytest python -m pytest -q tests/test_native_identity_privacy.py tests/test_native_evidence.py tests/test_codex.py tests/test_models.py tests/test_setup.py::test_the_vendored_plugin_matches_the_tree_it_was_copied_from`: 614 passed.
+- Final full suite: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/run_full_private.py` launches `python -m pytest -q`, saves the log and exit status, and returns that status. Actual exec exit was 0. Persisted result: 4,356 passed, 7 skipped in 248.22 seconds at the final source head.
+- `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/actual_fork_private.py`: the genuine same-workspace desktop parent/child passes the pure reader. Child has 524 strictly increasing rows, one inherited metadata row before boundary45 and no own extra metadata. First-row digest is `d0116d51ec8faaf9ff35899d208a245de789bc76ddeb45ccc301051be6276895`; latest own final digest is `64015ecc9b7b1909db0d478e49fa928f010357e3efd2f5653ee6837d9d5e6112`. No hook, ruling or attestation was invoked.
 
-Logs are retained in the builder's `builder-1258` scratch evidence. No test used real GitHub credentials; the repository's autouse offline fixture remained active.
+The earlier 997a2a75 full run is incomplete: its exec session disappeared when the agent ended, its log stops at 95 percent and its exit is unmeasured. It is not counted. An earlier interrupted pre-root-fix run is also superseded. Final logs, exit JSON and probe records remain under the builder's `builder-1258` scratch evidence. No test used real GitHub credentials; the repository's offline fixture remained active.
 
 ## Route differential
 
-Command: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/run_differential.py`.
-The script creates no production state and runs the repository's route test with a decision-capture plugin in separate archived trees.
+Command: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/run_differential_private.py`.
+The decision-capture plugin runs the repository's route tests in separate archived trees.
 
 Main: `3feedf5ca60ad78ac602cb1a44c165e2aade0263`, 288 routes, passed.
-Head: `b5fb247c0512bb264c2b2b8ff672341fd557e7be`, 288 routes, passed.
+Head: `ea78a08d7939360b053372fdadeeabedd6fc66dc`, 288 routes, passed.
 Corpus SHA256: `de377966b71fcb42f20fd057b033b43377891f3be8fd7d39130a81f750ed71c1`.
 
 No verdict moved. All ten reason changes are listed below. No refusal changed its PR or repository reference.
@@ -41,38 +43,34 @@ No verdict moved. All ten reason changes are listed below. No refusal changed it
 
 ## Generated native path probe
 
-Command: `PYTHONPATH=.wuwei/scratch/builder-1258/head-final/cli uv run --no-project --with pytest python .wuwei/scratch/builder-1258/native_root_probe.py`.
+Command: `PYTHONPATH=.wuwei/scratch/builder-1258/head-private/cli uv run --no-project --with pytest python .wuwei/scratch/builder-1258/native_root_private_probe.py`.
 
-Generated 32 commands, ran the tee door stub 32 times, found 0 holes. Four path classes (`//`, `%xx`, `/./`, `/../`) crossed direct calls and `cd`, `env -C`, `sudo -D`, with plain and pipeline positions. Bash is real; env/sudo are minimal PATH wrappers that execute the tee stub in the requested directory. No privilege request was made. Eight percent-literal controls pass because percent spelling is a literal filesystem name, not URL decoding. The guard parser itself was not changed.
+Generated 32 commands, ran the tee door stub 32 times, found 0 holes. Four path classes (`//`, `%xx`, `/./`, `/../`) crossed direct calls and `cd`, `env -C`, `sudo -D`, with plain and pipeline positions. Bash is real; env/sudo are minimal PATH wrappers executing tee in the requested directory. Eight percent-literal controls pass because percent spelling is a literal filesystem name. No privilege request was made; the shell parser was unchanged.
 
-The tracked native tests also cover the existing writer templates, all edit tools, Windows path spellings and wrapper forms. Existing Windows behavior remains subject to platform CI; this local run used POSIX.
+Tracked native tests also cover existing writer templates, edit tools, Windows spellings and wrapper forms. Native Windows execution remains subject to platform CI; this local run used POSIX.
 
 ## Isolated behavioral mutants
 
-Command: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/native_mutants.py`.
+Command: `uv run --no-project --with pytest python .wuwei/scratch/builder-1258/native_private_mutants.py`.
 
-Every mutant used a fresh archive under the builder's scratch folder, modified both runtime copies, and ran one at a time. Six mutants were killed by behavioral assertions: removing the fork boundary, call-id pairing, latest-final selection, native-root check, child-own settings and notification recipient check. No vendor-drift assertion counted as a kill.
+Eight fresh archives at the final source head modified both runtime copies and ran serially. Every mutant was killed by behavioral assertions: removing the fork boundary, call-id pairing, latest-final selection, native-root check, child-own settings, sensitive identity mapping, distinct sensitive identity keys and notification recipient check. Vendor drift did not count as a kill. The serialized slot then passed explicitly to the delta reviewers for their independent reversals.
+
+## Identity and report mapping
+
+Ordinary canonical task IDs stay unchanged in launch, stop and attestation rows. Credential/canary-bearing IDs use `sha256-` plus the complete raw identity's SHA256 at both launch and verified stop. Distinct sensitive paths stay distinct; masking cannot collapse them to one seat. Raw UUID/path proof happens before mapping. Kept report filenames hash the persisted identity. Native notifications still require the exact canonical author, recipient, frame, body and timestamp; comparison maps that author through the same identity function before the filename hash.
 
 ## Safety sweep
 
-- AUTH PASS: the route differential and native launch/root mismatch tests reject unproven parent, call, role, identity and path evidence.
-- VAL PASS: native tests cover blank, malformed, duplicate, boundary, unreadable and symlink-escape records; generated path probe is 32/32/0.
-- TEST PASS: native stop, attestation, kept-report and delivery assertions reach the real consumers; obsolete categorical Codex guidance tests were updated.
-- ERR PASS: malformed or unavailable proof records stay unconfirmed, with no fabricated identity or attestation. Existing hook error handling passed the full suite.
-- STATE PASS: native repeated/corrected reports and concurrent delivery use the existing latest-valid store and atomic claims; legacy race cases passed.
-- CON PASS: sanitized observed parent/child/notification producer shapes reach the stop and report consumers, including state and turn rows without payload type.
-- INF N.A.: no new secret, environment setting, configuration key, entry point, installation or trust operation. Account roots reuse the existing POSIX/Windows account lookup.
+- AUTH PASS: `run_differential_private.py` and native proof tests reject unproven parent, call, role, identity, path and root evidence; ordinary native owner answers remain unconfirmed.
+- VAL PASS: native suites cover blank, malformed, duplicate, boundary, unreadable and symlink-escape records. Generated path probe is 32/32/0.
+- TEST PASS: stop, attestation, board, kept-report and notification assertions reach real consumers. Genuine desktop producer replay supplements synthetic tests.
+- ERR PASS: unavailable or mismatched proof stays unconfirmed. Existing hook error handling passed the final full suite.
+- STATE PASS: repeated/corrected reports, concurrent delivery and two sensitive paths use existing latest-valid versions and atomic claims.
+- CON PASS: observed parent/child/notification shapes and actual producer files reach the pure reader. State/turn payloads without type and inherited metadata remain covered.
+- INF N.A.: no new secret, environment setting, configuration key, entry point, installation or trust operation. Roots reuse POSIX/Windows account lookup.
 
 ## Limits and remaining reviews
 
-Runtime is 3,872 lines: +74 from the 3,798-line parent, within the 111-line item budget and approved 4,000 cap. `git diff --check` passes. Generated agents were built and vendor parity passed.
+Runtime is 3,877 lines: +79 from the 3,798-line parent, within the 111-line item budget and approved 4,000 cap. `git diff --check` passes; generated agents were built and vendor parity passed. The cap amendment is dated 2026-10-27 in its owner-authorized commit.
 
-Independent gates, current-head CI and owner review remain required before readiness. Changed-plugin trust and a fresh native live rehearsal belong to the planner. No approval, old PASS or ledger attestation was imported. The owner-answer bridge is excluded after its separate origin probe found a counterexample. Companion jobs and unsupported transcript roots remain unconfirmed.
-
-## Combined review correction
-
-Security, quality and goal identified one shared blocker: the blanket second-metadata check rejected genuine inherited parent session_meta@1 before boundary45. The actual producer has 524 strictly increasing rows, one inherited metadata row and no metadata after the boundary. The minimized regression keeps inherited misleading report/model evidence and the child's own final and settings. It failed before the fix; the correction moves only additional-metadata rejection behind the history boundary. Existing own-metadata rejection remains covered. Focused recheck: 425 passed, including 423 native cases plus privacy and vendor parity. Final producer replay and full validation follow at the corrected source head.
-
-The supplemental initial security finding showed raw recognized credential/canary strings in native stopped/attest identity fields. The same combined fix round now maps sensitive IDs to stable SHA256 keys at launch and verified stop. The two original disclosure cases and the two distinct-sensitive-path consumer cases ran red (4 failed, 1 ordinary control passed). After the fix, 614 focused tests passed, including real start/stop board matching, unique kept filenames and exact native notification suppression. Raw identity correlation remains before the mapping. Runtime is now 3,877, net +79 against the 111-line budget.
-
-The full run at 997a2a75 did not complete: its exec session disappeared after the agent ended, the log stops at 95 percent, no process remains, and exit status is unmeasured. It is not a pass. The privacy-corrected frozen source supersedes it and will receive a fresh full run with exit status persisted before any final claim.
+Independent delta gates, current-head CI and owner review remain required before readiness. Changed-plugin trust and a fresh native live rehearsal belong to the planner. No approval, historical PASS or ledger attestation was imported. The owner-answer bridge remains excluded after its separate origin probe found a counterexample. Companion jobs and unsupported transcript roots stay unconfirmed.
