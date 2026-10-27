@@ -22,4 +22,4 @@ Implementation strategy: deliver the two supported surfaces and diagnostics as o
 ## Combined native review fix
 - [x] T008 Add consumer red regressions for credential/canary persistence, clipping boundaries and cross-session native identities in tests/test_codex.py (FR-007, FR-008).
 - [x] T009 Redact shared seat metadata before persistence and clipping in cli/wuwei/hook.py; scope board.py stop matching by session, retaining sessionless legacy history and raw native paths. Update both vendor copies.
-- [ ] T010 Run Codex, models, hook and board-consumer focused tests and the route differential at the pushed fix head; update PR and handoff evidence.
+- [x] T010 Run Codex, models, hook and board-consumer focused tests and the route differential at the pushed fix head; update PR and handoff evidence.

@@ -37,3 +37,13 @@ The route differential uses archives of 3feedf5c and the implementation head, wi
 Existing Codex launches remain outside Claude model-table advice. Preserving their message must not change that policy; native model policy belongs to the separate approved item. The first full suite exposed that regression and a fixture prefix rejected by sanitization. Both were corrected, then 103 targeted checks passed with exit 0.
 
 Final verification: `uv run --no-project --with pytest python -m pytest -q` passed with 3,789 tests and seven skips in 244.66 seconds, exit 0. Runtime is 3,754 lines, net +9. `bin/wuwei agents check`, vendor parity and `git diff --check` passed. The final source route differential at fa46883c again had zero moved verdicts or reasons across 1,152 cases.
+
+## Combined native review correction
+
+The review found a credential copied from Model reason into synchronized seat metadata and native paths closed by other sessions. Consumer tests reproduced eight failures, with 39 passes. A further boundary case reproduced one failure when clipping left a credential/canary prefix.
+
+The shared accepted-response branch now redacts recognized credentials and the workspace canary before asked() clips the reason or description is clipped. A local final string-field sanitizer also covers model, effort, session, identity and future string metadata. The requested message remains intact in normalization. Unsupported-role metadata uses the same persistence boundary. Normalization still claims no resolved provider model.
+
+board.running matches stops and unconfirmed rows by session and raw identity. For historical sessionless stops, only non-path legacy ids keep the global fallback. No composite identity is persisted. Native paths require a session match.
+
+The planner authorized board.py as a necessary consumer and reallocated one runtime line for security. Runtime is 3,755 lines, net +10; the 3,800 cap is unchanged. At source fix c450f433, all 48 Codex tests and all 812 focused Codex/model/hook/watch/vendor cases pass (exit 0). The route differential again has 288 routes and 1,152 cases, with zero verdict or reason changes and the same recorded corpus SHA256. No full suite was rerun at this fix head because its slot is allocated to the downstream model-policy item; the earlier 3,789-pass full run predates this correction. CI is unread and the PR remains draft for native delta review.
