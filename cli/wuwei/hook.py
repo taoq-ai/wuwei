@@ -200,8 +200,13 @@ def subagent_stop(root, payload):
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
-        kept = max((p for p in (Path(root) / ws.DIR / 'reports').rglob(f'{name}--*.md') if p.is_file()), key=lambda p: p.name, default=None)
-        if kept is None or kept.read_bytes() != payload['last_assistant_message'].encode():  # only the latest version can repeat
+        folder = Path(root) / ws.DIR / 'reports'
+        kept = max((p for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if p.is_file()), key=lambda p: p.name, default=None)
+        try:
+            previous = kept.read_bytes() if kept else None
+        except FileNotFoundError:  # a concurrent delivery moved this immutable version after selection
+            previous = (folder / kept.name).read_bytes()
+        if previous != payload['last_assistant_message'].encode():  # only the latest version can repeat
             ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
                             payload['last_assistant_message'], Path(root))
     return out
@@ -528,17 +533,15 @@ def deliver(root, event, payload, out, said):
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found, session, seen = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), set()
+    pending, found, session, latest = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), {}
     for path in sorted([*pending.glob(f'{session}--*.md'), *pending.parent.glob(f'{session}--*.md')],
                        key=lambda p: p.stem.rsplit('--', 1)[-1], reverse=True):  # pending first: a claim cannot disappear between listings
         try:
             seat = tuple(path.stem.split('--', 3)[:2])
-            if seat in seen or path.parent != pending:
-                seen.add(seat)  # archived versions still supersede older pending files, even if retirement failed
+            if latest.setdefault(seat, path.name) != path.name or path.parent != pending:
                 if path.parent == pending:
                     os.replace(path, pending.parent / path.name)  # keep every version beside the latest report's kept path
                 continue
-            seen.add(seat)
             (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame

@@ -1590,6 +1590,59 @@ def test_a_synthetic_role_change_does_not_override_the_latest_report_timestamp(r
     assert 'LATEST B' in note and 'SUPERSEDED A' not in note
 
 
+def test_a_claim_during_retention_listing_never_loses_returning_a(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest, glob, rglob, moved = next((reports / 'pending').glob('*.md')), Path.glob, Path.rglob, []
+
+    def claim_after_archive_listing(path, pattern):
+        snapshot = list(glob(path, pattern))
+        if path == reports and latest.exists():
+            os.replace(latest, reports / latest.name)
+            moved.append(latest)
+        return iter(snapshot)
+
+    def root_first(path, pattern):
+        if path != reports:
+            yield from rglob(path, pattern)
+            return
+        yield from claim_after_archive_listing(reports, pattern)
+        yield from claim_after_archive_listing(reports / 'pending', pattern)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'glob', claim_after_archive_listing)
+        patch.setattr(Path, 'rglob', root_first)
+        lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest]
+    assert [p.read_text() for p in (reports / 'pending').glob('*.md')] == ['FINAL A']
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'FINAL A' in note and 'INTERIM B' not in note
+
+
+def test_a_claim_before_retention_read_never_loses_returning_a(root, tmp_path, monkeypatch):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest, read_bytes, moved = next((reports / 'pending').glob('*.md')), Path.read_bytes, []
+
+    def claim_before_read(path):
+        if path == latest and latest.exists():
+            os.replace(latest, reports / latest.name)
+            moved.append(latest)
+        return read_bytes(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'read_bytes', claim_before_read)
+        lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest]
+    assert [p.read_text() for p in (reports / 'pending').glob('*.md')] == ['FINAL A']
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'FINAL A' in note and 'INTERIM B' not in note
+
+
 
 REPORT_1198 = 'Verdict: PASS at <head> & CI green.\nBlocked: none\nGap: none'
 POINTER = '## lead lead1: report already notified; kept at '
