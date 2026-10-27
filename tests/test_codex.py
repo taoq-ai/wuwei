@@ -116,9 +116,11 @@ def test_a_codex_goal_met_answer_records_no_goal(root):
 
 @pytest.mark.parametrize('identity_key', ['task_name', 'agent_id'])
 @pytest.mark.parametrize('encoded', [False, True])
-def test_native_dispatch_keeps_identity_role_and_requested_settings(root, identity_key, encoded):
+@pytest.mark.parametrize('tool', ['spawn_agent', 'collaborationspawn_agent'])
+def test_native_dispatch_keeps_identity_role_and_requested_settings(root, identity_key, encoded, tool):
     payload = json.loads((PLUGIN / 'tests/fixtures/payloads/codex/native-spawn-agent-post.json').read_text())
     payload['cwd'] = str(root)
+    payload['tool_name'] = tool
     response = {identity_key: '/root/identity_probe'}
     payload['tool_response'] = json.dumps(response) if encoded else response
     normalized = hook.codex(payload)
@@ -134,8 +136,9 @@ def test_native_dispatch_keeps_identity_role_and_requested_settings(root, identi
 
 
 @pytest.mark.parametrize('role', [None, '', 'unknown', 7, ['builder']])
-def test_native_identity_without_a_valid_role_is_diagnosed_not_inferred(root, role):
-    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+@pytest.mark.parametrize('tool', ['spawn_agent', 'collaborationspawn_agent'])
+def test_native_identity_without_a_valid_role_is_diagnosed_not_inferred(root, role, tool):
+    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': tool,
                'tool_input': {'task_name': 'builder', 'agent_type': role, 'message': 'You are a builder. Item: I-1'},
                'tool_response': {'task_name': '/root/builder'}}
     normalized = hook.codex(payload)
@@ -151,11 +154,33 @@ def test_native_identity_without_a_valid_role_is_diagnosed_not_inferred(root, ro
 @pytest.mark.parametrize('response', [None, {}, [], 7, {'task_name': 7}, {'task_name': ''}, {'task_name': '  '},
                                       {'agent_id': ' '}, {'error': {'agent_id': 'fake'}},
                                       {'error': '{"agent_id": "fake"}'}, '{"task_name":', 'not JSON'])
-def test_invalid_native_dispatch_response_is_diagnosed_without_a_seat(root, response):
-    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+@pytest.mark.parametrize('tool', ['spawn_agent', 'collaborationspawn_agent'])
+def test_invalid_native_dispatch_response_is_diagnosed_without_a_seat(root, response, tool):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': tool,
                                       'tool_input': {'agent_type': 'builder'}, 'tool_response': response})
     assert ws.rows(root, 'hook.error')
     assert ws.rows(root, 'seat.started') == [] and board.running(root) == [] and ws.rows(root, 'attest') == []
+
+
+def test_observed_collaboration_spawn_schema_reaches_the_seat_consumer(root):
+    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'collaborationspawn_agent',
+               'tool_input': {'task_name': 'identity_probe', 'agent_type': 'builder', 'message': 'Item: I-1'},
+               'tool_response': json.dumps({'task_name': '/root/identity_probe'})}
+    assert hook.codex(payload)['tool_input']['prompt'] == 'Item: I-1'
+    hook.handle(root, 'PostToolUse', payload)
+    seat = ws.rows(root, 'seat.started')[0]['data']
+    assert (seat['agent'], seat['role'], seat['item']) == ('/root/identity_probe', 'builder', 'I-1')
+    assert board.running(root)[0]['agent'] == '/root/identity_probe'
+    assert ws.rows(root, 'attest') == []
+
+
+def test_unsupported_collaboration_sibling_does_not_normalize_as_a_launch(root):
+    payload = {'tool_name': 'collaborationfollowup_task', 'tool_input': {'agent_type': 'builder'},
+               'tool_response': json.dumps({'task_name': '/root/identity_probe'})}
+    assert hook.codex(payload) == payload
+    hook.handle(root, 'PostToolUse', payload)
+    assert ws.rows(root, 'seat.started') == [] and ws.rows(root, 'seat.unconfirmed') == []
+    assert board.running(root) == [] and ws.rows(root, 'attest') == []
 
 
 def test_namespaced_known_native_role_and_legacy_identity_precedence(root):

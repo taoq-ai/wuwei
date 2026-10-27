@@ -23,3 +23,6 @@ Implementation strategy: deliver the two supported surfaces and diagnostics as o
 - [x] T008 Add consumer red regressions for credential/canary persistence, clipping boundaries and cross-session native identities in tests/test_codex.py (FR-007, FR-008).
 - [x] T009 Redact shared seat metadata before persistence and clipping in cli/wuwei/hook.py; scope board.py stop matching by session, retaining sessionless legacy history and raw native paths. Update both vendor copies.
 - [x] T010 Run Codex, models, hook and board-consumer focused tests and the route differential at the pushed fix head; update PR and handoff evidence.
+
+## Observed native hook spelling
+- [x] T011 Reproduce the captured collaborationspawn_agent schema through normalization and the seat consumer, including unsupported roles, malformed results and an unsupported sibling tool; accept both proven spawn spellings in the existing dispatch condition and vendor copy. Red: 22 failed, 49 passed. Green: 71 passed.
