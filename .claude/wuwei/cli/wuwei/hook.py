@@ -77,8 +77,12 @@ def pre_tool(root, payload):
 def asked(data):
     """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max|ultra)\b', r'^Model reason:[ \t]*(\S.*)$'))
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:[ \t]*\S+[^\r\n]*?[ \t]+(low|medium|high|xhigh|max|ultra)(?=[ \t\r(]|$)', r'^Model reason:[ \t]*(\S.*)$'))
     return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+
+
+def requested(data):
+    return data.get('model') or ((re.findall(r'^Model:[ \t]*(\S+)', str(data.get('prompt', '')), re.M) or [None])[0] if 'agent_type' in data else None)
 
 
 def crowded(root, payload):  # advice on a launch past the seat ceiling, never a door
@@ -98,7 +102,7 @@ def advise(root, data, note=''):
         tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
     if 'agent_type' in data:
         return context('PreToolUse', note + f"\nWUWEI: Codex table says {' '.join(agents.codex_setting(role, rows, tier))} for {role} at {tier}; "
-                       f"requested: {data.get('model') or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {dict(all='inherit', none='fresh').get(str(data.get('fork_turns')), 'unmeasured')}. "
+                       f"requested: {requested(data) or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {dict(all='inherit', none='fresh').get(str(data.get('fork_turns')), 'unmeasured')}. "
                        'Resolved child model is unmeasured until provider metadata; use overrides only when the active schema supports them.')
     allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
@@ -297,12 +301,12 @@ def post_tool(root, payload):
         canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
         redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
         item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
-        requested = data.get('model') or ((re.findall(r'^Model:[ \t]*(\S+)', prompt, re.M) or [None])[0] if 'agent_type' in data else None)
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
         seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
                 'session': payload.get('session_id'), 'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                'asked': str(requested or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
-                **({'turn_model': payload.get('model') or 'unmeasured', 'turn_effort': (payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level') or 'unmeasured',
+                'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
+                **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
                     'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
         ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
                   {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})

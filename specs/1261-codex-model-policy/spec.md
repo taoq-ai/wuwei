@@ -27,7 +27,7 @@ You read a report and see requested model and effort beside provider-resolved ch
 - FR-001: Map Opus to gpt-6.1-sol, Sonnet and Haiku to gpt-6-luna, and Fable to gpt-6-astra. Keep table effort names.
 - FR-002: Select owner role-and-tier, then owner role, then table tier/default. Preserve native owner IDs as requests, without claiming availability.
 - FR-003: Init and doctor use the same configured standard-tier renderer. Claude role generation and the owner session remain unchanged.
-- FR-004: Preserve requested model/effort, separately supplied launch-turn model/effort, resolved child model, and explicitly requested fork policy. Never infer resolved child settings from parent settings or the table.
+- FR-004: Preserve requested model/effort, separately supplied launch-turn model/effort, resolved child model, and explicitly requested fork policy. Only nonblank strings can measure launching-parent settings; malformed or structured values remain unmeasured. Effort is a separate token after the model, never a word inside an ID. Never infer resolved child settings from parent settings or the table.
 - FR-005: Existing report grouping exposes those meanings and absent resolution as unmeasured. Dispatch telemetry never implies attestation.
 - FR-006: Reuse models config and seat.started records; no new config key or telemetry store. Runtime delta is at most 21 physical lines and total at most 3,800.
 

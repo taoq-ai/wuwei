@@ -490,3 +490,47 @@ def test_native_new_metadata_is_scrubbed_before_brief_extraction_and_report(root
     persisted = json.dumps(row) + report.day(root)
     assert token not in persisted and 'wuwei' not in row['asked']
     assert (prefix + '***')[:200] == row['reason']
+
+
+@pytest.mark.parametrize('field', ['model', 'effort'])
+@pytest.mark.parametrize('shape', ['dict', 'list', 'number', 'bool', 'blank', 'none'])
+def test_review_1261_invalid_parent_settings_stay_unmeasured(root, field, shape):
+    token, canary = 'ghp_' + 'Z' * 36, 'wuwei-canary-nested-1261'
+    (root / ws.DIR / 'canary').write_text(canary)
+    value = {'dict': {'unexpected': [token, canary]}, 'list': [token, {'nested': canary}],
+             'number': 7, 'bool': False, 'blank': ' \t ', 'none': None}[shape]
+    payload = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+               'tool_input': {'agent_type': 'builder', 'message': 'Item: I-1'},
+               'tool_response': {'task_name': '/root/review'}}
+    payload[field] = value if field == 'model' else {'level': value}
+    hook.handle(root, 'PostToolUse', payload)
+    assert ws.rows(root, 'hook.error') == []
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert row['turn_' + field] == 'unmeasured'
+    persisted = json.dumps(ws.rows(root, 'seat.started')) + report.day(root)
+    assert token not in persisted and canary not in persisted
+    assert (row['model'], row['asked'], row['effort']) == ('unmeasured', 'unrecorded', 'unrecorded')
+
+
+@pytest.mark.parametrize('model, effort', [('gpt-6-ultra', 'low'), ('provider-high-model', 'low'),
+                                         ('local-max', 'low'), ('gpt-max-ultra-high', 'xhigh'), ('gpt-6-astra', 'ultra')])
+def test_review_1261_model_id_effort_words_do_not_replace_requested_effort(root, model, effort):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                      'tool_input': {'agent_type': 'builder', 'message': f'Item: I-1\nModel: {model} {effort}'},
+                                      'tool_response': {'task_name': '/root/review'}})
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert (row['asked'], row['effort'], row['model']) == (model, effort, 'unmeasured')
+    assert f'requested: {model} {effort}' in report.day(root)
+
+
+@pytest.mark.parametrize('model, effort', [('Opus 5.5', 'high'), ('Sonnet 5.5', 'medium'),
+                                         ('claude-opus-5-5', 'xhigh'), ('Fable 5.1', 'max')])
+def test_review_1261_claude_family_brief_lines_keep_separate_effort_token(root, model, effort):
+    started(root, {'subagent_type': 'builder', 'prompt': f'Item: I-1\nModel: {model} {effort} (builder)'}, {'agentId': 'b1'})
+    assert ws.rows(root, 'seat.started')[0]['data']['effort'] == effort
+
+
+def test_review_1261_brief_only_requested_model_is_visible_before_launch(root):
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                          'tool_input': {'agent_type': 'builder', 'message': 'Item: I-1\nModel: gpt-6-astra ultra'}})
+    assert 'requested: gpt-6-astra ultra' in advice(out)
