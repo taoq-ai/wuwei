@@ -2,6 +2,8 @@
 the doctor and the report (item models-record)."""
 
 import json
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -534,3 +536,30 @@ def test_review_1261_brief_only_requested_model_is_visible_before_launch(root):
     out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
                                           'tool_input': {'agent_type': 'builder', 'message': 'Item: I-1\nModel: gpt-6-astra ultra'}})
     assert 'requested: gpt-6-astra ultra' in advice(out)
+
+
+@pytest.mark.parametrize('model_line', ['x' * 64000, 'short' + ' ' * 64000], ids=['token', 'space-tail'])
+@pytest.mark.parametrize('effort', ['', 'high'])
+def test_review_1261_long_model_lines_keep_native_launch_bounded(root, model_line, effort):
+    code = '''import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from wuwei import hook
+root = Path(sys.argv[2])
+out = hook.handle(root, 'PreToolUse', {
+    'session_id': 'bounded-model', 'cwd': str(root), 'tool_name': 'spawn_agent',
+    'tool_input': {'agent_type': 'builder', 'message': 'Item: I-1\\nModel: ' + json.load(sys.stdin)}})
+print(json.dumps(out))
+'''
+    result = subprocess.run([sys.executable, '-c', code, str(PLUGIN / 'cli'), str(root)],
+                            input=json.dumps(model_line + (' ' + effort if effort else '')),
+                            capture_output=True, text=True, timeout=2, check=True)
+    text = advice(json.loads(result.stdout))
+    assert f"requested: {model_line.split()[0]} {effort or 'unrecorded'};" in text
+
+
+@pytest.mark.parametrize('tail, expected', [(' high(extra)', 'high'), ('\thigh', 'high'),
+                                          (' highish', None), ('\vhigh', None), ('\fhigh', None),
+                                          ('\v high', 'high'), ('\f high', 'high')])
+def test_review_1261_model_effort_keeps_horizontal_token_boundaries(tail, expected):
+    assert hook.asked({'prompt': 'Model: gpt-6-ultra' + tail})[1] == expected

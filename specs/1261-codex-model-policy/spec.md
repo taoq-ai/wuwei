@@ -11,6 +11,7 @@ Acceptance: regeneration honors role-and-tier overrides before role overrides; n
 - The approved item 1261 and authorization.md answer scope and the 3,800-line cap. No further owner question is needed.
 - Role files have no item context. Their default tier is standard; the planner selects item-tier settings per call when the surface supports overrides.
 - Full forks inherit settings. An omitted fork field is not evidence of inheritance. A launch-turn model is not a resolved child model.
+- The owner approved one additional parser correction round on 2026-10-27. Its two runtime lines raise this item's allowance to +23 and leave this source at 3,800 lines.
 
 ## User Scenarios & Testing
 
@@ -27,9 +28,9 @@ You read a report and see requested model and effort beside provider-resolved ch
 - FR-001: Map Opus to gpt-6.1-sol, Sonnet and Haiku to gpt-6-luna, and Fable to gpt-6-astra. Keep table effort names.
 - FR-002: Select owner role-and-tier, then owner role, then table tier/default. Preserve native owner IDs as requests, without claiming availability.
 - FR-003: Init and doctor use the same configured standard-tier renderer. Claude role generation and the owner session remain unchanged.
-- FR-004: Preserve requested model/effort, separately supplied launch-turn model/effort, resolved child model, and explicitly requested fork policy. Only nonblank strings can measure launching-parent settings; malformed or structured values remain unmeasured. Effort is a separate token after the model, never a word inside an ID. Never infer resolved child settings from parent settings or the table.
+- FR-004: Preserve requested model/effort, separately supplied launch-turn model/effort, resolved child model, and explicitly requested fork policy. Only nonblank strings can measure launching-parent settings; malformed or structured values remain unmeasured. Effort is a separate token after the model, never a word inside an ID. Missing effort on a long model token or space tail must not stall launch processing. Never infer resolved child settings from parent settings or the table.
 - FR-005: Existing report grouping exposes those meanings and absent resolution as unmeasured. Dispatch telemetry never implies attestation.
-- FR-006: Reuse models config and seat.started records; no new config key or telemetry store. Runtime delta is at most 21 physical lines and total at most 3,800.
+- FR-006: Reuse models config and seat.started records; no new config key or telemetry store. The approved parser correction allows +23 physical runtime lines against parent 0d83e22e; this source totals 3,800, within the owner's current 4,000-line global cap.
 
 ## Edge cases
 
@@ -44,6 +45,8 @@ SC-003: Required checks pass within the runtime budget, and full-tier spec artif
 ## Assumptions
 
 The deterministic Sonnet mapping uses gpt-6-luna to preserve a second model for review seats. The current local model catalog and active tool schema list those IDs and effort levels. Measured delivery outcomes or removed model support would overturn this choice. Owner-supplied native IDs are passed through because provider availability belongs to Codex; resolved metadata can overturn the requested choice.
+
+The linear effort reader splits only spaces and tabs, preserving the prior horizontal token boundaries and accepting an effort immediately before `(`. It skips the first model token so IDs containing effort words remain IDs. A changed documented brief grammar would overturn this choice.
 
 ## How this fails:
 
