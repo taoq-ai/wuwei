@@ -6,7 +6,7 @@ Python 3.11 stdlib runtime. Existing agents.TABLE, ws.config models, Codex adapt
 
 ## Constitution check
 
-Stdlib only, six config keys, test first, no new door or attestation, at most 21 net runtime lines, at most 3,800 total. PASS before and after design. Source changes wait for focused red tests. hook.py waits for item 1254's pushed source head.
+Stdlib only, six config keys, test first, no new door or attestation. The owner approved two extra runtime lines for the final parser correction, +23 against parent 0d83e22e and 3,800 total here. The current global cap is 4,000. Source changes wait for focused red tests. hook.py waits for item 1254's pushed source head.
 
 ## Phase 0: research
 
@@ -23,3 +23,7 @@ No contracts directory: no new public interface or protocol. data-model.md names
 1. Focused generation/override/doctor failing tests, then minimum renderer/setup changes.
 2. After rebase on 1254, focused requested/resolved/turn/fork report tests, then adapter/record/report changes.
 3. Documentation, generated/vendor synchronization, focused checks, serialized full suite and route differential, analysis and draft PR.
+
+## Approved parser correction
+
+The prior effort regex overlaps the model-token and line-remainder quantifiers. Missing effort can make launch processing quadratic. Capture the model line once, split spaces and tabs, then find the first separate effort token after the model. Keep the existing multiword names, parenthesized suffixes, owner precedence and sanitized recording. Add bounded real-hook tests for long tokens and space tails, with separate-effort controls. Run focused checks, actual-hook growth measurements and main/parent/head routes; the planner controls further full-suite and mutant runs.
