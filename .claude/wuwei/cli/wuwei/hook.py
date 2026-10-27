@@ -17,7 +17,7 @@ from wuwei import agents, board, evidence, guards, plan, sync, verdict, view, ws
 
 def transcript(payload):
     """The seat's last report, its input plus output tokens, whether a hand-back ended its run, and every report it wrote,
-    read from its transcript under ws.PROJECTS ('', None, False and [] when unreadable)."""
+    read from its protected transcript ('', None, False and [] when unreadable)."""
     found, total, ended, said = '', None, False, []
     try:
         for row in transcript_rows(payload.get('agent_transcript_path'), '') or ():
@@ -157,17 +157,64 @@ def stop(root, payload):
         'one line why each waits, then stop.'}
 
 
-def transcript_rows(path, key):  # the rows naming key in a regular file under ws.PROJECTS, links resolved (None: not one)
+def transcript_rows(path, key):  # the rows naming key in a regular file under an account transcript root, links resolved (None: not one)
     try:  # split on newlines only: a JSON string may hold U+2028 and kin raw, and str.splitlines() splits there
         real = Path(path).resolve(strict=True)
-        return [json.loads(line) for line in real.read_bytes().splitlines() if key.encode() in line] if real.is_relative_to(
-            ws.PROJECTS.resolve()) and real.is_file() else None
+        return [json.loads(line) for line in real.read_bytes().splitlines() if key.encode() in line] if real.is_file() and (
+            real.is_relative_to(ws.PROJECTS.resolve()) or real.is_relative_to(ws.SESSIONS.resolve())) else None
     except (OSError, TypeError, ValueError, RuntimeError, AttributeError):  # AttributeError: a key that is no string
         return None
 
 
 def parts(rows, kind):
     return [p for r in rows for p in (r.get('message') or {}).get('content') or () if isinstance(p, dict) and p.get('type') == kind]
+
+
+def native_rows(rows):
+    if not rows or rows[0].get('type') != 'session_meta' or rows[0]['ordinal'] != 0:
+        raise ValueError('missing first native metadata')
+    meta = rows[0]['payload']
+    if not isinstance(meta['id'], str) or not meta['id'] or any(not isinstance(r['payload'], dict) or type(
+            r['ordinal']) is not int or r['ordinal'] < 0 for r in rows) or any(b['ordinal'] <= a['ordinal'] or b.get('type') == 'session_meta' for a, b in zip(rows, rows[1:])):
+        raise ValueError('invalid native rows')
+    boundary = meta.get('subagent_history_start_ordinal', 0)
+    if type(boundary) is not int or boundary < 0:
+        raise ValueError('invalid native fork boundary')
+    return meta, [r for r in rows[1:] if r['ordinal'] > boundary]
+
+
+def native_text(row):
+    return '\n'.join(p['text'] for p in row['payload']['content'] if p['type'] in ('output_text', 'input_text'))
+
+
+def _native_report(payload, supplied):
+    try:
+        before, launches = native_rows(transcript_rows(payload.get('transcript_path'), ''))
+        meta, own = native_rows(transcript_rows(payload.get('agent_transcript_path'), ''))
+        role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
+        if payload.get('hook_event_name') != 'SubagentStop' or before['id'] != payload.get('session_id') or meta['parent_thread_id'] != before['id'] or (
+                'subagent_history_start_ordinal' not in meta or meta['id'] == before['id'] or role not in agents.TABLE or meta['agent_role'] != role or payload.get('agent_id') not in (meta['id'], meta['agent_path']) or meta.get('thread_source') != 'subagent'
+                or not re.fullmatch(r'/root(?:/[a-z0-9_]+)+', meta['agent_path'])):
+            return None
+        calls = [r for r in launches if r['type'] == 'response_item' and r['payload'].get('type') == 'function_call'
+                 and r['payload'].get('namespace') == 'collaboration' and r['payload'].get('name') == 'spawn_agent'
+                 and str(json.loads(r['payload']['arguments']).get('agent_type')).rsplit(':', 1)[-1] == role]
+        paired = [(c, r) for c in calls for r in launches if r['type'] == 'response_item' and r['ordinal'] > c['ordinal']
+                  and r['payload'].get('type') == 'function_call_output' and r['payload'].get('call_id') == c['payload']['call_id']
+                  and json.loads(r['payload']['output']).get('task_name') == meta['agent_path']
+                  and meta['agent_path'] == before.get('agent_path', '/root') + '/' + json.loads(c['payload']['arguments'])['task_name']]
+        if len(paired) != 1:
+            return None
+        final = [r for r in own if r['type'] == 'response_item' and r['payload'].get('type') == 'message'
+                 and r['payload'].get('role') == 'assistant' and r['payload'].get('phase') == 'final_answer'][-1]
+        found = native_text(final)
+        done = [r for r in own if r['payload'].get('type') == 'task_complete' and r['ordinal'] > final['ordinal']]
+        if found.strip() and (not supplied or supplied == found) and all(r['type'] == 'event_msg' and r['payload']['last_agent_message'] == found for r in done):
+            turn = next((r['payload'] for r in reversed(own) if r['type'] == 'turn_context' and r['ordinal'] < final['ordinal']), {})
+            return found, meta['agent_path'], {f'recorded_{k}': v if isinstance(v := turn.get(k), str) and v.strip() else 'unmeasured' for k in ('model', 'effort')}
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+        pass
+    return None
 
 
 def _report(root, payload, text):
@@ -177,6 +224,15 @@ def _report(root, payload, text):
     agent, role, text = payload.get('agent_id'), str(payload.get('agent_type', '')).rsplit(':', 1)[-1], text if text.strip() else ''
     path = str(payload.get('agent_transcript_path') or  # a PreToolUse payload names the session's: the seat's lies beside it
                Path(str(payload.get('transcript_path')).removesuffix('.jsonl'), 'subagents', f'agent-{agent}.jsonl'))
+    if Path(path).is_relative_to(ws.SESSIONS):
+        for _ in range(9):
+            if found := _native_report(payload, text):
+                canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+                payload.update(agent_id=found[1], **{k: guards.SECRETS.sub('***', v).replace(canary or '\0', '***') for k, v in found[2].items()})
+                return found[0]
+            time.sleep(0.25)
+        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': agent, 'session': payload.get('session_id'), 'reason': 'native parent, role, identity or latest final report did not match the stop'})
+        return None
     meta = (transcript_rows(path.removesuffix('.jsonl') + '.meta.json', 'toolUseId') or [{}])[0] if Path(path).name == f'agent-{agent}.jsonl' else {}
     use = meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None
     why = f'the session transcript shows no {role} launch for agent {agent}'
@@ -210,6 +266,7 @@ def _kept_report(path, folder):
 
 def subagent_stop(root, payload):
     """A stop counts only when the seat's own transcript holds its report (_report); else seat.unconfirmed, and nothing more."""
+    payload = {k: v for k, v in payload.items() if k not in ('recorded_model', 'recorded_effort')}
     role, text = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], payload.get('last_assistant_message')
     if (report := _report(root, payload, text if isinstance(text, str) else '')) is None:
         return None
@@ -217,7 +274,8 @@ def subagent_stop(root, payload):
     _, tokens, ended, _ = transcript(payload)
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
-        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
+        agent = hashlib.sha256(payload['agent_id'].encode()).hexdigest() if 'recorded_model' in payload else payload.get('agent_id')
+        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), agent, role))
         folder = Path(root) / ws.DIR / 'reports'
         kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
                    key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
@@ -229,7 +287,7 @@ def subagent_stop(root, payload):
 def _seat_stop(root, payload, role, tokens, ended):
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
-                                     'session': payload.get('session_id')})
+                                     'session': payload.get('session_id'), **{k: payload[k] for k in ('recorded_model', 'recorded_effort') if k in payload}})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
             return None
@@ -289,12 +347,13 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
-    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id')), {})
+    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id') and (
+                 'recorded_model' not in payload or r['data'].get('session') == payload.get('session_id'))), {})
     ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path'), 'model': seat.get('model', 'unrecorded'),
-                               'effort': seat.get('effort', 'unrecorded'), 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
+                               'effort': seat.get('effort', 'unrecorded'), **{k: payload[k] for k in ('recorded_model', 'recorded_effort') if k in payload}, 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
     return None
 
 
@@ -539,6 +598,17 @@ def codex(payload, event='PostToolUse'):
     return payload
 
 
+def _native_told(path, agent, text, at):
+    try:
+        meta, rows = native_rows(transcript_rows(path, ''))
+        return any(r['type'] == 'response_item' and r['payload'].get('type') == 'agent_message' and isinstance(author := r['payload'].get('author'), str)
+                   and (author == agent or hashlib.sha256(author.encode()).hexdigest() == agent)
+                   and r['payload'].get('recipient') == meta.get('agent_path', '/root') and datetime.datetime.fromisoformat(r['timestamp']) >= datetime.datetime.fromisoformat(at)
+                   and native_text(r) == f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text for r in rows)
+    except (OSError, KeyError, IndexError, TypeError, ValueError, AttributeError):
+        return False
+
+
 def deliver(root, event, payload, out, said):
     """Seat reports the harness kept from the planner and owner answers' notes (said), once on its next call or stop (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
@@ -564,6 +634,7 @@ def deliver(root, event, payload, out, said):
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
             told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
+            told = told or _native_told(payload.get('transcript_path'), agent, text, at)
             if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:

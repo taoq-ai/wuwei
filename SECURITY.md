@@ -113,10 +113,10 @@ Known shapes they do not read on one line, reported and not yet fixed:
 An owner answer (a ruling, a plan approval, an exception) and a seat stop (with its attestation)
 are recorded only when the harness's session transcript shows them: the AskUserQuestion tool_use
 and its answer row, or the seat's meta file and its Agent tool_use. The transcript must resolve to a
-regular file under `.claude/projects` in the account's home, read from the password database, so a
+regular file under `.claude/projects` or `.codex/sessions` in the account's home, read from the password database, so a
 hand-made hook call that sets `HOME` or `CLAUDE_CONFIG_DIR` moves nothing. Anything else is recorded
 as `answer.unconfirmed` or `seat.unconfirmed` with the reason. The guards refuse writes under
-`.claude/projects` (and to `.claude` itself) in the spellings the records rule reads, and after `cd`,
+`.claude/projects` or `.codex/sessions` (and to `.claude` or `.codex` itself) in the spellings the records rule reads, and after `cd`,
 `pushd`, `-C`, `--chdir` or `-D` into it; reads pass, except a `python` command that names a
 transcript path, which the guards cannot tell from a write (read it with `python3 - < <path>`).
 Claude Code's own memory stays writable: a regular file directly in `<project>/memory` under the
@@ -149,9 +149,19 @@ wuwei.__main__ hook`, `-m cli.wuwei hook` or `-m runpy wuwei hook` (`python3`, `
 python`, any path). The transcript check, not this guard, is the boundary: a hook call built at run
 time still passes (`${IFS}`, a variable, command substitution, a brace, `xargs`, `env -S`), as does a
 script or `-c` body that imports the hook. A harness that keeps
-transcripts elsewhere (`CLAUDE_CONFIG_DIR`, Codex), or an account with no password-database entry,
-gets every answer and stop recorded as unconfirmed while the guards keep running. An answer the
+transcripts elsewhere (`CLAUDE_CONFIG_DIR` or a moved `CODEX_HOME`), or an account with no password-database entry,
+gets unsupported answers and stops recorded as unconfirmed while the guards keep running. An answer the
 planner session never confirms (it ends before another hook call) leaves its `answer.pending` row.
+
+Native Codex stops use the same account lookup and protection, including Windows profile lookup;
+`HOME`, `USERPROFILE` and `CODEX_HOME` cannot move the accepted default root. The first metadata row
+must identify the child, parent, role and canonical path. Its fork boundary excludes inherited rows.
+A matching parent collaboration.spawn_agent call and result proves the requested role and task path.
+The stop UUID maps to that path only after proof. The last own assistant final_answer supplies the
+report; a later available task_complete must agree. The trusted SubagentStop itself supplies
+completion when that later row has not been written yet. Child turn_context model/effort is recorded
+separately from requested, parent and provider-resolved settings. This does not authenticate ordinary
+owner replies or companion jobs. All process, dynamic-path and unseen-link limits above still apply.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only

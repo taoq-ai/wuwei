@@ -404,8 +404,8 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
         if parsed['gate'] in REQUIRED['full'] and parsed['gate'] not in gates:
             continue
         why = parsed['errors'][0] if parsed['errors'] else (
-            f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
-            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a Codex task job or Codex seat never attests)')
+            f'not attested: launch the gate as a supported seat of agent type sentinel-{parsed["gate"]} and end its '
+            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a companion task job never attests; native seats require protected launch/report proof)')
         found.append(gap(f'verdict {path.relative_to(root).as_posix()} not counted: {why}'))
     return found
 

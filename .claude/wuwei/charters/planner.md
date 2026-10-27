@@ -62,10 +62,10 @@ and keep the owner's attention for what only the owner decides.
    do not message the seat for it (a message refused that way carried work: send it again).
    A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict; outside
    auto mode the hand-back is refused, so the SubagentStop alone attests, and `wuwei evidence`
-   names each verdict file that did not count and why. Gates
-   never go to Codex: a gate run as a `codex-companion` task or a Codex seat never counts, whatever
-   its job id, because nothing attests it (a Codex seat's stop is recorded as `seat.unconfirmed`).
-   Gates run as Claude seats; builders and fix rounds may go to Codex. A brief for a seat on Codex
+   names each verdict file that did not count and why. Native Codex gates count only with protected
+   parent/child proof: correlated launch, role, identity, fork boundary and latest own final report.
+   A `codex-companion` task never attests: it has no native SubagentStop. Unsupported records remain
+   `seat.unconfirmed`; builders and fix rounds may go to Codex. A brief for a seat on Codex
    tells it not to use MCP tools: Codex can deny an MCP call without asking, and a denied call
    blocks the seat (`_common.md` Boundaries 3).
 3. When the code is judged correct and only test findings remain after the second round, the
