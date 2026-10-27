@@ -467,3 +467,26 @@ def test_missing_or_malformed_native_metadata_stays_unmeasured(root, turn_effort
     assert ws.rows(root, 'hook.error') == []
     row = ws.rows(root, 'seat.started')[0]['data']
     assert (row['turn_model'], row['turn_effort'], row['fork_policy'], row['model']) == ('unmeasured',) * 4
+
+
+@pytest.mark.parametrize('padding', [0, 110, 190, 199, 210])
+@pytest.mark.parametrize('kind', ['credential', 'canary'])
+def test_native_new_metadata_is_scrubbed_before_brief_extraction_and_report(root, padding, kind):
+    canary = 'wuwei private marker'
+    (root / ws.DIR / 'canary').write_text(canary + '\n')
+    token = ('ghp_' + 'a' * 36) if kind == 'credential' else canary
+    prefix = 'x' * padding
+    hook.handle(root, 'PostToolUse', {
+        'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+        'model': prefix + token + ' parent', 'effort': {'level': prefix + token + ' effort'},
+        'tool_input': {'agent_type': 'builder', 'message': f'Item: I-1\nModel: {prefix}{token} high\nModel reason: {prefix}{token}'},
+        'tool_response': {'task_name': '/root/metadata-redaction'},
+    })
+    assert ws.rows(root, 'hook.error') == []
+    row = ws.rows(root, 'seat.started')[0]['data']
+    assert row['asked'] == prefix + '***'
+    assert row['turn_model'] == prefix + '*** parent'
+    assert row['turn_effort'] == prefix + '*** effort'
+    persisted = json.dumps(row) + report.day(root)
+    assert token not in persisted and 'wuwei' not in row['asked']
+    assert (prefix + '***')[:200] == row['reason']
