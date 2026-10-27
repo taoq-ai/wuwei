@@ -391,13 +391,45 @@ def test_arming_auto_merge_while_ci_runs_is_allowed(root, fake, repo, payload):
     assert guards.pre_tool(root, bash('gh pr merge 42 --squash'))['decision'] == 'deny'
 
 
-@pytest.mark.parametrize('state', ['PENDING', 'FAILURE'])
-@pytest.mark.parametrize('command', ['gh pr merge 42 --squash', 'gh pr merge 42 --squash --auto'])
-def test_a_review_gap_holds_the_merge_with_or_without_auto(root, fake, repo, state, command):
+@pytest.mark.parametrize('running', [False, True])
+@pytest.mark.parametrize('payload', [
+    bash('gh pr merge 42 --squash --auto'),
+    bash('gh api -X PUT repos/acme/app/pulls/42/ccr/auto_merge'),
+    {'tool_name': 'mcp__github__enable_pr_auto_merge', 'cwd': '/w', 'session_id': 's1',
+     'tool_input': {'owner': 'acme', 'repo': 'app', 'pullNumber': 42}},
+])
+def test_pending_review_allows_arming_auto_merge_but_holds_direct_merge(root, fake, repo, running, payload):
     from test_evidence import review_gate
-    review_gate(root, fake, state)
-    decision = guards.pre_tool(root, bash(command))
-    assert decision['decision'] == 'deny' and 'Review Gate' in decision['reason']
+    review_gate(root, fake, 'PENDING')
+    if running:
+        fake.prs['42']['statusCheckRollup'][0].update(conclusion='', status='IN_PROGRESS')
+    assert guards.pre_tool(root, payload) is None
+    decision = guards.pre_tool(root, bash('gh pr merge 42 --squash'))
+    assert decision['decision'] == 'deny' and 'waiting on review: Review Gate' in decision['reason']
+
+
+@pytest.mark.parametrize('problem, expected', [
+    ('failed review', 'change request outstanding: Review Gate'),
+    ('missing gates', 'gates missing at head'),
+    ('owner review', 'owner review needed'),
+    ('unanswered threads', '1 review thread unanswered'),
+    ('unreadable classifier', 'evidence unreadable: review status classification unreadable'),
+])
+@pytest.mark.parametrize('auto', ['', ' --auto'])
+def test_a_review_wait_does_not_waive_other_safety_gaps(root, fake, repo, problem, expected, auto):
+    from test_evidence import review_gate
+    review_gate(root, fake, 'FAILURE' if problem == 'failed review' else 'PENDING')
+    if problem == 'missing gates':
+        for path in (root / ws.DIR / 'verdicts' / 'I-1').glob('*.md'):
+            path.unlink()
+    elif problem == 'owner review':
+        fake.prs['42']['files'].append({'path': 'infra/main.tf', 'additions': 1, 'deletions': 0})
+    elif problem == 'unanswered threads':
+        fake.threads['42'] = [{'isResolved': False, 'comments': {'nodes': [{'author': {'login': 'alice'}}]}}]
+    elif problem == 'unreadable classifier':
+        fake.runs = None
+    decision = guards.pre_tool(root, bash('gh pr merge 42 --squash' + auto))
+    assert decision['decision'] == 'deny' and expected in decision['reason']
 
 
 def test_auto_merge_with_a_real_gap_is_still_refused(root, fake, repo):
