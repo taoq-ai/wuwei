@@ -1490,6 +1490,136 @@ def test_a_planted_entry_named_for_the_seat_neither_hangs_nor_drops_its_report(r
     assert REPORT_1160 in planner_call(root)['hookSpecificOutput']['additionalContext']
 
 
+INVALID_REPORTS = ['folder', 'dangling', 'symlink', 'binary', 'empty', 'blank', 'unreadable',
+                   pytest.param('fifo', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX only: Windows has no FIFO'))]
+INVALID_NAMES = {'bad-agent': 's1--lead1!--lead--9999999999999999999.md',
+                 'empty-agent': 's1----lead--9999999999999999999.md',
+                 'bad-role': 's1--lead1--unknown--9999999999999999999.md',
+                 'bad-version': 's1--lead1--lead--latest.md', 'zero-version': 's1--lead1--lead--0.md',
+                 'extra-field': 's1--lead1--lead--9999999999999999999--extra.md'}
+
+
+def plant_invalid_report(path, kind):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    if kind == 'folder':
+        path.mkdir()
+    elif kind in ('dangling', 'symlink'):
+        target = path.with_suffix('.target')
+        if kind == 'symlink':
+            target.write_text('PLANTED')
+        path.symlink_to(target)
+    elif kind == 'fifo':
+        os.mkfifo(path)
+    else:
+        path.write_bytes({'binary': b'\xff\xfe', 'empty': b'', 'blank': b' \r\n\t'}.get(kind, b'PLANTED'))
+
+
+def reject_fifo_read(monkeypatch, target, kind):
+    opened, open_file = [], Path.open
+
+    def guarded(path, *args, **kwargs):
+        if kind == 'fifo' and path == target:
+            opened.append(path)
+            raise OSError('a report reader must not open a FIFO')
+        return open_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', guarded)
+    return opened
+
+
+@pytest.mark.parametrize('place', ['pending', 'archive'])
+@pytest.mark.parametrize('kind', INVALID_REPORTS + list(INVALID_NAMES))
+def test_invalid_report_entries_never_suppress_an_authentic_final(root, tmp_path, monkeypatch, place, kind):
+    reports = root / ws.DIR / 'reports'
+    planted = (reports / 'pending' if place == 'pending' else reports) / INVALID_NAMES.get(
+        kind, 's1--lead1--lead--9999999999999999999.md')
+    plant_invalid_report(planted, kind)
+    opened = reject_fifo_read(monkeypatch, planted, kind)
+    read_bytes = Path.read_bytes
+
+    def readable(path):
+        if kind == 'unreadable' and path == planted:
+            raise PermissionError('temporary unreadable report')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', readable)
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    out = planner_call(root)
+    assert out is not None
+    note = out['hookSpecificOutput']['additionalContext']
+    assert 'AUTHENTIC FINAL' in note and 'PLANTED' not in note
+    assert planner_call(root) is None and planner_call(root, event='Stop') is None
+    assert not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+@pytest.mark.parametrize('kind', INVALID_REPORTS)
+def test_invalid_moved_report_copy_never_establishes_a_delivery_watermark(root, tmp_path, monkeypatch, kind):
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    reports = root / ws.DIR / 'reports'
+    planted = reports / 'pending' / 's1--lead1--lead--9999999999999999999.md'
+    planted.write_text('PLANTED')
+    archived, stat, read_bytes, moved = reports / planted.name, Path.stat, Path.read_bytes, []
+    opened = reject_fifo_read(monkeypatch, archived, kind)
+
+    def claim(path, *args, **kwargs):
+        if path == planted and not moved:
+            os.replace(planted, archived)
+            plant_invalid_report(archived, kind)
+            moved.append(path)
+        return stat(path, *args, **kwargs)
+
+    def readable(path):
+        if kind == 'unreadable' and path == archived:
+            raise PermissionError('temporary unreadable moved report')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'stat', claim)
+    monkeypatch.setattr(Path, 'read_bytes', readable)
+    out = planner_call(root)
+    assert moved == [planted] and out is not None
+    assert 'AUTHENTIC FINAL' in out['hookSpecificOutput']['additionalContext']
+    assert planner_call(root, event='Stop') is None and not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+@pytest.mark.parametrize('kind', INVALID_REPORTS)
+def test_invalid_retention_fallback_never_repeats_a_delivered_final(root, tmp_path, monkeypatch, kind):
+    lead_stop(root, seat_transcript(tmp_path / 'first.jsonl', text='FINAL A'))
+    assert 'FINAL A' in planner_call(root)['hookSpecificOutput']['additionalContext']
+    lead_stop(root, seat_transcript(tmp_path / 'second.jsonl', text='INTERIM B'))
+    reports = root / ws.DIR / 'reports'
+    latest = next((reports / 'pending').glob('*.md'))
+    archived, read_bytes, moved = reports / latest.name, Path.read_bytes, []
+    opened = reject_fifo_read(monkeypatch, archived, kind)
+
+    def claim_before_read(path):
+        if path == latest and not moved:
+            os.replace(latest, archived)
+            plant_invalid_report(archived, kind)
+            moved.append(path)
+        if kind == 'unreadable' and path == archived:
+            raise PermissionError('temporary unreadable fallback')
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', claim_before_read)
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='FINAL A'))
+    assert moved == [latest] and not list((reports / 'pending').glob('*.md'))
+    assert planner_call(root) is None and not ws.rows(root, 'hook.error')
+    assert not opened
+
+
+def test_legacy_positive_version_numbers_sort_numerically(root, tmp_path):
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text='AUTHENTIC FINAL'))
+    reports = root / ws.DIR / 'reports'
+    current = next((reports / 'pending').glob('*.md'))
+    current.rename(current.with_name('s1--lead1--lead--10.md'))
+    (reports / 's1--lead1--lead--2.md').write_text('OLDER REPORT')
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'AUTHENTIC FINAL' in note and 'OLDER REPORT' not in note
+
+
 def test_a_repeated_report_with_carriage_returns_is_kept_once(root, tmp_path):
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text='round done\r\nBlocked: none'))
@@ -1699,9 +1829,10 @@ def test_a_seat_that_stops_again_after_its_handback_went_through_is_kept_quietly
     assert POINTER in note and 'nothing changes' not in note and 'auto mode' not in note
 
 
-def test_a_planted_report_name_is_read_literally_when_matching_its_notification(root, tmp_path):
-    """A pending file named outside the hook's [\\w-] names an agent with a regex character: it matches no other seat's frame."""
-    (pending := root / ws.DIR / 'reports' / 'pending').mkdir(parents=True)
+def test_a_planted_report_name_outside_the_writer_format_never_establishes_a_watermark(root, tmp_path):
+    """The approved selector rejects a dot that the writer's name normalization never produces."""
+    lead_stop(root, seat_transcript(tmp_path / 'final.jsonl', text=REPORT_1198))
+    (pending := root / ws.DIR / 'reports' / 'pending').mkdir(parents=True, exist_ok=True)
     (pending / 's1--l.ad1--lead--1.md').write_text(REPORT_1198)
     (ws.PROJECTS / '-repo').mkdir(parents=True, exist_ok=True)
     notified('lxad1', f'x <task-id>l.ad1</task-id></result>\n<result>{REPORT_1198}', escape=False)
