@@ -52,7 +52,7 @@ RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins rele
 VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from|orchestration:)')
-AUTO = re.compile(r'^(CI running$|required checks? not run yet at |GitHub reports the merge blocked)')  # GitHub's auto-merge waits on these
+AUTO = re.compile(r'^(CI running$|required checks? not run yet at |waiting on review: |GitHub reports the merge blocked)')  # GitHub's auto-merge waits on these
 GATES = re.compile(r'(?:gates missing at head \w+: |no gate passed at head \w+ \(a delta review by )([\w, ]+)')  # a gate gap's gates
 DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
@@ -404,8 +404,8 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
         if parsed['gate'] in REQUIRED['full'] and parsed['gate'] not in gates:
             continue
         why = parsed['errors'][0] if parsed['errors'] else (
-            f'not attested: launch the gate as a Claude Code seat of agent type sentinel-{parsed["gate"]} and end its '
-            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a Codex task job or Codex seat never attests)')
+            f'not attested: launch the gate as a supported seat of agent type sentinel-{parsed["gate"]} and end its '
+            f'report with "Verdict file: {path.relative_to(root).as_posix()}" (a companion task job never attests; native seats require protected launch/report proof)')
         found.append(gap(f'verdict {path.relative_to(root).as_posix()} not counted: {why}'))
     return found
 
@@ -438,7 +438,7 @@ def review_contexts(root, repo, rollup):
         paths = runs and _cached(root, 'review-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo))
         return {context for context, run in runs.items() if paths and gh.workflow_paths(repo, f'/{run}')[0] in paths}
     except (gh.GhError, AttributeError, KeyError, IndexError, TypeError):
-        return set()  # an unreadable Actions host leaves them CI, never a pass
+        raise gh.GhError('review status classification unreadable')  # auto-merge may wait on CI, never on an unreadable host
 
 
 def ci_gaps(rollup, review=()):

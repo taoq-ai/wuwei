@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+from stat import S_ISREG
 import sys
 import time
 
@@ -16,7 +17,7 @@ from wuwei import agents, board, evidence, guards, plan, sync, verdict, view, ws
 
 def transcript(payload):
     """The seat's last report, its input plus output tokens, whether a hand-back ended its run, and every report it wrote,
-    read from its transcript under ws.PROJECTS ('', None, False and [] when unreadable)."""
+    read from its protected transcript ('', None, False and [] when unreadable)."""
     found, total, ended, said = '', None, False, []
     try:
         for row in transcript_rows(payload.get('agent_transcript_path'), '') or ():
@@ -77,8 +78,14 @@ def pre_tool(root, payload):
 def asked(data):
     """The item the brief names (its first Item: line, list or bold too, else its first Item:), the effort asked for (the call's, else the brief's Model: line) and its Model reason: line."""
     item, line, reason = (re.search(p, str(data.get('prompt', '')), re.M) for p in (
-        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:.*?\b(low|medium|high|xhigh|max)\b', r'^Model reason:[ \t]*(\S.*)$'))
-    return item and item[1].rstrip('.'), str(data.get('effort') or '') or line and line[1], reason and reason[1].strip()[:200]
+        r'\A(?:[\s\S]*?^[ \t]*(?:[-*+][ \t]+)?\**|[\s\S]*?\b)Item:\**[ \t]*`?([\w.-]+)', r'^Model:[ \t]*(\S[^\r\n]*)', r'^Model reason:[ \t]*(\S.*)$'))
+    words = re.split(r'[ \t]+', line[1])[1:] if line else ()
+    effort = next((v for word in words if (v := word.partition('(')[0]) in ('low', 'medium', 'high', 'xhigh', 'max', 'ultra')), None)
+    return item and item[1].rstrip('.'), str(data.get('effort') or '') or effort, reason and reason[1].strip()[:200]
+
+
+def requested(data):
+    return data.get('model') or ((re.findall(r'^Model:[ \t]*(\S+)', str(data.get('prompt', '')), re.M) or [None])[0] if 'agent_type' in data else None)
 
 
 def crowded(root, payload):  # advice on a launch past the seat ceiling, never a door
@@ -90,12 +97,16 @@ def crowded(root, payload):  # advice on a launch past the seat ceiling, never a
 def advise(root, data, note=''):
     """A note on a launch that departs from agents.TABLE or the owner's models rows, after the seat ceiling's note; never a refusal or a rewrite."""
     role, (item_id, effort, reason) = str(data.get('subagent_type', '')).rsplit(':', 1)[-1], asked(data)
-    if role not in agents.TABLE or not data.get('prompt'):  # a Codex spawn carries no brief and no model
+    if role not in agents.TABLE or not data.get('prompt'):
         return context('PreToolUse', note) if note else None
     item, table, rows = (plan.find(root, item_id) if item_id else None) or {}, agents.TABLE[role], ws.config(root)['models']
     tier, repo = item.get('tier', 'standard'), str(item.get('repo', ''))
     if repo and ws.cache_get(root, 'budget-' + repo.replace('/', '__'), 86400) and evidence.budget(root, repo)['raised']:
         tier = evidence.RAISE.get(tier, tier)  # the cached rate only: a launch never waits on the code host
+    if 'agent_type' in data:
+        return context('PreToolUse', note + f"\nWUWEI: Codex table says {' '.join(agents.codex_setting(role, rows, tier))} for {role} at {tier}; "
+                       f"requested: {requested(data) or 'unrecorded'} {effort or 'unrecorded'}; fork policy: {dict(all='inherit', none='fresh').get(str(data.get('fork_turns')), 'unmeasured')}. "
+                       'Resolved child model is unmeasured until provider metadata; use overrides only when the active schema supports them.')
     allowed = [(own, '')] if (own := rows.get(f'{role} {tier}') or rows.get(role)) else [
         (table.get(tier, table['']), '')] + [(setting, when) for when, setting in table.items() if ' ' in when]
     fam = lambda name: (re.findall('fable|opus|sonnet|haiku', name.lower()) or [name.lower()])[0]  # noqa: E731
@@ -148,17 +159,70 @@ def stop(root, payload):
         'one line why each waits, then stop.'}
 
 
-def transcript_rows(path, key):  # the rows naming key in a regular file under ws.PROJECTS, links resolved (None: not one)
+def transcript_rows(path, key):  # the rows naming key in a regular file under an account transcript root, links resolved (None: not one)
     try:  # split on newlines only: a JSON string may hold U+2028 and kin raw, and str.splitlines() splits there
         real = Path(path).resolve(strict=True)
-        return [json.loads(line) for line in real.read_bytes().splitlines() if key.encode() in line] if real.is_relative_to(
-            ws.PROJECTS.resolve()) and real.is_file() else None
+        return [json.loads(line) for line in real.read_bytes().splitlines() if key.encode() in line] if real.is_file() and (
+            real.is_relative_to(ws.PROJECTS.resolve()) or real.is_relative_to(ws.SESSIONS.resolve())) else None
     except (OSError, TypeError, ValueError, RuntimeError, AttributeError):  # AttributeError: a key that is no string
         return None
 
 
 def parts(rows, kind):
     return [p for r in rows for p in (r.get('message') or {}).get('content') or () if isinstance(p, dict) and p.get('type') == kind]
+
+
+def native_rows(rows):
+    if not rows or rows[0].get('type') != 'session_meta' or rows[0]['ordinal'] != 0:
+        raise ValueError('missing first native metadata')
+    meta = rows[0]['payload']
+    if not isinstance(meta['id'], str) or not meta['id'] or any(not isinstance(r['payload'], dict) or type(
+            r['ordinal']) is not int or r['ordinal'] < 0 for r in rows) or any(b['ordinal'] <= a['ordinal'] for a, b in zip(rows, rows[1:])):
+        raise ValueError('invalid native rows')
+    boundary = meta.get('subagent_history_start_ordinal', 0)
+    if type(boundary) is not int or boundary < 0 or any(r['ordinal'] > boundary and r.get('type') == 'session_meta' for r in rows[1:]):
+        raise ValueError('invalid native fork boundary')
+    return meta, [r for r in rows[1:] if r['ordinal'] > boundary]
+
+
+def native_text(row):
+    return '\n'.join(p['text'] for p in row['payload']['content'] if p['type'] in ('output_text', 'input_text'))
+
+
+def _native_report(payload, supplied):
+    try:
+        if any(not Path(payload[k]).resolve().is_relative_to(ws.SESSIONS.resolve()) for k in ('transcript_path', 'agent_transcript_path')):
+            return None
+        before, launches = native_rows(transcript_rows(payload.get('transcript_path'), ''))
+        meta, own = native_rows(transcript_rows(payload.get('agent_transcript_path'), ''))
+        role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
+        if payload.get('hook_event_name') != 'SubagentStop' or before['id'] != payload.get('session_id') or meta['parent_thread_id'] != before['id'] or (
+                'subagent_history_start_ordinal' not in meta or meta['id'] == before['id'] or role not in agents.TABLE or meta['agent_role'] != role or payload.get('agent_id') not in (meta['id'], meta['agent_path']) or meta.get('thread_source') != 'subagent'
+                or not re.fullmatch(r'/root(?:/[a-z0-9_]+)+', meta['agent_path'])):
+            return None
+        calls = [r for r in launches if r['type'] == 'response_item' and r['payload'].get('type') == 'function_call'
+                 and r['payload'].get('namespace') == 'collaboration' and r['payload'].get('name') == 'spawn_agent'
+                 and str(json.loads(r['payload']['arguments']).get('agent_type')).rsplit(':', 1)[-1] == role]
+        paired = [(c, r) for c in calls for r in launches if r['type'] == 'response_item' and r['ordinal'] > c['ordinal']
+                  and r['payload'].get('type') == 'function_call_output' and r['payload'].get('call_id') == c['payload']['call_id']
+                  and json.loads(r['payload']['output']).get('task_name') == meta['agent_path']
+                  and meta['agent_path'] == before.get('agent_path', '/root') + '/' + json.loads(c['payload']['arguments'])['task_name']]
+        if len(paired) != 1:
+            return None
+        final = [r for r in own if r['type'] == 'response_item' and r['payload'].get('type') == 'message'
+                 and r['payload'].get('role') == 'assistant' and r['payload'].get('phase') == 'final_answer'][-1]
+        found = native_text(final)
+        done = [r for r in own if r['payload'].get('type') == 'task_complete' and r['ordinal'] > final['ordinal']]
+        if found.strip() and (not supplied or supplied == found) and all(r['type'] == 'event_msg' and r['payload']['last_agent_message'] == found for r in done):
+            turn = next((r['payload'] for r in reversed(own) if r['type'] == 'turn_context' and r['ordinal'] < final['ordinal']), {})
+            return found, meta['agent_path'], {f'recorded_{k}': v if isinstance(v := turn.get(k), str) and v.strip() else 'unmeasured' for k in ('model', 'effort')}
+    except (OSError, RuntimeError, KeyError, IndexError, TypeError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def seat_identity(value, canary=''):
+    return 'sha256-' + hashlib.sha256(value.encode()).hexdigest() if guards.SECRETS.search(value) or canary and canary in value else value
 
 
 def _report(root, payload, text):
@@ -168,6 +232,15 @@ def _report(root, payload, text):
     agent, role, text = payload.get('agent_id'), str(payload.get('agent_type', '')).rsplit(':', 1)[-1], text if text.strip() else ''
     path = str(payload.get('agent_transcript_path') or  # a PreToolUse payload names the session's: the seat's lies beside it
                Path(str(payload.get('transcript_path')).removesuffix('.jsonl'), 'subagents', f'agent-{agent}.jsonl'))
+    if Path(path).is_relative_to(ws.SESSIONS):
+        canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+        for _ in range(9):
+            if found := _native_report(payload, text):
+                payload.update(agent_id=seat_identity(found[1], canary), **{k: guards.SECRETS.sub('***', v).replace(canary or '\0', '***') for k, v in found[2].items()})
+                return found[0]
+            time.sleep(0.25)
+        ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': seat_identity(str(agent or ''), canary), 'session': payload.get('session_id'), 'reason': 'native parent, role, identity or latest final report did not match the stop'})
+        return None
     meta = (transcript_rows(path.removesuffix('.jsonl') + '.meta.json', 'toolUseId') or [{}])[0] if Path(path).name == f'agent-{agent}.jsonl' else {}
     use = meta.get('toolUseId') if str(meta.get('agentType')).rsplit(':', 1)[-1] == role else None
     why = f'the session transcript shows no {role} launch for agent {agent}'
@@ -186,8 +259,22 @@ def _report(root, payload, text):
     return None
 
 
+def _kept_report(path, folder):
+    try:
+        if path.name.count('--') != 3 or not re.fullmatch(
+                r'[\w-]+--[\w-]+--(?:' + '|'.join(agents.TABLE) + r')--[1-9][0-9]*\.md', path.name) or not S_ISREG(path.stat(follow_symlinks=False).st_mode):
+            return None
+        text = path.read_bytes().decode('utf-8')
+        return (path, text) if text.strip() else None
+    except FileNotFoundError:
+        return _kept_report(folder / path.name, folder) if path.parent != folder else None
+    except (OSError, UnicodeError):
+        return None
+
+
 def subagent_stop(root, payload):
     """A stop counts only when the seat's own transcript holds its report (_report); else seat.unconfirmed, and nothing more."""
+    payload = {k: v for k, v in payload.items() if k not in ('recorded_model', 'recorded_effort')}
     role, text = str(payload.get('agent_type', '')).rsplit(':', 1)[-1], payload.get('last_assistant_message')
     if (report := _report(root, payload, text if isinstance(text, str) else '')) is None:
         return None
@@ -195,18 +282,20 @@ def subagent_stop(root, payload):
     _, tokens, ended, _ = transcript(payload)
     out = _seat_stop(root, payload, role, tokens, ended)
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
-        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), payload.get('agent_id'), role))
-        if not any(p.is_file() and p.read_bytes() == payload['last_assistant_message'].encode() for p in (Path(root) / ws.DIR / 'reports').rglob(
-                f'{name}--*.md')):  # a seat that stops again with the same report keeps it once; only regular files are read (#1208)
-            ws.atomic_write(Path(root) / ws.DIR / 'reports' / 'pending' / f'{name}--{time.time_ns()}.md',
-                            payload['last_assistant_message'], Path(root))
+        agent = hashlib.sha256(payload['agent_id'].encode()).hexdigest() if 'recorded_model' in payload else payload.get('agent_id')
+        name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), agent, role))
+        folder = Path(root) / ws.DIR / 'reports'
+        kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
+                   key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
+        if kept is None or kept[1] != payload['last_assistant_message']:  # only the latest valid version can repeat
+            ws.atomic_write(folder / 'pending' / f'{name}--{time.time_ns()}.md', payload['last_assistant_message'], Path(root))
     return out
 
 
 def _seat_stop(root, payload, role, tokens, ended):
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
-                                     'session': payload.get('session_id')})
+                                     'session': payload.get('session_id'), **{k: payload[k] for k in ('recorded_model', 'recorded_effort') if k in payload}})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
             return None
@@ -266,12 +355,13 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
-    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id')), {})
+    seat = next((r['data'] for r in reversed(ws.rows(root, 'seat.started')) if r['data'].get('agent') == payload.get('agent_id') and (
+                 'recorded_model' not in payload or r['data'].get('session') == payload.get('session_id'))), {})
     ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path'), 'model': seat.get('model', 'unrecorded'),
-                               'effort': seat.get('effort', 'unrecorded'), 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
+                               'effort': seat.get('effort', 'unrecorded'), **{k: payload[k] for k in ('recorded_model', 'recorded_effort') if k in payload}, 'blocking': sum(1 for f in parsed['findings'] if f['blocks'])})
     return None
 
 
@@ -283,13 +373,21 @@ def post_tool(root, payload):
                         'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
-    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
-        item, effort, reason = asked(data)  # what ran, what was asked for, and why it departs
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response['agentId'], 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                                         'asked': str(data.get('model') or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item})
+        canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
+        redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
+        item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
+        reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
+        measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
+        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
+                'session': payload.get('session_id'), 'agent': seat_identity(response['agentId'], canary), 'model': str(response.get('resolvedModel') or 'unmeasured'),
+                'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item,
+                **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
+                    'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
+        ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
+                  {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
+        return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
         kept = {'id': str(payload.get('tool_use_id') or ''), 'path': payload.get('transcript_path'), 'answers': answers,
@@ -481,17 +579,22 @@ HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'Sub
 PATCHED = re.compile(r'^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$', re.M)
 
 
-def codex(payload):
+def codex(payload, event='PostToolUse'):
     """Codex's tool payloads in the shapes the guards read: apply_patch as an edit of the files it
     names, spawn_agent as a seat launch, request_user_input as an owner question."""
     tool, data = payload.get('tool_name'), payload.get('tool_input') or {}
     if tool == 'apply_patch':
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
-    if tool == 'spawn_agent':
-        spawned = re.search(r'"agent_id"\s*:\s*"([^"]+)"', json.dumps(payload.get('tool_response')).replace('\\"', '"'))
-        return {**payload, 'tool_name': 'Agent', 'tool_response': {'agentId': spawned and spawned[1]},
-                'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
+    if tool in ('spawn_agent', 'collaborationspawn_agent'):
+        response = json.loads(raw) if isinstance(raw := payload.get('tool_response'), str) else raw
+        spawned = response.get('agent_id', response.get('task_name')) if isinstance(response, dict) else None
+        if event == 'PostToolUse' and (not isinstance(spawned, str) or not spawned.strip()):
+            raise ValueError('Codex spawn_agent response needs a nonblank string agent_id or task_name')
+        role = str(data.get('agent_type') or '').removeprefix('wuwei:')
+        return {**payload, 'tool_name': 'Agent' if role in agents.TABLE else 'codex_spawn_unconfirmed',
+                'tool_response': {**(response or {}), 'agentId': spawned}, 'tool_input': {**data, 'subagent_type': role if role in agents.TABLE else '',
+                'description': data.get('task_name') or '', 'prompt': data.get('message') or '', 'effort': data.get('reasoning_effort')}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
         response = payload.get('tool_response')
@@ -503,6 +606,17 @@ def codex(payload):
     return payload
 
 
+def _native_told(path, agent, text, at, canary=''):
+    try:
+        meta, rows = native_rows(transcript_rows(path, ''))
+        return any(r['type'] == 'response_item' and r['payload'].get('type') == 'agent_message' and isinstance(author := r['payload'].get('author'), str)
+                   and ((identity := seat_identity(author, canary)) == agent or hashlib.sha256(identity.encode()).hexdigest() == agent)
+                   and r['payload'].get('recipient') == meta.get('agent_path', '/root') and datetime.datetime.fromisoformat(r['timestamp']) >= datetime.datetime.fromisoformat(at)
+                   and native_text(r) == f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text for r in rows)
+    except (OSError, KeyError, IndexError, TypeError, ValueError, AttributeError):
+        return False
+
+
 def deliver(root, event, payload, out, said):
     """Seat reports the harness kept from the planner and owner answers' notes (said), once on its next call or stop (#1160)."""
     spec, data = (out or {}).get('hookSpecificOutput', {}), payload.get('tool_input') or {}
@@ -511,17 +625,26 @@ def deliver(root, event, payload, out, said):
     if payload.get('agent_id') or event not in ('PreToolUse', 'PostToolUse', 'Stop') or out and 'additionalContext' not in spec \
             and event != 'Stop':  # a decision stays as it is; the next call carries the reports
         return out
-    pending, found, session = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or ''))
-    for path in sorted(pending.glob(f'{session}--*.md')) if pending.is_dir() else ():
+    pending, found, session, latest = Path(root) / ws.DIR / 'reports' / 'pending', [], re.sub(r'[^\w-]', '', str(payload.get('session_id') or '')), {}
+    paths = [*pending.glob(f'{session}--*.md'), *pending.parent.glob(f'{session}--*.md')]  # pending first: a claim cannot disappear
+    for path, text in sorted((r for p in paths if (r := _kept_report(p, pending.parent))),
+                             key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), reverse=True):
         try:
-            (_, agent, role, _), text = path.stem.split('--', 3), path.read_text(encoding='utf-8')
+            seat = tuple(path.stem.split('--', 3)[:2])
+            if latest.setdefault(seat, path.name) != path.name or path.parent != pending:
+                if path.parent == pending:
+                    os.replace(path, pending.parent / path.name)  # keep every version beside the latest report's kept path
+                continue
+            _, agent, role, _ = path.stem.split('--', 3)
             rows = [r for r in transcript_rows(payload.get('transcript_path'), f'<task-id>{agent}</task-id>') or () if isinstance(r, dict)
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
             told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
-            if told and event == 'Stop' or os.replace(path, kept := pending.parent / path.name):  # one hook wins a race
+            canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+            told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)
+            if told and event == 'Stop' or ws.take(root, path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
         except OSError:
             continue
@@ -547,7 +670,7 @@ def handle(root, event, payload):
     except Exception as exc:
         _failed(root, event, exc)
     try:  # at PostToolUse the answers are recorded after it kept its own
-        out = handler(root, codex(payload))
+        out = handler(root, codex(payload, event))
         said += _confirm(root, payload, False) if planner and event == 'PostToolUse' else []
     except Exception as exc:  # a door that cannot judge stays shut
         message = _failed(root, event, exc)
