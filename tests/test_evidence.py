@@ -1610,13 +1610,25 @@ def test_a_verdict_on_the_items_pr_in_another_repository_is_skipped_before_any_c
     assert evidence.gaps(root, 'acme/app', 42) == [] and denied(root) == '' and asked == []
 
 
-def test_a_finding_from_another_pr_of_the_repository_holds_whatever_case_the_repository_is_named_in(root, fake):
+def test_an_edited_finding_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake):
+    complete(root, fake)
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-other.md'
+    path.write_text(verdict_text(verdict='FIX', head='e' * 40, pr='acme/other#9'))
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                               'gate': 'quality', 'item': 'I-1', 'head': 'e' * 40, 'pr': 'acme/other#9', 'verdict': 'FIX'})
+    path.write_text(path.read_text() + '\nedited\n')  # held as recorded, by the row's PR
+    assert evidence.gaps(root, 'acme/app', 42) == [] and not [c for c in fake.calls if 'e' * 40 in ' '.join(c)]
+
+
+@pytest.mark.parametrize('finding, found', [(False, []), (True, OWED)])
+def test_a_finding_from_another_pr_of_the_repository_holds_whatever_case_the_repository_is_named_in(root, fake, finding, found):
     standard(root)
     fake.ancestors.add((OLD, HEAD))
     attest(root, 'quality')
-    attest(root, 'quality', OLD, 'FIX', name='quality-fix.md', pr='acme/app#7')
-    found = texts(evidence.gate_gaps(root, 'Acme/App', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
-    assert [t for t in found if t.startswith('gates missing')] == OWED
+    if finding:
+        attest(root, 'quality', OLD, 'FIX', name='quality-fix.md', pr='acme/app#7')
+    said = texts(evidence.gate_gaps(root, 'Acme/App', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+    assert [t for t in said if t.startswith('gates missing')] == found
 
 
 @pytest.mark.parametrize('edited', [False, True])
