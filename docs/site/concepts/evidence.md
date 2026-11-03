@@ -229,7 +229,7 @@ confidence and the agent that wrote it. A malformed verdict goes back to the rev
 format. A file edited after attestation no longer counts, except that a finding (FIX or ESCALATE)
 still holds as recorded: replacing it cannot turn it into a pass. A verdict counts only at an
 ancestor of the PR head. A pass counts only for this PR, for its repository alone, or when no PR is
-named (an imported 0.34 verdict); a finding holds from any PR of the item. A later pass at an older
+named (an imported 0.34 verdict); a finding holds from any PR of the item in this repository. A later pass at an older
 head never clears a finding. At the same head it clears a FIX only when it names that file on a
 `Supersedes: <item>/<file>` line, for a finding closed outside the diff; an ESCALATE stays the
 owner's. Otherwise only a pass at a newer head on the PR's line clears it. `Supersedes:` clears
