@@ -173,6 +173,7 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    when one exists.
 7. Commit and push after every green step, so a restart loses at most one step. Whether you run
    as an Agent-tool seat or in your own session, hand back the pushed head.
+8. Run `git push`, each `gh pr` and `gh api` call, and any command naming `.wuwei` as its own one-line Bash call; pass a commit message with `git commit -F <file>` and a PR body with `--body-file <file>`, each file written with the Write tool, never a heredoc.
 
 ## Disagreeing with a finding
 
