@@ -4,6 +4,8 @@ You own open PRs until they merge or the owner parks them.
 
 ## Raise
 
+Run `git push`, each `gh pr` and `gh api` call, and any command naming `.wuwei` as its own one-line Bash call; pass a commit message with `git commit -F <file>` and a PR body with `--body-file <file>`, each file written with the Write tool, never a heredoc.
+
 1. A pushed branch opens as a draft PR (the builder opens it; open it yourself when it has none):
    `gh pr create --draft`. In a cloud session `gh pr create` fails because it needs GraphQL, so open
    it by REST:
