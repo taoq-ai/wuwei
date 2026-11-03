@@ -1587,6 +1587,22 @@ def test_a_gate_is_read_from_its_verdict_at_the_newest_head_on_this_pr(root, fak
     assert gated(root, fake, *said) == found
 
 
+@pytest.mark.parametrize('verdict', ['FIX', 'ESCALATE'])
+def test_a_finding_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake, monkeypatch, verdict):
+    complete(root, fake)  # PASS verdicts on acme/app#42 at its head
+    foreign = 'e' * 40  # a acme/other sha: comparing it in acme/app answers 404 (#1268)
+    attest(root, 'quality', foreign, verdict, name='quality-other-0.md', pr='acme/other#9')
+    attest(root, 'quality', foreign, 'PASS', name='quality-other-1.md', pr='acme/other#9')
+    asked = []
+    def run(args, timeout=30):
+        if '/compare/' in ' '.join(args) and foreign in ' '.join(args):
+            asked.append(args)
+            raise gh.GhError('HTTP 404: Not Found')
+        return fake(args, timeout)
+    monkeypatch.setattr(gh, 'run', run)
+    assert evidence.gaps(root, 'acme/app', 42) == [] and denied(root) == '' and asked == []
+
+
 @pytest.mark.parametrize('edited', [False, True])
 def test_a_finding_for_another_pr_of_the_item_still_holds(root, fake, edited):
     standard(root)

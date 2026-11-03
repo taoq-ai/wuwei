@@ -353,15 +353,16 @@ def gates_for(root, repo, pr, files, item):
 
 def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard', base=''):
     """Each gate the change needs passed at an ancestor of the head, by the ancestry walk. A pass counts for this PR (its repository
-    before the PR is read); a finding at an ancestor holds from any PR and displaces a pass. At one head a later finding replaces a FIX,
-    and a pass clears it only by naming it in Supersedes (#1162). Code moved since the last pass is re-read by the one gate the delta
-    needs; docs or a small change off risky paths carries it. Given a base sha, the delta is the PR's own diff (#1230)."""
+    before the PR is read); a finding at an ancestor holds from any PR of this repository (#1268) and displaces a pass. At one head a
+    later finding replaces a FIX, and a pass clears it only by naming it in Supersedes (#1162). Code moved since the last pass is re-read
+    by the one gate the delta needs; docs or a small change off risky paths carries it. Given a base sha, the delta is the PR's own diff (#1230)."""
     latest, last = {}, None
     for found in verdicts(root, item_id, ref):  # oldest first
         prior, said, fix = latest.get(found['gate']), (found.get('ref') or repo).lower(), found['verdict'] != 'PASS'
         named = prior and prior['verdict'] == 'FIX' and prior['head'][:7] == found['head'][:7] and (fix or any(  # #1162
             ('/' + s.replace('\\', '/')).endswith('/' + '/'.join(Path(prior['path']).parts[-2:])) for s in found.get('supersedes', ())))
-        if (fix or (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) and ancestor(root, repo, found['head'], head) \
+        if (said.split('#')[0] == repo.lower() if fix else (said if ref else said.split('#')[0]) in (repo.lower(), ref.lower())) \
+                and ancestor(root, repo, found['head'], head) \
                 and (newer(root, repo, found, prior, found['head']) or fix and prior['verdict'] == 'PASS' or named):  # head asked above
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
