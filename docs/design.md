@@ -188,7 +188,7 @@ attestation, and is sent back to write a new file. A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
-the item in that repository counts. A finding holds from any PR of the item and displaces a pass.
+the item in that repository counts. A finding holds from any PR of the item in this repository and displaces a pass.
 A later pass at an older head never clears a finding. At the same head it clears a FIX only by
 naming that file on a `Supersedes:` line; otherwise only a pass from a strict descendant does. An arch `Breaking: no` clears a yes
 only from a strict descendant of that yes's head, and only for this PR or its repository alone;

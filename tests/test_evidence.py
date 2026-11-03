@@ -1581,18 +1581,25 @@ OWED = ['gates missing at head aaaaaaa: quality']
     ([(HEAD, 'PASS'), (HEAD, 'FIX')], OWED),  # a finding replaces a pass at one head
     ([(HEAD, 'PASS'), (OLD, 'FIX')], OWED),  # and at an older head, so the gate reads again
     ([(HEAD, 'PASS'), (OLD, 'FIX', 'acme/app#7')], OWED),  # a finding on the PR's line holds from another PR
+    ([(HEAD, 'PASS'), (OLD, 'ESCALATE', 'acme/app#7')], OWED),
     ([(OLD, 'FIX', 'acme/app#7'), (HEAD, 'PASS')], []),  # and a pass here at a descendant clears it
 ])
 def test_a_gate_is_read_from_its_verdict_at_the_newest_head_on_this_pr(root, fake, said, found):
     assert gated(root, fake, *said) == found
 
 
-@pytest.mark.parametrize('verdict', ['FIX', 'ESCALATE'])
-def test_a_finding_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake, monkeypatch, verdict):
-    complete(root, fake)  # PASS verdicts on acme/app#42 at its head
+@pytest.mark.parametrize('first', [False, True])
+@pytest.mark.parametrize('gate, verdict, says', [('quality', 'FIX', 'no'), ('quality', 'ESCALATE', 'no'), ('arch', 'PASS', 'yes: drops x')])
+def test_a_verdict_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake, monkeypatch, gate, verdict, says, first):
     foreign = 'e' * 40  # a acme/other sha: comparing it in acme/app answers 404 (#1268)
-    attest(root, 'quality', foreign, verdict, name='quality-other-0.md', pr='acme/other#9')
-    attest(root, 'quality', foreign, 'PASS', name='quality-other-1.md', pr='acme/other#9')
+    def other():
+        attest(root, gate, foreign, verdict, name=f'{gate}-other-0.md', pr='acme/other#9', breaking=says)
+        attest(root, gate, foreign, 'PASS', name=f'{gate}-other-1.md', pr='acme/other#9')
+    if first:
+        other()
+    complete(root, fake)  # PASS verdicts on acme/app#42 at its head
+    if not first:
+        other()
     asked = []
     def run(args, timeout=30):
         if '/compare/' in ' '.join(args) and foreign in ' '.join(args):
@@ -1601,6 +1608,15 @@ def test_a_finding_on_the_items_pr_in_another_repository_is_skipped_before_any_c
         return fake(args, timeout)
     monkeypatch.setattr(gh, 'run', run)
     assert evidence.gaps(root, 'acme/app', 42) == [] and denied(root) == '' and asked == []
+
+
+def test_a_finding_from_another_pr_of_the_repository_holds_whatever_case_the_repository_is_named_in(root, fake):
+    standard(root)
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'quality')
+    attest(root, 'quality', OLD, 'FIX', name='quality-fix.md', pr='acme/app#7')
+    found = texts(evidence.gate_gaps(root, 'Acme/App', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+    assert [t for t in found if t.startswith('gates missing')] == OWED
 
 
 @pytest.mark.parametrize('edited', [False, True])
