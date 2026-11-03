@@ -2487,6 +2487,63 @@ def test_a_label_answered_minutes_later_is_recorded_when_its_row_lands(root):
     assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [json.loads(LATE[3])['toolUseResult']['answers']]
 
 
+# 1253: the answer is read from the harness's user row, not the api-request-blob copy Claude Code 2.1.304+ writes after it
+
+BLOB = (TRANSCRIPTS / 'ask-blob.jsonl').read_text().splitlines()  # sanitized real 2.1.309 rows, per id: tool_use, user, blob, blob
+
+
+def blob_ask(rows, answers=None):
+    """The PostToolUse payload for the id these fixture rows name, as the harness sends it."""
+    use, done = json.loads(rows[0]), json.loads(rows[1])
+    asked = use['message']['content'][0]
+    return installed({'session_id': use['sessionId'], 'transcript_path': f'~/.claude/projects/-repo/{use["sessionId"]}.jsonl',
+                      'cwd': str(use['cwd']), 'hook_event_name': 'PostToolUse', 'tool_name': 'AskUserQuestion', 'tool_input': asked['input'],
+                      'tool_response': {**done['toolUseResult'], 'answers': answers or done['toolUseResult']['answers']},
+                      'tool_use_id': asked['id']}, rows[:1])
+
+
+@pytest.mark.parametrize('rows', [BLOB[:4], BLOB[4:], BLOB[:2], BLOB[4:6]], ids=['one', 'batch', 'one-no-blob', 'batch-no-blob'])
+def test_an_answer_whose_user_row_a_blob_row_follows_records_once(root, rows):
+    payload = blob_ask(rows)
+    hook.handle(root, 'PostToolUse', payload)
+    with Path(payload['transcript_path']).open('a') as out:  # the harness writes the rows after PostToolUse returns
+        out.write(''.join(line + '\n' for line in rows[1:]))
+    planner_read(root, payload['session_id'])
+    planner_read(root, payload['session_id'])
+    stop_at(root, payload['session_id'])
+    assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [json.loads(rows[1])['toolUseResult']['answers']]
+    assert not ws.rows(root, 'answer.unconfirmed')
+
+
+def test_a_batch_answer_that_differs_from_the_user_row_stays_unconfirmed_beside_the_others(root):
+    said = json.loads(BLOB[5])['toolUseResult']['answers']
+    other = list(said)[1]
+    payload = blob_ask(BLOB[4:], {**said, other: 'No'})
+    Path(payload['transcript_path']).write_text(''.join(line + '\n' for line in BLOB[4:]))
+    hook.handle(root, 'PostToolUse', payload)
+    assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [{q: a for q, a in said.items() if q != other}]
+    [row] = ws.rows(root, 'answer.unconfirmed')
+    assert row['data']['questions'] == [other] and "with 'Yes', not 'No'" in row['data']['reason']
+
+
+@pytest.mark.parametrize('rows, kind', [([BLOB[0], BLOB[3]], None), (BLOB[2:4], None), ([BLOB[0], BLOB[2], BLOB[3]], None),
+                                        (BLOB[:2], 'assistant'), (BLOB[:2], 'system')],
+                         ids=['blob', 'blobs-only', 'both-blobs', 'assistant', 'system'])
+def test_a_row_other_than_the_user_row_confirms_no_answer(root, monkeypatch, rows, kind):
+    """An api-request-blob row carries no toolUseResult; it, or a row of any type but user, forged with answers records nothing."""
+    monkeypatch.setattr(hook, 'WAIT', 0)
+    forged = [rows[0], *(json.dumps({**json.loads(r), 'toolUseResult': json.loads(BLOB[1])['toolUseResult'],
+                                     **({'type': kind} if kind else {})}) for r in rows[1:])]
+    payload = blob_ask(BLOB[:4])
+    Path(payload['transcript_path']).write_text(''.join(line + '\n' for line in forged))
+    hook.handle(root, 'PostToolUse', payload)
+    aged(root, hook.BOUND + 1)
+    planner_read(root, payload['session_id'])
+    assert not ws.rows(root, 'prompt') and not ws.rows(root, 'ruling')
+    [row] = ws.rows(root, 'answer.unconfirmed')
+    assert 'no tool_result row' in row['data']['reason']
+
+
 # 1231 (folded into 1211-confirm): a record shape the hook does not expect names the check that failed
 
 TEXT = 'Your questions have been answered: {}. You can now continue with these answers in mind.'  # the real 2.1.308 tool_result text

@@ -438,7 +438,8 @@ def _shown(kept):  # (the answers the transcript shows for this AskUserQuestion 
         return {}, f'{kept.get("path")} is not a transcript under {ws.PROJECTS}'
     if not any(p.get('id') == tid and p.get('name') == 'AskUserQuestion' for p in parts(rows, 'tool_use')):
         return {}, f'the transcript holds no AskUserQuestion tool_use {tid}'
-    if not (done := [r.get('toolUseResult') for r in rows if any(p.get('tool_use_id') == tid for p in parts([r], 'tool_result'))]):
+    if not (done := [r.get('toolUseResult') for r in rows if r.get('type') == 'user'  # never the api-request-blob copy written after it
+                     and any(p.get('tool_use_id') == tid for p in parts([r], 'tool_result'))]):
         return None
     if not isinstance(said := done[-1].get('answers') if isinstance(done[-1], dict) else None, dict):  # never the row's text: model-written
         return {}, f'the tool_result has no toolUseResult answers ({type(done[-1]).__name__})'  # questions, labels and deny reasons fill it
