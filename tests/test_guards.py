@@ -2128,7 +2128,8 @@ def test_a_force_push_in_a_short_option_cluster_is_refused(root, fake, repo, com
     assert guards.pre_tool(root, bash(command))['reason'].startswith('force push refused: history'), command
 
 
-@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in PLAIN] + ['git push -o fix origin i-1-change'])
+@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in PLAIN] + [
+    'git push -o fix origin i-1-change', 'git push --follow-tags origin i-1-change', 'git push --signed=if-asked origin i-1-change'])
 def test_a_short_option_cluster_without_f_passes_the_push_door(root, fake, repo, command):
     assert door_reached(guards.pre_tool(root, bash(command))) == 'pass', command
 

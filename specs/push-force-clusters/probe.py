@@ -7,11 +7,11 @@ Classes:
   and a value after f (-fox, -fo=x, -fo.x, -fo/x), x three positions (before the remote, after it, after the refspec) x the
   targets div, div:div, refs/heads/div and main.
 - spelling: the item's five clusters and -fo=x quoted ('-4f', "-4f", \\-4f) x positions x div.
-- operator: the same clusters after true &&, true ;, true || false and inside ( ) x positions x div.
+- operator: the same clusters after true &&, true ;, false || and inside ( ) x positions x div.
 - plain: each cluster with no f x positions x div and main: its verdict at the head equals main's (read as before).
 - value: f as -o's value (-of, -4of, -o f, -o -f): git does not force; the head may refuse it (over-refusal, counted).
-A hole: the head's guard passes and the remote's main or div moved. A misread: a ref moved and the head's refusal is not the
-force refusal. Each command is read by the guard of both trees, with the origin read as o/r, default branch main.
+A hole: the head's guard passes and git rewrote main or div (a forced update, as each is diverged) or deleted main; deleting
+div is ordinary work the door passes. A misread: a ref rewritten and the head's refusal is not the force refusal. Each command is read by the guard of both trees, with the origin read as o/r, default branch main.
 
 Usage: python3 -I probe.py <main tree> <head tree> <empty folder>
 Prints per class: generated, ran (the stub logged a git push), holes and misreads at head and main, newly refused,
@@ -106,7 +106,7 @@ for c, p, t in product(CLUSTERS, POSITIONS, TARGETS):
     cmds.append(('cluster', p.format(o=c, t=t)))
 for c, q, p in product(FIVE, ["'{}'", '"{}"', '\\{}'], POSITIONS):
     cmds.append(('spelling', p.format(o=q.format(c), t='div')))
-for c, op, p in product(FIVE, ['true && {}', 'true ; {}', 'true || false || {}', '( {} )'], POSITIONS):
+for c, op, p in product(FIVE, ['true && {}', 'true ; {}', 'false || {}', '( {} )'], POSITIONS):
     cmds.append(('operator', op.format(p.format(o=c, t='div'))))
 for b, p, t in product(BEFORE[1:], POSITIONS, ('div', 'main')):
     cmds.append(('plain', p.format(o='-' + b, t=t)))
@@ -126,22 +126,24 @@ for kind, command in cmds:
     done = subprocess.run(['bash', '-c', command], cwd=C, env={**ENV, 'PATH': f'{BIN}:{ENV["PATH"]}'},
                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
     ran = any(line.startswith('push') for line in LOG.read_text().splitlines())
-    moved = any(remote_ref(r) != X0[r] for r in ('refs/heads/main', 'refs/heads/div'))
-    rows.append({'kind': kind, 'command': command, 'ran': ran, 'moved': moved, 'exit': done.returncode,
+    forced = any((now := remote_ref(r)) and now != X0[r] for r in ('refs/heads/main', 'refs/heads/div'))
+    moved = forced or not remote_ref('refs/heads/main')
+    rows.append({'kind': kind, 'command': command, 'ran': ran, 'forced': forced, 'moved': moved, 'exit': done.returncode,
                  **{k: (d or {}).get('reason') for k, d in dec.items()}, **{k + '_refused': d is not None for k, d in dec.items()}})
     restore()
 (BASE / 'rows.json').write_text(json.dumps(rows, indent=1))
 FORCE = 'force push refused'
 by = {}
 for r in rows:
-    k = by.setdefault(r['kind'], dict.fromkeys(('generated', 'ran', 'moved', 'holes_head', 'holes_main', 'misread_head',
+    k = by.setdefault(r['kind'], dict.fromkeys(('generated', 'ran', 'forced', 'moved', 'holes_head', 'holes_main', 'misread_head',
                                                 'misread_main', 'newly_refused', 'newly_passed', 'reason_moved'), 0))
     k['generated'] += 1
     k['ran'] += r['ran']
+    k['forced'] += r['forced']
     k['moved'] += r['moved']
     for t in ('head', 'main'):
         k['holes_' + t] += r['moved'] and not r[t + '_refused']
-        k['misread_' + t] += r['moved'] and not (r[t] or '').startswith(FORCE)
+        k['misread_' + t] += r['forced'] and not (r[t] or '').startswith(FORCE)
     k['newly_refused'] += r['head_refused'] and not r['main_refused']
     k['newly_passed'] += r['main_refused'] and not r['head_refused']
     k['reason_moved'] += r['head'] != r['main']
