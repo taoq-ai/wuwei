@@ -2118,6 +2118,38 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
 
 
+CLUSTERS = ['-4f', '-f4', '-6f', '-qf6', '-4vf', '-uf6', '-fo=x', '-fo.x']  # git's parse-options: f in a cluster forces, -o takes the rest
+PLAIN = ['-4', '-6', '-q', '-v', '-u', '-4v', '-qu6']
+
+
+@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in CLUSTERS] + [f'git push origin i-1-change {c}' for c in CLUSTERS])
+def test_a_force_push_in_a_short_option_cluster_is_refused(root, fake, repo, command):
+    """Item push-force-clusters: digits and flags beside f (-4f, -qf6, -fo=x) still force the push, on any branch."""
+    assert guards.pre_tool(root, bash(command))['reason'].startswith('force push refused: history'), command
+
+
+@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in PLAIN] + ['git push -o fix origin i-1-change'])
+def test_a_short_option_cluster_without_f_passes_the_push_door(root, fake, repo, command):
+    assert door_reached(guards.pre_tool(root, bash(command))) == 'pass', command
+
+
+@pytest.mark.skipif(not shutil.which('git') or not shutil.which(BASH), reason='needs git and bash')
+@pytest.mark.parametrize('option, moves', [(c, True) for c in CLUSTERS] + [(c, False) for c in PLAIN])
+def test_a_cluster_holding_f_force_pushes_main_under_real_git_and_meets_the_force_refusal(root, ahead, monkeypatch, option, moves):
+    """Item push-force-clusters: the remote's main has a commit the clone's main lacks, so only a force push moves it."""
+    run = lambda *a: subprocess.run(['git', *a], cwd=ahead / 'c', check=True, capture_output=True)  # noqa: E731
+    run('config', 'receive.advertisePushOptions', 'true')
+    run('--git-dir', str(ahead / 's.git'), 'config', 'receive.advertisePushOptions', 'true')
+    run('push', '-q', 'origin', 'feature:main')
+    command = f'git push {option} origin main'
+    before = main_at(ahead / 's.git')
+    subprocess.run([BASH, '-c', command], cwd=ahead / 'c', capture_output=True, timeout=30)
+    assert (main_at(ahead / 's.git') != before) == moves, command
+    monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
+    reason = guards.bash(root, command, str(ahead / 'c'), 's1')['reason']
+    assert reason.startswith('force push refused: history' if moves else 'pushing to the default branch main refused'), command
+
+
 WT_DASHES = "git worktree add -q -b w ../w && printf 'ref: refs/heads/main\\n' > .git/worktrees/w/--"  # w's own root ref named --
 
 
