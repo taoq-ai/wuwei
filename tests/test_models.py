@@ -84,8 +84,8 @@ def test_a_codex_role_file_names_native_defaults_without_changing_claude_generat
 
 def test_a_departure_gets_advice_naming_the_table_setting_and_the_reason_line(root):
     plan_item(root, 'standard')
-    text = advice(launch(root, 'sentinel-goal', model='opus'))
-    assert "table says Sonnet 5.5 high for sentinel-goal at standard; record a 'Model reason:' line in the brief" in text
+    text = advice(launch(root, 'sentinel-arch', model='sonnet'))
+    assert "table says Opus 5.5 high for sentinel-arch at standard; record a 'Model reason:' line in the brief" in text
     assert ws.rows(root, 'refused') == [] and ws.rows(root, 'hook.error') == []
 
 
@@ -191,7 +191,7 @@ def test_the_item_is_read_from_a_wuwei_item_line_and_a_brief_without_one_reads_a
 
 def test_the_task_tool_name_is_advised_too(root):
     plan_item(root, 'standard')
-    assert 'Sonnet 5.5 high' in advice(launch(root, 'sentinel-goal', 'opus', tool='Task'))
+    assert 'Opus 5.5 high' in advice(launch(root, 'sentinel-arch', 'sonnet', tool='Task'))
 
 
 @pytest.mark.parametrize('prompt, item, reason', [
@@ -207,7 +207,7 @@ def test_an_empty_model_reason_line_does_not_end_the_advice(root):
 
 
 @pytest.mark.parametrize('variable, model, effort', [('CLAUDE_CODE_EFFORT_LEVEL', 'sonnet', 'low'),
-                                                     ('CLAUDE_CODE_SUBAGENT_MODEL', 'opus', 'high')])
+                                                     ('CLAUDE_CODE_SUBAGENT_MODEL', 'fable', 'high')])
 def test_an_environment_variable_turns_its_half_of_the_advice_off(root, monkeypatch, variable, model, effort):
     plan_item(root, 'standard')
     assert launch(root, 'sentinel-goal', model, effort) is not None

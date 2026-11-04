@@ -28,7 +28,7 @@ The table reads only signals WUWEI already computes for every item:
 | sentinel-security | Opus 5.5 high, xhigh at full or on risky, owner or contract paths | a missed trust defect is the costliest escape |
 | sentinel-arch | Opus 5.5 high | coupling and contracts need reasoning across the whole design |
 | sentinel-quality | Sonnet 5.5 high, Opus 5.5 high at full or on risky, owner or contract paths | a second model family on routine heads; the stronger model where a missed test costs most |
-| sentinel-goal | Sonnet 5.5 high | reads the promise against the diff; a different model than the builder at full |
+| sentinel-goal | Sonnet 5.5 high; Opus 5.5 high at full or on risky, owner or contract paths | the red team: probes how the change fails its promise; in its backtest Opus 5.5 high caught an escape on an infrastructure path that Sonnet 5.5 high missed |
 | shepherd | Sonnet 5.5 medium, Opus 5.5 high for a conflict where both sides changed logic | most PR work is routine; a logic conflict is not |
 | steward | Opus 5.5 high | the retro weighs evidence across the day |
 | lookups and searches | Haiku 5.5 low | Anthropic names Haiku 5.5 for simple, speed-critical work and low effort for simple subagent tasks |

@@ -106,6 +106,28 @@ def test_the_arch_gate_reviews_as_an_architect():
     assert "are the security gate's" in text
 
 
+def test_the_goal_gate_is_the_red_team_and_keeps_its_goal_duties():
+    text = ' '.join((PLUGIN / 'agents' / 'sentinel-goal.md').read_text(encoding='utf-8').split())
+    red = text.split('## Red team', 1)[1]
+    for duty in ('Stand-in runtime:', 'Sibling path:', 'Repeated defect:', 'Before you read any verdict, review thread or builder',
+                 'in a `git archive` copy of the head', 'under Probes', 'blocks under gate rule 5', 'is a note (`blocks: no`) naming the probe'):
+        assert duty in red, duty
+    for duty in ('explain-back', 'drift both ways', 'check counts against their population', 'source text'):
+        assert duty in text, duty
+
+
+def test_the_goal_trigger_reads_the_same_in_the_charters_and_the_docs():
+    """evidence.needed holds the rule (tests/test_smart.py); each home that states it names all three triggers."""
+    homes = {'charters/_common.md': 'goal runs on complex items, owner or risky paths, or promises in doubt',
+             'charters/lead.md': 'The goal gate runs on a complex item, on owner or risky paths, and on a promise in doubt',
+             'docs/design.md': 'goal on a complex item, on owner or risky paths and on a promise in doubt',
+             'docs/site/concepts/evidence.md': '| owner or risky paths, or the promise marked in doubt (`--in-doubt`) | + goal |'}
+    for name, phrase in homes.items():
+        assert phrase in ' '.join((PLUGIN / name).read_text(encoding='utf-8').split()), name
+    assert 'complex, or no domain recorded, or a domain in another spelling | all four gates' in ' '.join(
+        (PLUGIN / 'docs' / 'site' / 'concepts' / 'evidence.md').read_text(encoding='utf-8').split())
+
+
 def test_an_adr_goes_where_the_repository_keeps_them_and_a_reconfirmed_one_is_amended():
     planner = ' '.join((PLUGIN / 'charters' / 'planner.md').read_text(encoding='utf-8').split())
     arch = ' '.join((PLUGIN / 'charters' / 'sentinel-arch.md').read_text(encoding='utf-8').split())
@@ -255,7 +277,8 @@ def test_the_planner_table_holds_the_promised_settings():
             ('sentinel-security', 'standard', False): ('Opus 5.5', 'high'), ('sentinel-security', 'standard', True): ('Opus 5.5', 'xhigh'),
             ('sentinel-security', 'full', False): ('Opus 5.5', 'xhigh'), ('sentinel-arch', 'full', True): ('Opus 5.5', 'high'),
             ('sentinel-quality', 'light', False): ('Sonnet 5.5', 'high'), ('sentinel-quality', 'standard', True): ('Opus 5.5', 'high'),
-            ('sentinel-quality', 'full', False): ('Opus 5.5', 'high'), ('sentinel-goal', 'full', False): ('Sonnet 5.5', 'high'),
+            ('sentinel-quality', 'full', False): ('Opus 5.5', 'high'), ('sentinel-goal', 'full', False): ('Opus 5.5', 'high'),
+            ('sentinel-goal', 'standard', True): ('Opus 5.5', 'high'), ('sentinel-goal', 'standard', False): ('Sonnet 5.5', 'high'),
             ('lead', 'full', False): ('Opus 5.5', 'xhigh'), ('shepherd', 'standard', False): ('Sonnet 5.5', 'medium'),
             ('steward', 'standard', False): ('Opus 5.5', 'high')}
     assert {key: _setting(rows[key[0]], key[1], key[2]) for key in want} == want
