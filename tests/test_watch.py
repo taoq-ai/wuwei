@@ -107,6 +107,7 @@ def test_a_send_elsewhere_leaves_the_reply_open(root, fake):
 
 def test_an_owed_reply_keeps_the_turn_going(root, fake):
     plan.owe(root, THREAD, 'filter question', 'Dade')
+    ws.record(root, 'plan.session', {'session': 's1'})  # a planner session (#1276)
     out = hook.handle(root, 'Stop', {'session_id': 's1', 'stop_hook_active': False, 'cwd': str(root)})
     assert 'R-1' in out['reason']
 
@@ -552,6 +553,7 @@ def test_a_host_session_builder_counts_as_a_live_seat_from_its_record_and_names_
     assert board.running(root) == []  # the hook's held check: the planner's gate launches on I-2 stay free
     assert [g['text'] for r in board.compute(root) if r['item'] == 'I-2' for g in r['gaps'] if 'running' in g['text']] == ['builder running in session session_01ABC']
     assert refused(launch(root, 'P', 'Item: I-2\nGate it.', agent='g1', role='sentinel-quality')) is None  # gates stay here
+    ws.record(root, 'plan.session', {'session': 'session_01ABC'})  # a planner session (#1276)
     assert hook.handle(root, 'Stop', {'session_id': 'session_01ABC', 'cwd': str(root)})['decision'] == 'block'  # its record quiets no Stop
     plan.mark(root, 'I-1', 'open', '', host='session')  # added with --host session, no session recorded yet: no seat, no crash
     assert [s['item'] for s in board.running(root, hosted=True) if s['agent'] != 'g1'] == ['I-2'] and len(board.compute(root)) == 4
@@ -578,6 +580,7 @@ def test_at_the_wip_limit_each_approved_item_with_no_pr_queues_and_the_stop_leav
     wip(root, fake, 4, 'XY')
     queued = 'queued: 4 items in progress, WIP limit 4: finish one first [waiting]'
     assert first(root) == {'X': queued, 'Y': queued}
+    ws.record(root, 'plan.session', {'session': 's1'})  # a planner session (#1276)
     reason = hook.handle(root, 'Stop', {'session_id': 's1', 'cwd': str(root)})['reason']
     assert 'X' not in reason.split('Left out')[0] and 'Y' not in reason.split('Left out')[0]
 

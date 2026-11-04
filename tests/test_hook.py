@@ -15,8 +15,42 @@ def plan_one(root, tier='light'):
                        'status': 'open', 'score': 3}])
 
 
-def stop(root, active=False, session='s1'):
+def plan_pass(root, session='s1', command='/opt/wuwei/bin/wuwei plan pass --reason "goals read"'):
+    return hook.handle(root, 'PostToolUse', {'session_id': session, 'tool_name': 'Bash', 'cwd': str(root), 'tool_input': {'command': command}})
+
+
+def stop(root, active=False, session='s1', planner=True):
+    if planner and not any(r['data'].get('session') == session for r in ws.rows(root, 'plan.session')):
+        plan_pass(root, session)
     return hook.handle(root, 'Stop', {'session_id': session, 'stop_hook_active': active, 'cwd': str(root)})
+
+
+def opened(root, session='s1', source='startup'):
+    return hook.handle(root, 'SessionStart', {'session_id': session, 'source': source, 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+
+
+def test_only_a_planner_session_gets_the_stop_reminder(root, fake):
+    plan_one(root)
+    assert stop(root, session='other', planner=False) is None
+    plan_pass(root, 'p1', 'cd /repo && /opt/wuwei/bin/wuwei plan show I-1')
+    assert stop(root, session='p1', planner=False) is None
+    plan_pass(root, 'p1', 'cd /repo && /opt/wuwei/bin/wuwei plan pass --reason "goals read"')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
+    assert stop(root, session='other', planner=False) is None
+
+
+def test_a_session_that_is_not_a_planner_gets_a_count_instead_of_the_board(root, fake):
+    write_plan(root, [{'id': f'I-{n}', 'title': f'change {n}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                       'status': 'open', 'score': n} for n in range(1, 6)])
+    context = opened(root, 'other')
+    assert '5 open items; wuwei status lists them.' in context and 'WUWEI CLI:' in context and '## Done' in context
+    assert not re.search(r'^- I-[0-9] ', context, re.M) and 'Board (' not in context
+    plan_pass(root, 'p1')
+    assert re.search(r'^- I-1 ', opened(root, 'p1', 'resume'), re.M)
+    ws.record(root, 'seat.started', {'session': 'p2', 'agent': 'a1', 'role': 'builder', 'item': 'I-2'})
+    assert 'Board (' in opened(root, 'p2', 'resume')
+    ws.record(root, 'seat.started', {'session': 'p3', 'agent': 'a2', 'role': 'builder', 'item': ''})
+    assert 'Board (' not in opened(root, 'p3', 'resume')
 
 
 def test_stop_reminds_once_per_set_of_open_gaps(root, fake):
@@ -211,6 +245,7 @@ def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root, tool, 
 
 def test_session_start_orients_with_the_board(root, fake):
     plan_one(root)
+    plan_pass(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
     assert 'WUWEI' in context and 'I-1' in context
 
@@ -2757,6 +2792,7 @@ SCOPE = 'scope: may I-1 also change the CLI help text?'
 
 
 def start(root, source='compact'):
+    ws.record(root, 'plan.session', {'session': 's1'})  # a planner session (#1276)
     return hook.handle(root, 'SessionStart', {'session_id': 's1', 'source': source, 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
 
 
