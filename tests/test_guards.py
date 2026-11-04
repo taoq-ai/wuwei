@@ -14,6 +14,29 @@ from conftest import BASH, footer, make_pr, verdict_text, write_plan
 from wuwei import guards, ws
 
 
+def best(run, repeat=3):
+    """The fastest of a few runs of run(): a loaded machine slows every run, so the minimum is the least noisy."""
+    took = []
+    for _ in range(repeat):
+        start = time.perf_counter()
+        run()
+        took.append(time.perf_counter() - start)
+    return min(took)
+
+
+def assert_scales(run, small, big, label=''):
+    """run(n) costs about linearly in n: the ratio of the two best times sits well under the quadratic ratio, so a loaded
+    machine (both runs slow alike) passes and a quadratic walk fails. Bound: the geometric mean of linear and quadratic."""
+    ratio = best(lambda: run(big)) / max(best(lambda: run(small)), 1e-4)
+    assert ratio < (big / small) ** 1.5, (label, ratio, big / small)
+
+
+def assert_no_slower_than(run, baseline, factor, label=''):
+    """run() costs at most factor times a baseline measured in the same process."""
+    ratio = best(run) / max(best(baseline), 1e-4)
+    assert ratio < factor, (label, ratio)
+
+
 def bash(command):
     return {'tool_name': 'Bash', 'tool_input': {'command': command}, 'cwd': '/repo', 'session_id': 's1'}
 
@@ -471,14 +494,12 @@ def test_an_exception_in_the_shape_reaches_the_owner(root, question):
     assert guards.pre_tool(root, ask(question)) is None
 
 
-@pytest.mark.parametrize('question', ['exception: ' + 'a' * 36000, 'exception: o/r#1 at abc1234:' + ' ' * 36000 + '.',
-                                      'exception: o/r#1 at abc1234:' + '\n' * 36000 + '.', 'exception: ' + 'o/r#1 at abc1234: .' * 1900,
-                                      'exception: ' + 'o/r#1 at abc1234: ' * 2000, 'exception: ' + 'o/r#1 at abc1234 and ' * 1700],
+@pytest.mark.parametrize('head, unit, tail, count', [('exception: ', 'a', '', 36000), ('exception: o/r#1 at abc1234:', ' ', '.', 36000),
+                                                     ('exception: o/r#1 at abc1234:', '\n', '.', 36000), ('exception: ', 'o/r#1 at abc1234: .', '', 1900),
+                                                     ('exception: ', 'o/r#1 at abc1234: ', '', 2000), ('exception: ', 'o/r#1 at abc1234 and ', '', 1700)],
                          ids=['letters', 'spaces', 'newlines', 'dots', 'colons', 'ands'])  # Windows caps the test id pytest puts in the env
-def test_a_long_exception_question_is_read_in_linear_time(root, question):
-    started = time.perf_counter()
-    guards.pre_tool(root, ask(question))
-    assert time.perf_counter() - started < 0.5
+def test_a_long_exception_question_is_read_in_linear_time(root, head, unit, tail, count):
+    assert_scales(lambda n: guards.pre_tool(root, ask(head + unit * n + tail)), count // 4, count, unit)
 
 
 def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
@@ -781,36 +802,35 @@ def test_a_writer_path_with_more_brace_groups_than_the_matcher_expands_is_refuse
 
 def test_a_brace_path_expands_at_most_512_words_and_answers_at_once(root, repo):
     """Security gate records at 6d4f8af: the cap counts words, not groups ('{a..z}' five times took 36 s)."""
-    start = time.monotonic()
     assert guards.pre_tool(root, bash("rm -rf '" + '{a..z}' * 5 + "' .wuwei/ledger"))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('rm -rf build/{a..z}{a..z}'))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('rm -rf' + ' build/{a..h}{a..h}{a..h}' * 20)) is None  # 512 words each, the most it reads
     assert not guards.records('{' + ',' * 20000) and not guards.records('[' * 1000 + '[:' * 1000)  # no regex backtracks past linear
-    assert time.monotonic() - start < 1
+    cost = lambda groups: guards.pre_tool(root, bash("rm -rf '" + '{a..z}' * groups + "' .wuwei/ledger"))  # noqa: E731
+    assert_no_slower_than(lambda: cost(5), lambda: cost(2), 20, 'five groups against two: both stop at the cap')
 
 
 def test_a_wide_brace_range_is_measured_before_it_is_built(root, repo):
     """Security gate records at 4f99d48: 3,600 words of x{0..U+3134A} after git clean -fdx . took 62 s; bash keeps the range literal."""
-    start = time.monotonic()
     assert guards.pre_tool(root, bash('git clean -fdx .' + ' x{0..\U0003134a}' * 3600))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('rm -rf' + ' x{0..\U0003134a}' * 3600))['decision'] == 'deny'
     assert guards.records('{a..a}' * 11) and not guards.records('{a..a}' * 10)  # a width-1 group still halves the budget
-    assert time.monotonic() - start < 2
+    word = lambda width: lambda: guards.pre_tool(root, bash('rm -rf' + f' x{{0..{width}}}' * 3600))  # noqa: E731
+    assert_no_slower_than(word('\U0003134a'), word('9'), 10, 'a wide range against a narrow one')
 
 
 def test_a_wide_brace_range_alone_is_built_only_to_its_cap(root, repo):
     """Security gate records at 4fbaabc: the range-unsized mutant built all 200,523 words of one range before it measured them."""
-    start = time.monotonic()
     assert all(guards.records('x{0..\U0003134a}') for _ in range(500))
-    assert time.monotonic() - start < 0.5
+    assert_no_slower_than(lambda: [guards.records('x{0..\U0003134a}') for _ in range(500)],
+                          lambda: [guards.records('x{0..9}') for _ in range(500)], 10, 'a wide range against a narrow one')
 
 
 def test_git_clean_joins_its_directories_once_however_many_pathspecs_follow(root, repo):
     """Security gate records at 4fbaabc: 10,000 -C dirs joined to each of 25,000 pathspecs took 56.7 s, then bash deleted the ledger."""
-    start = time.monotonic()
     assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000 + ' .wuwei'))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000)) is None
-    assert time.monotonic() - start < 2
+    assert_scales(lambda n: guards.pre_tool(root, bash('git' + ' -C .' * n + ' clean -fdx' + ' b' * (n * 5 // 2) + ' .wuwei')), 2500, 10000)
 
 
 @pytest.mark.parametrize('command', ['env -C .wuwei git clean -fdx ledger', 'env --chdir=.wuwei git clean -fdx ledger',
@@ -1852,20 +1872,15 @@ def test_known_git_options_before_ordinary_work_pass(root, fake, repo, command):
 
 def test_the_git_option_loop_stays_linear_at_125_kb(root, fake, repo):
     for word in ('-p ', '-c a.b=c ', '--x ', '-c alias.p=x ', '-C . ', '--x -c alias.p=x '):
-        start = time.monotonic()
-        guards.bash(root, 'git ' + word * (125_000 // len(word)) + 'push origin main', '/repo', 's1')
-        assert time.monotonic() - start < 1, word
+        assert_scales(lambda size: guards.bash(root, 'git ' + word * (size // len(word)) + 'push origin main', '/repo', 's1'),
+                      31_250, 125_000, word)
 
 
 @pytest.mark.parametrize('word', ['true;', '>x '])
 def test_segments_and_redirects_stay_linear_at_125_and_500_kb(root, word):
     """Item git-globals: a hook that times out lets the tool run, so the split stays linear (quadratic took 50 s at 500 KB)."""
-    took = []
-    for size in (125_000, 500_000):
-        start = time.monotonic()
-        assert guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), word
-        took.append(time.monotonic() - start)
-    assert took[0] < 2 and took[1] < 8 and took[1] < 8 * max(took[0], 0.1), (word, took)
+    assert guards.bash(root, word * (125_000 // len(word)) + ' git push origin main', '/repo', 's1'), word
+    assert_scales(lambda size: guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), 125_000, 500_000, word)
 
 
 @pytest.fixture
