@@ -286,6 +286,33 @@ def test_a_seat_records_its_confidence_or_null(root, text, confidence):
     assert ws.rows(root, 'seat.stopped')[0]['data']['confidence'] == confidence
 
 
+def _stopped(root, text):
+    hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                                'last_assistant_message': text, 'cwd': str(root)}))
+    return ws.rows(root, 'seat.stopped')[0]['data']
+
+
+def test_a_seat_stop_keeps_its_feedback_and_change_lines_and_drops_a_none(root):
+    data = _stopped(root, 'done\n\nFeedback: sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has\n'
+                          'Feedback: planner +: the brief named the file\nFeedback: none\nConfidence: high\nBlocked: none\nGap: none\n'
+                          'Change: ' + 'c' * 300)
+    assert data['feedback'] == ['sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has',
+                                'planner +: the brief named the file']
+    assert 'gap' not in data and data['change'] == 'c' * 200
+
+
+def test_a_seat_stop_masks_a_secret_in_a_kept_line_before_cutting_it(root):
+    token = 'ghp_' + 'a' * 36
+    data = _stopped(root, f'done\nFeedback: lead -: the brief pasted {token}\nGap: {"x" * 190}{token}')
+    assert data['feedback'] == ['lead -: the brief pasted ***'] and data['gap'] == 'x' * 190 + '***'
+    assert token[:8] not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_with_no_feedback_records_as_before(root):
+    data = _stopped(root, 'done\nConfidence: low\nGap: none\nChange: none')
+    assert set(data) == {'role', 'agent', 'tokens', 'confidence', 'session'}
+
+
 def test_session_start_names_the_cli_and_refreshes_the_pointer(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
@@ -2914,3 +2941,40 @@ def test_a_launch_the_departure_check_cannot_read_still_records_its_seat(root, m
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': 'g1'},
                                       'tool_input': {'subagent_type': 'wuwei:sentinel-goal', 'model': 'opus', 'effort': 'high', 'prompt': prompt}})
     assert [r['data']['departed'] for r in ws.rows(root, 'seat.started')] == [departed] and ws.rows(root, 'hook.error') == []
+
+
+@pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none of the tests ran', 'none of the tests ran'),
+                                        ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b'), ('Gap: a\nGap: none', None),
+                                        ('Gap: a\r\x1b[2K\u2028b\x85 c', 'a [2K b c'), ('Gap: a\x7fb\x9bc', 'a b c')])
+def test_a_seat_stop_keeps_the_last_gap_unless_blank_or_none(root, line, kept):
+    assert _stopped(root, 'done\n' + line).get('gap') == kept
+
+
+def test_the_day_report_reads_the_feedback_a_real_stop_recorded(root, fake):
+    from wuwei import report
+    _stopped(root, 'done\nFeedback: planner -: the brief named no tier\nFeedback: sentinel-arch +: finding 1 named the file')
+    text = report.day(root)
+    assert 'Feedback: planner - 1, sentinel-arch + 1.' in text and '- builder (b1) on planner -: the brief named no tier' in text
+
+
+def test_a_seat_stop_keeps_the_last_change_unless_none(root):
+    assert 'change' not in _stopped(root, 'done\nChange: quoted\nChange: none')
+
+
+def test_a_seat_stop_masks_the_canary_in_a_kept_line(root):
+    (root / ws.DIR / 'canary').write_text('wuwei-canary-abcdef\n')
+    data = _stopped(root, 'done\nFeedback: lead -: leaked wuwei-canary-abcdef\nGap: wuwei-canary-abcdef\nChange: x wuwei-canary-abcdef')
+    assert data['feedback'] == ['lead -: leaked ***'] and data['gap'] == '***' and data['change'] == 'x ***'
+    assert 'abcdef' not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_keeps_at_most_ten_feedback_lines(root):
+    assert _stopped(root, 'done\n' + '\n'.join(f'Feedback: lead -: cost {n}' for n in range(30)))['feedback'] == [f'lead -: cost {n}' for n in range(10)]
+
+
+def test_a_canary_across_the_200_character_cut_never_reaches_the_ledger(root):
+    (root / ws.DIR / 'canary').write_text('CANARYzq9k3m2p8v4t6w\n')
+    tail = 'x' * 190 + 'CANARYzq9k3m2p8v4t6w'
+    data = _stopped(root, f'done\nFeedback: lead -: {tail}\nGap: {tail}\nChange: {tail}')
+    assert data['gap'] == data['change'] == 'x' * 190 + '***' and data['feedback'] == [f'lead -: {"x" * 190}***'[:200]]
+    assert 'CANARY' not in json.dumps(ws.rows(root, 'seat.stopped'))

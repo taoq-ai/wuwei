@@ -253,3 +253,34 @@ def test_no_gate_launch_and_no_merged_item_read_unmeasured(root, fake):
     text = report.day(root)
     assert '- fix rounds per item: unmeasured' in text and '- tokens per merged item: unmeasured' in text
     assert '- departures from the model table: 0 with a Model reason: line, 0 without, over 0 departures (1 launches unmeasured)' in text
+
+
+def test_the_report_counts_seat_feedback_by_role_and_sign_and_lists_the_costs(root, fake):
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'feedback': ['sentinel-goal -: finding 1 restated the promise',
+                                                                   'planner -: the brief named the wrong file']})
+    ws.record(root, 'seat.stopped', {'role': 'sentinel-quality', 'feedback': ['builder +: the PR named its red run']})
+    ws.record(root, 'seat.stopped', {'role': 'lead', 'feedback': ['planner -: no tier']})
+    text = report.day(root)
+    assert 'Feedback: planner - 2, sentinel-goal - 1, builder + 1.' in text
+    assert '- builder (?) on sentinel-goal -: finding 1 restated the promise' in text
+    assert '- lead (?) on planner -: no tier' in text and 'on builder +' not in text
+
+
+def test_the_report_says_feedback_none_when_no_seat_gave_any(root, fake):
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'tokens': 3})
+    assert 'Feedback: none.' in report.day(root)
+
+
+def test_the_report_lists_at_most_ten_costs_and_counts_an_unnamed_line(root, fake):
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'feedback': [f'lead -: cost {n}' for n in range(11)] + ['the brief was fine']})
+    text = report.day(root)
+    assert 'Feedback: lead - 11, unnamed 1.' in text and '- builder (?) on lead -: cost 9' in text and 'cost 10' not in text
+
+
+def test_a_seat_that_stops_twice_with_the_same_feedback_counts_once(root, fake):
+    for _ in range(2):
+        ws.record(root, 'seat.stopped', {'role': 'sentinel-quality', 'agent': 'q1', 'session': 's1', 'feedback': ['builder -: no red run']})
+    ws.record(root, 'seat.stopped', {'role': 'sentinel-arch', 'agent': 'r1', 'session': 's1', 'feedback': ['builder -: no red run']})
+    text = report.day(root)
+    assert 'Feedback: builder - 2.' in text and text.count('- sentinel-quality (q1) on builder -: no red run') == 1
+    assert '- sentinel-arch (r1) on builder -: no red run' in text
