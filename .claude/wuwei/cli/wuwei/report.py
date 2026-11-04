@@ -142,8 +142,7 @@ def learning(root):
     gone = [d for d in started if d.get('departed') == 'yes']  # a row from before the field, or a Codex launch, is unmeasured
     out += [f'- fix rounds per item: {sum(rounds) / len(rounds):.1f} over {len(rounds)} gated items' if rounds else '- fix rounds per item: unmeasured',
             f'- tokens per merged item: {sum(tokens.get(d.get("agent"), 0) for d in shipped) / len(n := {str(d["item"]).lower() for d in shipped}):.0f} over {len(n)} items' if shipped else '- tokens per merged item: unmeasured',
-            f'- departures from the model table: {sum(1 for d in gone if d.get("reason"))} with a Model reason: line, {sum(1 for d in gone if not d.get("reason"))} without, '
-            f'over {len(gone)} departures ({sum(1 for d in started if d.get("departed") not in ("yes", "no"))} launches unmeasured)']
+            f'- departures from the model table: {sum(1 for d in gone if d.get("reason"))} with a Model reason: line, {sum(1 for d in gone if not d.get("reason"))} without, over {len(gone)} departures ({sum(1 for d in started if d.get("departed") not in ("yes", "no"))} launches unmeasured)']
     if unrecorded := sum(1 for d in started if {'unrecorded', 'unmeasured'} & {d.get('model', 'unrecorded'), d.get('effort', 'unrecorded')}):
         out.append(f'- model or effort unrecorded on {unrecorded} launches')
     out += [f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}' for d in (row['data'] for row in ws.rows(root, 'ruling'))

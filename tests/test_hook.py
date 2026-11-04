@@ -2899,3 +2899,18 @@ def test_a_launch_records_whether_it_departed_and_the_report_counts_departures_b
     assert [r['data']['departed'] for r in ws.rows(root, 'seat.started')[:5]] == ['no', 'yes', 'yes', 'yes', 'unmeasured']
     assert ('- departures from the model table: 1 with a Model reason: line, 2 without, over 3 departures '
             '(2 launches unmeasured)') in report.day(root)
+
+
+@pytest.mark.parametrize('broken, prompt, departed', [
+    ('tier', 'Item: I-1', 'unmeasured'),  # a corrupt plan: the check fails, the seat row stays
+    ('tab', 'Item: I-1', 'no'),  # an owner row split by a tab reads its effort
+    (None, '', 'unmeasured')])  # no brief
+def test_a_launch_the_departure_check_cannot_read_still_records_its_seat(root, monkeypatch, broken, prompt, departed):
+    for variable in ('CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL'):
+        monkeypatch.delenv(variable, raising=False)
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': ['full'] if broken == 'tier' else 'standard', 'status': 'open', 'score': 3}])
+    if broken == 'tab':
+        ws.set_config(root, 'models', 'sentinel-goal=opus\thigh')
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': 'g1'},
+                                      'tool_input': {'subagent_type': 'wuwei:sentinel-goal', 'model': 'opus', 'effort': 'high', 'prompt': prompt}})
+    assert [r['data']['departed'] for r in ws.rows(root, 'seat.started')] == [departed] and ws.rows(root, 'hook.error') == []

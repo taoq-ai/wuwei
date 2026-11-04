@@ -113,8 +113,7 @@ def advise(root, data, note='', check=False):
     model, effort = str(data.get('model') or table[''].rsplit(' ', 1)[0]), effort or table[''].rsplit(' ', 1)[1]
     named = str([raw.get(k) for k in (f'{role} {tier}', role)] if isinstance(raw := ws.raw_config(root).get('models'), dict) else '')
     floor = role.startswith('sentinel-') and (fam(model) == 'haiku' or 'haiku' in named.lower())  # a row, even one config() drops
-    fits = any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(' ', 1)[0]) == fam(model)) and
-               (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(' ', 1)[1] == effort) for s, _ in allowed)
+    fits = any((os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or fam(s.rsplit(None, 1)[0]) == fam(model)) and (os.environ.get('CLAUDE_CODE_EFFORT_LEVEL') or s.rsplit(None, 1)[-1] == effort) for s, _ in allowed)
     if check or not floor and (reason or fits):
         return ('no' if fits else 'yes') if check else context('PreToolUse', note) if note else None
     return context('PreToolUse', note + '\n' * bool(note) + f"WUWEI: table says {allowed[0][0]} for {role} at {tier}; record a 'Model reason:' line in the "
@@ -381,9 +380,13 @@ def post_tool(root, payload):
         item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
         measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
+        try:
+            departed = advise(root, data, check=True)
+        except Exception:  # a corrupt plan or models row: the seat row is still written, its departure unmeasured
+            departed = 'unmeasured'
         seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
                 'session': payload.get('session_id'), 'agent': seat_identity(response['agentId'], canary), 'model': str(response.get('resolvedModel') or 'unmeasured'),
-                'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item, 'departed': advise(root, data, check=True),
+                'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item, 'departed': departed,
                 **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
                     'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
         ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
