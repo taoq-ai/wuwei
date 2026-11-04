@@ -129,8 +129,8 @@ def closed(root):
 
 
 def planner(root, session):  # a session that ran a plan pass or launched a seat for an item; open items reach only it (#1276)
-    return bool(session) and any(r['data'].get('session') == session and (r['kind'] == 'plan.session' or r['data'].get('item'))
-                                 for r in ws.ledger(root) if r['kind'] in ('plan.session', 'seat.started'))
+    return bool(session) and any((d := r.get('data') or {}).get('session') == session and (r.get('kind') == 'plan.session' or d.get('item'))
+                                 for r in ws.ledger(root) if r.get('kind') in ('plan.session', 'seat.started'))
 
 
 def stop(root, payload):

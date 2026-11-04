@@ -243,6 +243,22 @@ def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root, tool, 
     assert ws.rows(root, 'refused') and not ws.rows(root, 'hook.error')
 
 
+def test_a_ledger_row_with_no_kind_or_data_keeps_the_planner_reminder_and_board(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1')
+    (root / ws.DIR / 'ledger' / 'planted.jsonl').write_text('{}\n{"ts": "2026-01-01T00:00:00", "kind": "seat.started"}\n')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
+    assert re.search(r'^- I-1 ', opened(root, 'p1', 'resume'), re.M)
+
+
+def test_only_the_wuwei_program_marks_a_planner_and_a_payload_with_no_session_never_is_one(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1', 'echo plan pass')
+    assert stop(root, session='p1', planner=False) is None
+    ws.record(root, 'seat.started', {'agent': 'a1', 'role': 'builder', 'item': 'I-1'})
+    assert hook.handle(root, 'Stop', {'cwd': str(root)}) is None
+
+
 def test_a_session_that_is_not_a_planner_still_sees_an_andon_above_the_count(root, fake):
     plan_one(root)
     board.andon(root, 'acme/lib', 'base branch red\nsince the last merge')
