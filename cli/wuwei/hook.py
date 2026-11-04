@@ -284,11 +284,12 @@ def subagent_stop(root, payload):
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         agent = hashlib.sha256(payload['agent_id'].encode()).hexdigest() if 'recorded_model' in payload else payload.get('agent_id')
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), agent, role))
-        folder = Path(root) / ws.DIR / 'reports'
+        folder, canary = Path(root) / ws.DIR / 'reports', c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else ''
+        masked = guards.SECRETS.sub('***', payload['last_assistant_message']).replace(canary or '\0', '***')  # reports sync to wuwei/state
         kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
                    key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
-        if kept is None or kept[1] != payload['last_assistant_message']:  # only the latest valid version can repeat
-            ws.atomic_write(folder / 'pending' / f'{name}--{time.time_ns()}.md', payload['last_assistant_message'], Path(root))
+        if kept is None or kept[1] != masked:  # only the latest valid version can repeat
+            ws.atomic_write(folder / 'pending' / f'{name}--{time.time_ns()}.md', masked, Path(root))
     return out
 
 
@@ -621,7 +622,8 @@ def _native_told(path, agent, text, at, canary=''):
         return any(r['type'] == 'response_item' and r['payload'].get('type') == 'agent_message' and isinstance(author := r['payload'].get('author'), str)
                    and ((identity := seat_identity(author, canary)) == agent or hashlib.sha256(identity.encode()).hexdigest() == agent)
                    and r['payload'].get('recipient') == meta.get('agent_path', '/root') and datetime.datetime.fromisoformat(r['timestamp']) >= datetime.datetime.fromisoformat(at)
-                   and native_text(r) == f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text for r in rows)
+                   and guards.SECRETS.sub('***', native_text(r)).replace(canary or '\0', '***') == guards.SECRETS.sub(  # both masked, as the kept text is
+                       '***', f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text).replace(canary or '\0', '***') for r in rows)
     except (OSError, KeyError, IndexError, TypeError, ValueError, AttributeError):
         return False
 
@@ -649,9 +651,9 @@ def deliver(root, event, payload, out, said):
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
-            told = any(c not in gone and (html.unescape(b) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
-                       if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+            told = any(c not in gone and (guards.SECRETS.sub('***', html.unescape(b)).replace(canary or '\0', '***') == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
+                       if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)
             if told and event == 'Stop' or ws.take(root, path, kept := pending.parent / path.name):  # one hook wins a race
                 continue  # one its own uncleared notification or hand-back gave (#1222) is a pointer on a call, never a Stop block
