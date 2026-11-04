@@ -1107,7 +1107,7 @@ def door_reached(decision):
 def test_the_route_corpus_names_a_source_and_a_known_verdict_for_each_route():
     assert len(ROUTES) >= 30
     assert all(r['command'] and r['source'] and r['verdict'] in ('pass', 'merge', 'create', 'ready', 'push', 'refusal')
-               for r in ROUTES)
+               and r.get('seat', True) is True and set(r) <= {'command', 'source', 'verdict', 'seat'} for r in ROUTES)
     assert len({r['command'] for r in ROUTES}) == len(ROUTES)
     assert {'command': PING, 'verdict': 'pass'}.items() <= next((r for r in ROUTES if r['command'] == PING), {}).items()
 
@@ -1120,7 +1120,7 @@ def test_every_route_reads_as_recorded(root, fake, monkeypatch, memory, route):
     fake.prs['5'] = make_pr(number=5, files=('src/app.py',))  # a safety gap: every merge route meets its door
     fake.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True}  # a draft with no gate passed
     branch(fake, ('src/app.py',))
-    assert door_reached(guards.bash(root, route['command'], '/repo', 's1')) == route['verdict'], route['command']
+    assert door_reached(guards.bash(root, route['command'], '/repo', 's1', route.get('seat', False))) == route['verdict'], route['command']
 
 
 @pytest.mark.parametrize('command', [r['command'] for r in ROUTES if r['verdict'] == 'merge' and re.search(r'\b5\b', r['command'])])
