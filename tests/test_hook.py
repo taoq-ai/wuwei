@@ -7,7 +7,7 @@ import shutil
 import pytest
 
 from conftest import HEAD, answered, launched, make_pr, verdict_text, write_plan
-from wuwei import board, evidence, guards, hook, plan, verdict, ws
+from wuwei import board, evidence, guards, hook, plan, report, verdict, ws
 
 
 def plan_one(root, tier='light'):
@@ -2947,6 +2947,36 @@ def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monk
     with ThreadPoolExecutor(max_workers=4) as pool:
         found = list(pool.map(lambda _: planner_call(root), range(4)))
     assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1
+
+
+def test_a_launch_records_whether_it_departed_and_the_report_counts_departures_by_reason(root, fake, monkeypatch):
+    for variable in ('CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL'):
+        monkeypatch.delenv(variable, raising=False)
+    plan_one(root, 'standard')
+    for agent, model, prompt in (('g1', 'sonnet', 'Item: I-1'), ('g2', 'opus', 'Item: I-1\nModel reason: second family'), ('g3', 'opus', 'Item: I-1'), ('g4', 'opus', 'Item: I-1')):
+        hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': agent},
+                                          'tool_input': {'subagent_type': 'wuwei:sentinel-goal', 'model': model, 'effort': 'high', 'prompt': prompt}})
+    payload = json.loads((Path(__file__).parent / 'fixtures' / 'payloads' / 'codex-spawn-agent-post.json').read_text())
+    hook.handle(root, 'PostToolUse', {**payload, 'cwd': str(root)})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'old'})  # a row from before the field
+    assert [r['data']['departed'] for r in ws.rows(root, 'seat.started')[:5]] == ['no', 'yes', 'yes', 'yes', 'unmeasured']
+    assert ('- departures from the model table: 1 with a Model reason: line, 2 without, over 3 departures '
+            '(2 launches unmeasured)') in report.day(root)
+
+
+@pytest.mark.parametrize('broken, prompt, departed', [
+    ('tier', 'Item: I-1', 'unmeasured'),  # a corrupt plan: the check fails, the seat row stays
+    ('tab', 'Item: I-1', 'no'),  # an owner row split by a tab reads its effort
+    (None, '', 'unmeasured')])  # no brief
+def test_a_launch_the_departure_check_cannot_read_still_records_its_seat(root, monkeypatch, broken, prompt, departed):
+    for variable in ('CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL'):
+        monkeypatch.delenv(variable, raising=False)
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': ['full'] if broken == 'tier' else 'standard', 'status': 'open', 'score': 3}])
+    if broken == 'tab':
+        ws.set_config(root, 'models', 'sentinel-goal=opus\thigh')
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': 'g1'},
+                                      'tool_input': {'subagent_type': 'wuwei:sentinel-goal', 'model': 'opus', 'effort': 'high', 'prompt': prompt}})
+    assert [r['data']['departed'] for r in ws.rows(root, 'seat.started')] == [departed] and ws.rows(root, 'hook.error') == []
 
 
 @pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none of the tests ran', 'none of the tests ran'),

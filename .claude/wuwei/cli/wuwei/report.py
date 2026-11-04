@@ -136,10 +136,17 @@ def learning(root):
     tokens = {r['data'].get('agent'): r['data'].get('tokens') or 0 for r in ws.rows(root, 'seat.stopped')}
     for group in sorted({key(d) for d in started}):  # each seat by the model that ran and the effort asked for
         seats = [d for d in started if key(d) == group]
-        ids, items, on_items = {d.get('agent') for d in seats}, {d['item'] for d in seats if d.get('item')}, sum(1 for d in seats if d.get('item'))
-        out.append(f'- seat {group}: {len(seats)} launches, {(on_items - len(items)) / len(items) if items else 0:.1f} fix rounds per item, '
-                   f'{sum(r["data"].get("blocking", int(r["data"].get("verdict") != "PASS")) for r in attests if r["data"].get("agent") in ids)} '
+        ids = {d.get('agent') for d in seats}
+        out.append(f'- seat {group}: {len(seats)} launches, {sum(r["data"].get("blocking", int(r["data"].get("verdict") != "PASS")) for r in attests if r["data"].get("agent") in ids)} '
                    f'blocking findings, {len(ids & escaped)} escapes, {sum(tokens.get(a, 0) for a in ids)} tokens')
+    gated = Counter((str(d['item']).lower(), d.get('role')) for d in started if d.get('item') and str(d.get('role')).startswith('sentinel-'))
+    rounds = [max(n for (i, _), n in gated.items() if i == item) - 1 for item in {i for i, _ in gated}]  # an item's gate set, on any model
+    merged = {i['id'].lower() for i in plan.items(root) if i.get('status') == 'done' and str(i.get('reason', '')).startswith('merged as ')}
+    shipped = [d for d in started if str(d.get('item')).lower() in merged]  # the board marks an item done this way once its PR merges
+    gone = [d for d in started if d.get('departed') == 'yes']  # a row from before the field, or a Codex launch, is unmeasured
+    out += [f'- fix rounds per item: {sum(rounds) / len(rounds):.1f} over {len(rounds)} gated items' if rounds else '- fix rounds per item: unmeasured',
+            f'- tokens per merged item: {sum(tokens.get(d.get("agent"), 0) for d in shipped) / len(n := {str(d["item"]).lower() for d in shipped}):.0f} over {len(n)} items' if shipped else '- tokens per merged item: unmeasured',
+            f'- departures from the model table: {sum(1 for d in gone if d.get("reason"))} with a Model reason: line, {sum(1 for d in gone if not d.get("reason"))} without, over {len(gone)} departures ({sum(1 for d in started if d.get("departed") not in ("yes", "no"))} launches unmeasured)']
     if unrecorded := sum(1 for d in started if {'unrecorded', 'unmeasured'} & {d.get('model', 'unrecorded'), d.get('effort', 'unrecorded')}):
         out.append(f'- model or effort unrecorded on {unrecorded} launches')
     out += [f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}' for d in (row['data'] for row in ws.rows(root, 'ruling'))
