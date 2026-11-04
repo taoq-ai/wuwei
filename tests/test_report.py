@@ -230,3 +230,26 @@ def test_the_report_lists_the_goals_the_owner_ruled_met(root, fake):
         hook.handle(root, 'PostToolUse', answered(root, [question], {question: reply}))
     ws.record(root, 'ruling', {'kind': 'goal.other', 'goal': 'G-1', 'outcome': 'o', 'approved': True})  # another kind never counts
     assert 'Met goals: G-2, G-5.' in report.day(root)
+
+
+def test_fix_rounds_count_across_an_items_gate_launches_and_tokens_per_merged_item(root, fake):
+    write_plan(root, [{'id': i, 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': status, 'score': 3,
+                       'reason': reason} for i, status, reason in (('I-1', 'done', 'merged as acme/app#40'), ('I-2', 'done', 'merged as acme/app#41'),
+                                                                   ('I-3', 'done', 'answered by the owner on the PR'), ('I-4', 'open', ''))])
+    for agent, role, model, item, tokens in (('q1', 'sentinel-quality', 'claude-opus-5-5', 'I-1', 100), ('q2', 'sentinel-quality', 'claude-sonnet-5-5', 'I-1', 100),
+                                             ('b1', 'builder', 'claude-opus-5-5', 'I-1', 100), ('b2', 'builder', 'claude-opus-5-5', 'i-2', 500),
+                                             ('b3', 'builder', 'claude-opus-5-5', 'I-3', 900), ('b4', 'builder', 'claude-opus-5-5', 'I-4', 900),
+                                             ('b5', 'builder', 'claude-opus-5-5', 'I-2', 0)):  # a builder relaunch is no gate round
+        ws.record(root, 'seat.started', {'role': role, 'agent': agent, 'model': model, 'effort': 'high', 'item': item})
+        ws.record(root, 'seat.stopped', {'role': role, 'agent': agent, 'tokens': tokens})
+    text = report.day(root)
+    assert '- fix rounds per item: 1.0 over 1 gated items' in text
+    assert '- tokens per merged item: 400 over 2 items' in text
+    assert 'fix rounds per item, ' not in text  # never per model group
+
+
+def test_no_gate_launch_and_no_merged_item_read_unmeasured(root, fake):
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'b1', 'item': 'I-1'})
+    text = report.day(root)
+    assert '- fix rounds per item: unmeasured' in text and '- tokens per merged item: unmeasured' in text
+    assert '- departures from the model table: 0 with a Model reason: line, 0 without, over 0 departures (1 launches unmeasured)' in text

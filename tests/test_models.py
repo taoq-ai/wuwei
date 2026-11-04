@@ -402,10 +402,9 @@ def test_learning_shows_each_seat_by_model_and_effort(root, fake):
     ws.record(root, 'attest', {'agent': 'q3', 'gate': 'quality', 'verdict': 'PASS', 'pr': 'acme/app#40'})
     ws.record(root, 'attest', {'agent': 'q4', 'gate': 'quality', 'verdict': 'FIX', 'pr': 'acme/app#43'})  # from before this item
     text = report.day(root)
-    assert ('- seat sentinel-quality claude-sonnet-5-5 high: 4 launches, 1.0 fix rounds per item, 3 blocking findings, '
-            '0 escapes, 400 tokens') in text
-    assert ('- seat sentinel-quality claude-opus-5-5 high: 1 launches, 0.0 fix rounds per item, 0 blocking findings, '
-            '1 escapes, 100 tokens') in text
+    assert '- seat sentinel-quality claude-sonnet-5-5 high: 4 launches, 3 blocking findings, 0 escapes, 400 tokens' in text
+    assert '- seat sentinel-quality claude-opus-5-5 high: 1 launches, 0 blocking findings, 1 escapes, 100 tokens' in text
+    assert '- fix rounds per item: 1.5 over 2 gated items' in text  # I-1 ran its gates twice, I-2 three times across two models
     assert '- seat builder unmeasured unrecorded: 1 launches' in text
     assert '- seat sentinel-goal unmeasured high: 1 launches' in text
     assert '- model or effort unrecorded on 3 launches' in text
