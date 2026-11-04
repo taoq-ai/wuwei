@@ -50,7 +50,7 @@ def test_acceptance_1_a_clear_item_on_plain_code_owes_only_quality(root, fake):
 def test_acceptance_2_a_clear_item_whose_branch_raises_complexity_on_a_risky_path_owes_security(root, fake):
     smart(root)
     pr_with(fake, {'src/token.py': (PLAIN, branchy(9), branchy(10)), **TESTS})
-    assert owed(root) == ['gates missing at head aaaaaaa: quality, security']
+    assert owed(root) == ['gates missing at head aaaaaaa: quality, security, goal']
 
 
 @pytest.mark.parametrize('was,now,gates', [
@@ -159,7 +159,7 @@ def test_a_clear_plan_field_on_an_owner_path_still_owes_security(root, fake):
     ws.write_config(root, {**ws.DEFAULTS, 'repos': ['acme/app'], 'owner_paths': ['src/core/*']})
     smart(root)
     pr_with(fake, {'src/core/rules.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
-    assert owed(root) == ['gates missing at head aaaaaaa: quality, security']
+    assert owed(root) == ['gates missing at head aaaaaaa: quality, security, goal']
 
 
 def test_a_code_file_with_no_patch_is_unmeasured_and_owes_arch(root, fake):
@@ -172,21 +172,36 @@ def test_a_code_file_with_no_patch_is_unmeasured_and_owes_arch(root, fake):
 def test_a_trust_path_owes_arch_from_complicated_up(root, fake, domain):
     smart(root, domain)
     pr_with(fake, {'src/session.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
-    want = 'arch, quality, security' if domain.startswith('complicated') else 'quality, security'
+    want = 'arch, quality, security, goal' if domain.startswith('complicated') else 'quality, security, goal'
     assert owed(root) == [f'gates missing at head aaaaaaa: {want}']
 
 
 @pytest.mark.parametrize('domain', ['complex: a new protocol nobody has run', '', 'Clear: shouted', 'clear', None, 'chaotic: x'])
-def test_a_complex_or_unclassified_item_owes_quality_security_and_arch(root, fake, domain):
+def test_a_complex_or_unclassified_item_owes_all_four_gates(root, fake, domain):
     smart(root, domain)
     pr_with(fake, {'src/app.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
-    assert owed(root) == ['gates missing at head aaaaaaa: arch, quality, security']
+    assert owed(root) == ['gates missing at head aaaaaaa: arch, quality, security, goal']
 
 
-def test_goal_runs_only_when_the_promise_is_in_doubt(root, fake):
-    smart(root, in_doubt=True)
-    pr_with(fake, {'src/app.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
-    assert owed(root) == ['gates missing at head aaaaaaa: quality, goal']
+@pytest.mark.parametrize('domain, path, in_doubt, gates', [
+    ('clear: x', 'src/app.py', False, 'quality'),  # none of the triggers: no goal
+    ('complicated: x', 'src/app.py', False, 'quality'),
+    ('clear: x', 'src/app.py', True, 'quality, goal'),  # a promise in doubt
+    ('complex: x', 'src/app.py', False, 'arch, quality, security, goal'),  # the complex domain
+    ('clear: x', 'src/core/rules.py', False, 'quality, security, goal'),  # an owner path
+    ('clear: x', 'deploy/run.py', False, 'quality, security, goal'),  # a risky path
+    ('complicated: x', 'src/migrate.py', False, 'quality, security, goal')])
+def test_goal_runs_at_smart_on_a_complex_item_an_owner_or_risky_path_or_a_promise_in_doubt(root, fake, domain, path, in_doubt, gates):
+    ws.write_config(root, {**ws.DEFAULTS, 'repos': ['acme/app'], 'owner_paths': ['src/core/*']})
+    smart(root, domain, in_doubt=in_doubt)
+    pr_with(fake, {path: (PLAIN, branchy(1), branchy(2)), **TESTS})
+    assert owed(root) == [f'gates missing at head aaaaaaa: {gates}']
+
+
+def test_an_owner_or_risky_path_in_docs_alone_needs_no_goal_at_smart(root):
+    ws.write_config(root, {**ws.DEFAULTS, 'repos': ['acme/app'], 'owner_paths': ['docs/*']})
+    smart(root)
+    assert evidence.needed(root, 'smart', [{'path': 'docs/auth.md', 'additions': 9, 'deletions': 0}], plan.find(root, 'I-1')) == ()
 
 
 def test_docs_alone_need_no_gate_at_smart(root):
@@ -207,7 +222,7 @@ def test_spec_artifacts_are_owed_only_by_a_complex_item_and_hold_its_merge(root,
     attest(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
     smart(root, 'complex: x')
-    for gate in ('arch', 'security'):
+    for gate in ('arch', 'security', 'goal'):
         attest(root, gate)
     found = evidence.gaps(root, 'acme/app', 42)
     assert [(g['text'], g['kind']) for g in found] == [('no spec in the diff (the repository uses .specify)', 'safety')]
