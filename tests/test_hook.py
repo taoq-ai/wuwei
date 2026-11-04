@@ -286,6 +286,33 @@ def test_a_seat_records_its_confidence_or_null(root, text, confidence):
     assert ws.rows(root, 'seat.stopped')[0]['data']['confidence'] == confidence
 
 
+def _stopped(root, text):
+    hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                                'last_assistant_message': text, 'cwd': str(root)}))
+    return ws.rows(root, 'seat.stopped')[0]['data']
+
+
+def test_a_seat_stop_keeps_its_feedback_and_change_lines_and_drops_a_none(root):
+    data = _stopped(root, 'done\n\nFeedback: sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has\n'
+                          'Feedback: planner +: the brief named the file\nFeedback: none\nConfidence: high\nBlocked: none\nGap: none\n'
+                          'Change: ' + 'c' * 300)
+    assert data['feedback'] == ['sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has',
+                                'planner +: the brief named the file']
+    assert 'gap' not in data and data['change'] == 'c' * 200
+
+
+def test_a_seat_stop_masks_a_secret_in_a_kept_line_before_cutting_it(root):
+    token = 'ghp_' + 'a' * 36
+    data = _stopped(root, f'done\nFeedback: lead -: the brief pasted {token}\nGap: {"x" * 190}{token}')
+    assert data['feedback'] == ['lead -: the brief pasted ***'] and data['gap'] == 'x' * 190 + '***'
+    assert token[:8] not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_with_no_feedback_records_as_before(root):
+    data = _stopped(root, 'done\nConfidence: low\nGap: none\nChange: none')
+    assert set(data) == {'role', 'agent', 'tokens', 'confidence', 'session'}
+
+
 def test_session_start_names_the_cli_and_refreshes_the_pointer(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
@@ -2884,3 +2911,16 @@ def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monk
     with ThreadPoolExecutor(max_workers=4) as pool:
         found = list(pool.map(lambda _: planner_call(root), range(4)))
     assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1
+
+
+@pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none (clear brief)', None),
+                                        ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b')])
+def test_a_seat_stop_keeps_the_last_gap_unless_blank_or_none(root, line, kept):
+    assert _stopped(root, 'done\n' + line).get('gap') == kept
+
+
+def test_the_day_report_reads_the_feedback_a_real_stop_recorded(root, fake):
+    from wuwei import report
+    _stopped(root, 'done\nFeedback: planner -: the brief named no tier\nFeedback: sentinel-arch +: finding 1 named the file')
+    text = report.day(root)
+    assert 'Feedback: planner - 1, sentinel-arch + 1.' in text and '- builder on planner -: the brief named no tier' in text
