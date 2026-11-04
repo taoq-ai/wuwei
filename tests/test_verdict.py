@@ -85,8 +85,9 @@ def test_a_note_keeps_any_place_text_and_records_only_a_file_line(note):
     assert verdict.parse(verdict_text(findings='- [low] a.py:3 blocks: no. x'))['findings'][0]['where'] == 'a.py:3'
 
 
-def test_a_blocking_finding_with_a_bare_path_is_refused_for_its_file_line():
-    errors = verdict.parse(verdict_text(verdict='FIX', findings='- [high] infra/README.md blocks: yes. Failure: x'))['errors']
+@pytest.mark.parametrize('place', ['infra/README.md', 'app.py:3, see notes'])
+def test_a_blocking_finding_with_a_bare_path_is_refused_for_its_file_line(place):
+    errors = verdict.parse(verdict_text(verdict='FIX', findings=f'- [high] {place} blocks: yes. Failure: x'))['errors']
     assert any(e.startswith('a blocking finding needs "<file>:<line>"') for e in errors)
 
 
