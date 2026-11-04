@@ -204,6 +204,14 @@ def test_an_owner_or_risky_path_in_docs_alone_needs_no_goal_at_smart(root):
     assert evidence.needed(root, 'smart', [{'path': 'docs/auth.md', 'additions': 9, 'deletions': 0}], plan.find(root, 'I-1')) == ()
 
 
+def test_a_standard_item_on_a_risky_or_owner_path_owes_no_goal(root, fake):
+    """The tier is the ceiling: the smart triggers never add goal at standard."""
+    ws.write_config(root, {**ws.DEFAULTS, 'repos': ['acme/app'], 'owner_paths': ['src/core/*']})
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'domain': 'complex: x', 'in_doubt': True}])
+    pr_with(fake, {'src/token.py': (PLAIN, branchy(1), branchy(2)), 'src/core/rules.py': (PLAIN, branchy(1), branchy(2)), **TESTS})
+    assert owed(root) == ['gates missing at head aaaaaaa: quality, security']
+
+
 def test_docs_alone_need_no_gate_at_smart(root):
     smart(root, 'complex: x', in_doubt=True)
     assert evidence.needed(root, 'smart', [{'path': 'README.md', 'additions': 900, 'deletions': 0}], plan.find(root, 'I-1')) == ()

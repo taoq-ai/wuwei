@@ -49,8 +49,8 @@ A seat class steps down only on retro evidence: 10 merged items on the lower set
 escaped defect. The count makes the rule testable.
 
 At least one gate per head runs on a different model than the builder, so the reviews do not share
-every blind spot. When the table would put every gate on the builder's model (a light item, or a
-standard item on risky, owner or contract paths), the quality gate takes the other of Opus 5.5 and
+every blind spot. When the table would put every gate on the builder's model (a light item, a full
+item, or a standard item on risky, owner or contract paths), the quality gate takes the other of Opus 5.5 and
 Sonnet 5.5, at high.
 
 After a fix, a delta is re-read by one gate, and the passes from the earlier head carry to it. Those

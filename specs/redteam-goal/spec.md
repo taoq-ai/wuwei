@@ -79,7 +79,8 @@ Acceptance in my words:
   Opus rerun, and on #1236 (an owner path) the Opus rerun found a second blocker, the repeated
   #1198 class. Off those paths Sonnet 5.5 high stays: the go threshold held on Sonnet alone (4 of
   6) and every control ran on Sonnet. Overturned by Opus false blockers above one on the controls,
-  which is unmeasured.
+  which is unmeasured. At full every gate now runs on the builder's model, so planner rule 3 puts
+  the quality gate on Sonnet 5.5 high there (the models page lists full among those cases).
 - A3: a limit the change discloses, even in part, is a note. Why: the spike's cost line says the
   disclosure clause hid two half-disclosed defects and asks for advisory rows, not blocks.
   Overturned by a half-disclosed limit that escapes because a note did not hold the merge.
