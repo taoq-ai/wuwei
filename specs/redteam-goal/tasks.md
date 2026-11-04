@@ -17,7 +17,7 @@
 
 ## Phase 3: Proof
 
-- [x] T010 Green: the full suite
-- [x] T011 `route_diff.py` at main and head (`route_diff.txt`)
-- [x] T012 Smart tier tests crossed between main and head (`smart_cross.txt`)
-- [x] T013 Mutants on both runtime copies, one at a time
+- [x] T010 Green: the full suite, 4,438 passed and 7 skipped before three `tests/test_models.py` advice rows moved off the goal row, then those files green
+- [x] T011 `route_diff.py` at main and head (`route_diff.txt`): corpus sha256 de377966..., 288 routes, 2,304 cases, 171 moved, all on the complex, owner and risky hosts (57 each), each adding goal alone
+- [x] T012 Smart tier tests crossed between main and head (`smart_cross.txt`): head tests on main fail 14, main tests on head fail 11, each by goal added on a named trigger
+- [x] T013 Mutants on both runtime copies, one at a time: 9 of 9 killed by behavioural tests in `tests/test_smart.py` (drop complex, drop owner or risky, drop in doubt, goal at standard, owner paths only, risky pattern only, complex and risky together, goal on any smart code, drop the smart guard)
