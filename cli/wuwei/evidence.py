@@ -38,7 +38,7 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 norm = lambda text: ' '.join(text.casefold().split()).rstrip(' .,;:!?').removesuffix('[waiting]').rstrip(' .,;:!?')  # noqa: E731
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
-                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names its item by the old)")
+                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested|PR names (its item by the old|[\w.-]+, which is not in the plan))")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$'
                       r'|^(specs|openspec)/(.+/)?contracts/', re.I)  # a contract file, or a spec's contract
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
@@ -465,7 +465,8 @@ def gaps(root, repo, number, listed=None):
         hit = hit if hit.get('sig') == sig else {}
         pr = hit.get('pr') or gh.pr(repo, number)
         item, ref, generated = item_for(root, pr, repo), f'{repo}#{number}', release(repo, pr)
-        found = [] if item else [gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
+        found = [] if item else [gap(f'PR names {m[1]}, which is not in the plan: add it with wuwei plan add {m[1]} "<title>" ... --pr {ref}'
+                                     if (m := ITEM.search(pr.get('body') or '')) else 'not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
         tier = (item or {}).get('tier', 'standard')
         item_id, raised, gates, why = gates_for(root, repo, pr, () if generated else pr.get('files') or (), item)
         files, body, head = [f['path'] for f in pr.get('files') or ()], pr.get('body') or '', pr['headRefOid']

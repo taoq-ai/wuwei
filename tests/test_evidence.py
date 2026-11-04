@@ -4,7 +4,7 @@ import shutil
 import time
 
 from conftest import HEAD, OLD, footer, make_pr, verdict_text, write_plan
-from wuwei import evidence, gh, ws
+from wuwei import evidence, gh, plan, ws
 
 
 def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None, breaking='no', pr='acme/app#42', extra=''):
@@ -43,6 +43,21 @@ def test_missing_gates_tests_and_link_are_named(root, fake):
     assert 'not linked to a plan item (end the PR body with the WUWEI footer naming its item)' in found
     assert 'no test in the diff' in found
     assert any(text.startswith('gates missing at head') for text in found)
+
+
+def test_a_footer_naming_an_item_the_plan_lacks_says_so_and_counts_once_added(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(body=footer('X-9'))  # the footer names X-9; the plan holds only I-1 (#1256)
+    fake.prs['42']['headRefName'] = 'x-9-change'
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate, item='X-9')
+    unlinked = 'PR names X-9, which is not in the plan: add it with wuwei plan add X-9 "<title>" ... --pr acme/app#42'
+    kinds = {g['text']: g['kind'] for g in evidence.gaps(root, 'acme/app', 42)}
+    assert kinds[unlinked] == 'process' and not any(t.startswith('not linked to a plan item') for t in kinds)
+    plan.add(root, 'X-9', 'change', 'G-1', 'acme/app', 'standard', {'value': 1, 'time': 1, 'risk': 1, 'size': 1},
+             prs=['acme/app#42'])
+    forget(root)
+    assert evidence.gaps(root, 'acme/app', 42) == []
 
 
 OLD_LINE = 'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'
