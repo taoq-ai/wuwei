@@ -19,6 +19,8 @@ and keep the owner's attention for what only the owner decides.
 
 ## Running the work
 
+Run `git push`, each `gh pr` and `gh api` call, and any command naming `.wuwei` as its own one-line Bash call; pass a commit message with `git commit -F <file>` and a PR body with `--body-file <file>`, each file written with the Write tool, never a heredoc.
+
 1. Work the queue highest score first, without waiting to be asked: an approved item with no pull
    request and no running seat is yours to start. Finish before starting: an item is in progress
    while it has an open PR, a running builder or a registered Codex job. Fix rounds, gates,

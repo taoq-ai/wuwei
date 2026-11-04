@@ -286,6 +286,33 @@ def test_a_seat_records_its_confidence_or_null(root, text, confidence):
     assert ws.rows(root, 'seat.stopped')[0]['data']['confidence'] == confidence
 
 
+def _stopped(root, text):
+    hook.handle(root, 'SubagentStop', launched({'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                                'last_assistant_message': text, 'cwd': str(root)}))
+    return ws.rows(root, 'seat.stopped')[0]['data']
+
+
+def test_a_seat_stop_keeps_its_feedback_and_change_lines_and_drops_a_none(root):
+    data = _stopped(root, 'done\n\nFeedback: sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has\n'
+                          'Feedback: planner +: the brief named the file\nFeedback: none\nConfidence: high\nBlocked: none\nGap: none\n'
+                          'Change: ' + 'c' * 300)
+    assert data['feedback'] == ['sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has',
+                                'planner +: the brief named the file']
+    assert 'gap' not in data and data['change'] == 'c' * 200
+
+
+def test_a_seat_stop_masks_a_secret_in_a_kept_line_before_cutting_it(root):
+    token = 'ghp_' + 'a' * 36
+    data = _stopped(root, f'done\nFeedback: lead -: the brief pasted {token}\nGap: {"x" * 190}{token}')
+    assert data['feedback'] == ['lead -: the brief pasted ***'] and data['gap'] == 'x' * 190 + '***'
+    assert token[:8] not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_with_no_feedback_records_as_before(root):
+    data = _stopped(root, 'done\nConfidence: low\nGap: none\nChange: none')
+    assert set(data) == {'role', 'agent', 'tokens', 'confidence', 'session'}
+
+
 def test_session_start_names_the_cli_and_refreshes_the_pointer(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
@@ -2487,6 +2514,63 @@ def test_a_label_answered_minutes_later_is_recorded_when_its_row_lands(root):
     assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [json.loads(LATE[3])['toolUseResult']['answers']]
 
 
+# 1253: the answer is read from the harness's user row, not the api-request-blob copy Claude Code 2.1.304+ writes after it
+
+BLOB = (TRANSCRIPTS / 'ask-blob.jsonl').read_text().splitlines()  # sanitized real 2.1.309 rows, per id: tool_use, user, blob, blob
+
+
+def blob_ask(rows, answers=None):
+    """The PostToolUse payload for the id these fixture rows name, as the harness sends it."""
+    use, done = json.loads(rows[0]), json.loads(rows[1])
+    asked = use['message']['content'][0]
+    return installed({'session_id': use['sessionId'], 'transcript_path': f'~/.claude/projects/-repo/{use["sessionId"]}.jsonl',
+                      'cwd': str(use['cwd']), 'hook_event_name': 'PostToolUse', 'tool_name': 'AskUserQuestion', 'tool_input': asked['input'],
+                      'tool_response': {**done['toolUseResult'], 'answers': answers or done['toolUseResult']['answers']},
+                      'tool_use_id': asked['id']}, rows[:1])
+
+
+@pytest.mark.parametrize('rows', [BLOB[:4], BLOB[4:], BLOB[:2], BLOB[4:6]], ids=['one', 'batch', 'one-no-blob', 'batch-no-blob'])
+def test_an_answer_whose_user_row_a_blob_row_follows_records_once(root, rows):
+    payload = blob_ask(rows)
+    hook.handle(root, 'PostToolUse', payload)
+    with Path(payload['transcript_path']).open('a') as out:  # the harness writes the rows after PostToolUse returns
+        out.write(''.join(line + '\n' for line in rows[1:]))
+    planner_read(root, payload['session_id'])
+    planner_read(root, payload['session_id'])
+    stop_at(root, payload['session_id'])
+    assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [json.loads(rows[1])['toolUseResult']['answers']]
+    assert not ws.rows(root, 'answer.unconfirmed')
+
+
+def test_a_batch_answer_that_differs_from_the_user_row_stays_unconfirmed_beside_the_others(root):
+    said = json.loads(BLOB[5])['toolUseResult']['answers']
+    other = list(said)[1]
+    payload = blob_ask(BLOB[4:], {**said, other: 'No'})
+    Path(payload['transcript_path']).write_text(''.join(line + '\n' for line in BLOB[4:]))
+    hook.handle(root, 'PostToolUse', payload)
+    assert [r['data']['answers'] for r in ws.rows(root, 'prompt')] == [{q: a for q, a in said.items() if q != other}]
+    [row] = ws.rows(root, 'answer.unconfirmed')
+    assert row['data']['questions'] == [other] and "with 'Yes', not 'No'" in row['data']['reason']
+
+
+@pytest.mark.parametrize('rows, kind', [([BLOB[0], BLOB[3]], None), (BLOB[2:4], None), ([BLOB[0], BLOB[2], BLOB[3]], None),
+                                        (BLOB[:2], 'assistant'), (BLOB[:2], 'system')],
+                         ids=['blob', 'blobs-only', 'both-blobs', 'assistant', 'system'])
+def test_a_row_other_than_the_user_row_confirms_no_answer(root, monkeypatch, rows, kind):
+    """An api-request-blob row carries no toolUseResult; it, or a row of any type but user, forged with answers records nothing."""
+    monkeypatch.setattr(hook, 'WAIT', 0)
+    forged = [rows[0], *(json.dumps({**json.loads(r), 'toolUseResult': json.loads(BLOB[1])['toolUseResult'],
+                                     **({'type': kind} if kind else {})}) for r in rows[1:])]
+    payload = blob_ask(BLOB[:4])
+    Path(payload['transcript_path']).write_text(''.join(line + '\n' for line in forged))
+    hook.handle(root, 'PostToolUse', payload)
+    aged(root, hook.BOUND + 1)
+    planner_read(root, payload['session_id'])
+    assert not ws.rows(root, 'prompt') and not ws.rows(root, 'ruling')
+    [row] = ws.rows(root, 'answer.unconfirmed')
+    assert 'no tool_result row' in row['data']['reason']
+
+
 # 1231 (folded into 1211-confirm): a record shape the hook does not expect names the check that failed
 
 TEXT = 'Your questions have been answered: {}. You can now continue with these answers in mind.'  # the real 2.1.308 tool_result text
@@ -2827,3 +2911,40 @@ def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monk
     with ThreadPoolExecutor(max_workers=4) as pool:
         found = list(pool.map(lambda _: planner_call(root), range(4)))
     assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1
+
+
+@pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none of the tests ran', 'none of the tests ran'),
+                                        ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b'), ('Gap: a\nGap: none', None),
+                                        ('Gap: a\r\x1b[2K\u2028b\x85 c', 'a [2K b c'), ('Gap: a\x7fb\x9bc', 'a b c')])
+def test_a_seat_stop_keeps_the_last_gap_unless_blank_or_none(root, line, kept):
+    assert _stopped(root, 'done\n' + line).get('gap') == kept
+
+
+def test_the_day_report_reads_the_feedback_a_real_stop_recorded(root, fake):
+    from wuwei import report
+    _stopped(root, 'done\nFeedback: planner -: the brief named no tier\nFeedback: sentinel-arch +: finding 1 named the file')
+    text = report.day(root)
+    assert 'Feedback: planner - 1, sentinel-arch + 1.' in text and '- builder (b1) on planner -: the brief named no tier' in text
+
+
+def test_a_seat_stop_keeps_the_last_change_unless_none(root):
+    assert 'change' not in _stopped(root, 'done\nChange: quoted\nChange: none')
+
+
+def test_a_seat_stop_masks_the_canary_in_a_kept_line(root):
+    (root / ws.DIR / 'canary').write_text('wuwei-canary-abcdef\n')
+    data = _stopped(root, 'done\nFeedback: lead -: leaked wuwei-canary-abcdef\nGap: wuwei-canary-abcdef\nChange: x wuwei-canary-abcdef')
+    assert data['feedback'] == ['lead -: leaked ***'] and data['gap'] == '***' and data['change'] == 'x ***'
+    assert 'abcdef' not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_keeps_at_most_ten_feedback_lines(root):
+    assert _stopped(root, 'done\n' + '\n'.join(f'Feedback: lead -: cost {n}' for n in range(30)))['feedback'] == [f'lead -: cost {n}' for n in range(10)]
+
+
+def test_a_canary_across_the_200_character_cut_never_reaches_the_ledger(root):
+    (root / ws.DIR / 'canary').write_text('CANARYzq9k3m2p8v4t6w\n')
+    tail = 'x' * 190 + 'CANARYzq9k3m2p8v4t6w'
+    data = _stopped(root, f'done\nFeedback: lead -: {tail}\nGap: {tail}\nChange: {tail}')
+    assert data['gap'] == data['change'] == 'x' * 190 + '***' and data['feedback'] == [f'lead -: {"x" * 190}***'[:200]]
+    assert 'CANARY' not in json.dumps(ws.rows(root, 'seat.stopped'))

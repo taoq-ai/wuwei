@@ -4,7 +4,8 @@ import re
 
 GATES = ('arch', 'quality', 'security', 'goal')
 VERDICTS = ('PASS', 'FIX', 'ESCALATE')
-FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:[0-9]+(?:-[0-9]+)?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
+FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:((?:(?!blocks:).)*?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
+PLACE = re.compile(r'\S+:[0-9]+(?:-[0-9]+)?')
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
@@ -58,10 +59,11 @@ def parse(text, strict=False):
                     continue
                 blocks, rest = found[3].lower() == 'yes', found[4]
                 failure = re.search(r'Failure:\s*(\S.*)', rest)
-                if blocks and not (found[2] and failure):
+                where = found[2] if PLACE.fullmatch(found[2] or '') else None  # a note may name any place
+                if blocks and not (where and failure):
                     errors.append(f'a blocking finding needs "<file>:<line>" and "Failure: <the scenario>": {line[:80]}')
                     continue
-                result['findings'].append({'severity': found[1].lower(), 'where': found[2], 'blocks': blocks,
+                result['findings'].append({'severity': found[1].lower(), 'where': where, 'blocks': blocks,
                                            'failure': failure[1] if failure else rest})
     said = re.match(r'(no|yes)\b[ \t:]*(.*)', _field(text, 'Breaking'), re.I)
     result['breaking'] = (said[2].strip() or 'yes') if said and said[1].lower() == 'yes' else ''

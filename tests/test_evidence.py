@@ -1581,10 +1581,54 @@ OWED = ['gates missing at head aaaaaaa: quality']
     ([(HEAD, 'PASS'), (HEAD, 'FIX')], OWED),  # a finding replaces a pass at one head
     ([(HEAD, 'PASS'), (OLD, 'FIX')], OWED),  # and at an older head, so the gate reads again
     ([(HEAD, 'PASS'), (OLD, 'FIX', 'acme/app#7')], OWED),  # a finding on the PR's line holds from another PR
+    ([(HEAD, 'PASS'), (OLD, 'ESCALATE', 'acme/app#7')], OWED),
     ([(OLD, 'FIX', 'acme/app#7'), (HEAD, 'PASS')], []),  # and a pass here at a descendant clears it
 ])
 def test_a_gate_is_read_from_its_verdict_at_the_newest_head_on_this_pr(root, fake, said, found):
     assert gated(root, fake, *said) == found
+
+
+@pytest.mark.parametrize('first', [False, True])
+@pytest.mark.parametrize('gate, verdict, says', [('quality', 'FIX', 'no'), ('quality', 'ESCALATE', 'no'), ('arch', 'PASS', 'yes: drops x')])
+def test_a_verdict_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake, monkeypatch, gate, verdict, says, first):
+    foreign = 'e' * 40  # a acme/other sha: comparing it in acme/app answers 404 (#1268)
+    def other():
+        attest(root, gate, foreign, verdict, name=f'{gate}-other-0.md', pr='acme/other#9', breaking=says)
+        attest(root, gate, foreign, 'PASS', name=f'{gate}-other-1.md', pr='acme/other#9')
+    if first:
+        other()
+    complete(root, fake)  # PASS verdicts on acme/app#42 at its head
+    if not first:
+        other()
+    asked = []
+    def run(args, timeout=30):
+        if '/compare/' in ' '.join(args) and foreign in ' '.join(args):
+            asked.append(args)
+            raise gh.GhError('HTTP 404: Not Found')
+        return fake(args, timeout)
+    monkeypatch.setattr(gh, 'run', run)
+    assert evidence.gaps(root, 'acme/app', 42) == [] and denied(root) == '' and asked == []
+
+
+def test_an_edited_finding_on_the_items_pr_in_another_repository_is_skipped_before_any_compare(root, fake):
+    complete(root, fake)
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-other.md'
+    path.write_text(verdict_text(verdict='FIX', head='e' * 40, pr='acme/other#9'))
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                               'gate': 'quality', 'item': 'I-1', 'head': 'e' * 40, 'pr': 'acme/other#9', 'verdict': 'FIX'})
+    path.write_text(path.read_text() + '\nedited\n')  # held as recorded, by the row's PR
+    assert evidence.gaps(root, 'acme/app', 42) == [] and not [c for c in fake.calls if 'e' * 40 in ' '.join(c)]
+
+
+@pytest.mark.parametrize('finding, found', [(False, []), (True, OWED)])
+def test_a_finding_from_another_pr_of_the_repository_holds_whatever_case_the_repository_is_named_in(root, fake, finding, found):
+    standard(root)
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'quality')
+    if finding:
+        attest(root, 'quality', OLD, 'FIX', name='quality-fix.md', pr='acme/app#7')
+    said = texts(evidence.gate_gaps(root, 'Acme/App', 'I-1', ('quality',), HEAD, ref='acme/app#42'))
+    assert [t for t in said if t.startswith('gates missing')] == found
 
 
 @pytest.mark.parametrize('edited', [False, True])

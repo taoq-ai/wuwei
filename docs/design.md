@@ -188,7 +188,7 @@ attestation, and is sent back to write a new file. A gate's
 verdicts are read oldest first, and only at an ancestor of the PR head. A pass counts only for this
 PR, for its repository alone, or when it names no PR (an imported 0.34 verdict). The merge door and
 `wuwei evidence` read the PR; the create and ready doors read none, so there a pass for any PR of
-the item in that repository counts. A finding holds from any PR of the item and displaces a pass.
+the item in that repository counts. A finding holds from any PR of the item in this repository and displaces a pass.
 A later pass at an older head never clears a finding. At the same head it clears a FIX only by
 naming that file on a `Supersedes:` line; otherwise only a pass from a strict descendant does. An arch `Breaking: no` clears a yes
 only from a strict descendant of that yes's head, and only for this PR or its repository alone;
@@ -309,8 +309,9 @@ An owner answer and a seat stop count only when the harness wrote them (#962). T
 each session's transcript under the projects folder (`.claude/projects` in the account's home,
 read from the password database on POSIX and from the logon profile in the registry on Windows,
 never from `HOME` or `USERPROFILE`). An answer counts when that transcript holds the
-AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last tool_result row for it,
-the same answer to that question; each question in a batch counts on its own. Only the row's
+AskUserQuestion tool_use with the payload's `tool_use_id` and, in the last `user` row holding a
+tool_result for it (never the `api-request-blob` copy Claude Code writes after it), the same answer
+to that question; each question in a batch counts on its own. Only the row's
 `toolUseResult.answers` counts, never its text: model-written questions and labels and WUWEI's own deny
 reasons fill that text, so a pair in it proves nothing. Claude Code
 writes that row after PostToolUse returns, so PostToolUse records `answer.pending` and keeps the first

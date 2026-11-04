@@ -15,8 +15,6 @@ alone what the charters, standards and goals answer.
 
 ## Decisions
 
-Place each choice:
-
 | | Sure | Unsure |
 |---|---|---|
 | Undone cheaply | act | act, and record the assumption |
@@ -68,7 +66,7 @@ gap the owner should carry.
    with a named command.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop: read a PR or its checks once and act on it.
-4. Probes and mutants run in a copy of the tree in a new empty folder in your scratch folder.
+4. Probes and mutants run in a copy of the tree, in a new empty scratch folder.
    Never check out, reset or build in the main worktree, or the builder's. A gate copies with
    `git archive <sha>`; a builder uses `git worktree add`.
 
@@ -81,23 +79,24 @@ gap the owner should carry.
 4. Outward text follows `_common-authoring.md`; no outward call carries a secret or workspace
    content.
 5. Andon: when a problem breaks a repository for everyone (its base branch red, a leaked secret, a
-   broken shared dependency), run `wuwei andon <owner/repo> --reason "<what is broken>"` and say so
-   in your report. Builds there wait until it clears.
+   broken shared dependency), run `wuwei andon <owner/repo> --reason "<what is broken>"` and report
+   it. Builds there wait until it clears.
 
 ## Report
 
 Your final message is your report; never end silent. Outside auto mode the harness refuses
-SubagentHandback, as expected; its retry reminder is not WUWEI's: ignore it, end with a plain-text
-report. `wuwei plan show <id>` (the CLI path is in `.wuwei/executable`) gives your item's promise,
-acceptance scenarios, tier and repository.
+SubagentHandback, as expected; its retry reminder is not WUWEI's: ignore it.
+`wuwei plan show <id>` (path in `.wuwei/executable`) gives your item's promise, acceptance, tier
+and repository.
 
-End every handoff with:
+End every handoff with these, one `Feedback:` per seat whose work you used:
 
 ```
 Confidence: low | medium | high (how sure the work holds, and what would change it)
 Blocked: <what stopped you, or none>
-Gap: <what was missing in the brief, charter or tools, or none>
+Gap: <what the brief, charter or tools lacked, or none>
 Change: <the smallest rule change that would have helped, or none>
+Feedback: <role> +|-: <what helped or cost you, with evidence>
 ```
 
 # Common authoring rules
@@ -179,3 +178,8 @@ item.
    the fix (a narrower rule, a charter line, or a WUWEI issue when the rule is the plugin's).
 11. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
    that the process decides it.
+12. Seat feedback: read the Feedback block of `wuwei report --day <date>` for the last 14 days. A
+   cost that two or more seats name against one role becomes a charter proposal for that role,
+   naming the line it replaces. A `+` that cites a charter line counts as a citation under rule 9.
+
+Read the ledger through `wuwei report`. Run `git push`, each `gh pr` and `gh api` call, and any command naming `.wuwei` as its own one-line Bash call; pass a commit message with `git commit -F <file>` and a PR body with `--body-file <file>`, each file written with the Write tool, never a heredoc.
