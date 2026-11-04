@@ -1,0 +1,15 @@
+# Requirements checklist: config-door
+
+- [x] Every acceptance scenario maps to a requirement, a test and a corpus route
+- [x] The records rule is reused for both paths; no second path matcher
+- [x] Owner verdicts compared main against head over the route corpus and the probe
+- [x] Seat reads (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`, Read) pass
+- [x] Refusal text names the owner
+- [x] SECURITY.md and docs/site/reference.md state the rule
+- [x] `.claude/` vendored copy matches
+- [x] Tests ran red on main and green at the head
+- [x] Mutants on both copies, one at a time
+- [x] Runtime 3,904 to 3,911 lines, within the item's budget of 8
+- [x] `run.sh` written for the owner; not run by the builder
+- [x] Rollback line in the spec
+- [x] No emojis, no em dashes

@@ -27,7 +27,7 @@
 | `wuwei owe <thread link> "<what>" --who <name> [--within 4h \| --due <ISO>]` | Record a reply someone is waiting for |
 | `wuwei watch [--record "<summary>"]` | The last watch pass and replies owed; record a pass |
 | `wuwei status --all` | The board with process fit too (for the watch) |
-| `wuwei config [key value]` | Show, or set one of the six keys |
+| `wuwei config [key value]` | Show, or set one of the six keys; setting runs in your own session only, a seat is refused |
 | `wuwei verify` | Check the ledger's hash chain |
 | `wuwei agents [check\|build]` | Check or build the role agents from the charters |
 | `wuwei --version` | The plugin version |
@@ -35,7 +35,9 @@
 
 ## Configuration
 
-`.wuwei/config.toml` has six keys. Everything else is discovered or part of the process.
+`.wuwei/config.toml` has six keys. Everything else is discovered or part of the process. Only your own session changes it and
+`.wuwei/plan.json` (`wuwei config <key> <value>`, the `wuwei plan` actions that write, an edit or a redirect); a seat reads
+them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refused any write, so it cannot change its own gates.
 
 | Key | Default | Meaning |
 | --- | --- | --- |

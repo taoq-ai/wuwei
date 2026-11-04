@@ -49,7 +49,18 @@ option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refu
 `X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
 passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
 pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
-exemption, because a later `--no-dry-run` cancels `-n`.
+exemption, because a later `--no-dry-run` cancels `-n`. `sed` is a writer with `-i` in any
+spelling (`-i`, `-i.bak`, `-Ei`, `--in-place`).
+
+`.wuwei/config.toml` and `.wuwei/plan.json` are changed only in the owner's own session. They set
+which gates a change owes, its tier and who reviews it. A seat is a call whose hook payload names an
+`agent_type`. From a seat the records rule also covers both files, by every route above, removal
+included. So are `wuwei config <key> [<value>]` and the `wuwei plan` actions that write the plan:
+`add`, `park`, `drop`, `done`, `restore`, `run` and `session`. These are refused when called as
+`wuwei` on any path, through `python -m wuwei`, or through `$(cat .wuwei/executable)`.
+A seat's unreadable command naming either file or `wuwei config` or `wuwei plan` is refused too.
+Reads pass: `wuwei plan show`, `wuwei plan view`, `wuwei config` alone, `wuwei status`, `cat` and
+the Read tool. The owner's own session (no `agent_type`) keeps every one of these writes.
 
 git's options before the subcommand are read by allowlist, the options git 2.43 takes (git.c): a
 valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,

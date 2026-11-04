@@ -2457,7 +2457,8 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     'wuwei plan drop I-1', 'wuwei plan restore I-1', 'wuwei plan run I-1 --reason x', 'wuwei plan session I-1 s2', 'wuwei plan approve',
     'python3 -m wuwei config owner_paths x', 'python3 -mwuwei plan done I-1', '/opt/wuwei/bin/wuwei plan restore I-1', 'WUWEI plan done I-1',
     '"$(cat .wuwei/executable)" config owner_paths x', '$(cat .wuwei/executable) plan done I-1', '`cat .wuwei/executable` plan done I-1',
-    "$'wuwei' config owner_paths x", 'bash -c "wuwei plan done I-1"', 'cd src && wuwei plan done I-1', 'env A=1 wuwei -- config tiers x']
+    "$'wuwei' config owner_paths x", "wuwei $'plan' done I-1", 'bash -c "wuwei plan done I-1"', 'cd src && wuwei plan done I-1',
+    'env A=1 wuwei -- config tiers x']
 INSIDE = ['cd .wuwei && echo x > plan.json', 'env -C .wuwei tee plan.json', 'sudo -D .wuwei tee config.toml']  # refused for all on main
 OWNER_ONLY = "only the owner's own session"
 
@@ -2488,7 +2489,8 @@ def test_a_seat_edit_of_the_config_or_the_plan_is_refused_and_the_owner_edit_pas
                                      'wuwei config', 'wuwei status', 'cat .wuwei/plan.json', 'grep owner .wuwei/config.toml',
                                      'cat < .wuwei/config.toml', 'python3 -m wuwei plan show I-1', '"$(cat .wuwei/executable)" plan show I-1',
                                      'git -C /x/wuwei config user.name', 'git config user.email', 'git commit -m "wuwei plan done"',
-                                     'echo x > .wuwei/%70lan.json', 'ls .wuwei', 'echo x > plan.json', 'cp a .wuwei-plan.json'])
+                                     'echo x > .wuwei/%70lan.json', 'ls .wuwei', 'echo x > plan.json', 'cp a .wuwei-plan.json',
+                                     'wuwei plan show run-evidence', 'wuwei plan show done-check --json'])
 def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
     assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
 
