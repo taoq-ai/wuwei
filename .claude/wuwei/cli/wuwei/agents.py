@@ -16,8 +16,8 @@ DESCRIPTIONS = {
 AUTHORING = {'lead', 'builder', 'shepherd', 'steward'}
 # charters/planner.md "Model and effort": per role the default (''), the setting at a tier, on those paths, or for a conflict.
 PATHS, CONFLICT = 'on risky, owner or contract paths', 'for a conflict where both sides changed logic'
-TABLE = {'lead': {'': 'Opus 5.5 xhigh'}, 'sentinel-arch': {'': 'Opus 5.5 high'}, 'sentinel-goal': {'': 'Sonnet 5.5 high'},
-         'steward': {'': 'Opus 5.5 high'}, 'shepherd': {'': 'Sonnet 5.5 medium', CONFLICT: 'Opus 5.5 high'},
+TABLE = {'lead': {'': 'Opus 5.5 xhigh'}, 'sentinel-goal': {'': 'Sonnet 5.5 high', 'full': 'Opus 5.5 high', PATHS: 'Opus 5.5 high'},
+         'sentinel-arch': {'': 'Opus 5.5 high'}, 'steward': {'': 'Opus 5.5 high'}, 'shepherd': {'': 'Sonnet 5.5 medium', CONFLICT: 'Opus 5.5 high'},
          'builder': {'': 'Opus 5.5 medium', 'light': 'Sonnet 5.5 medium', 'full': 'Opus 5.5 high', PATHS: 'Opus 5.5 high'},
          'sentinel-security': {'': 'Opus 5.5 high', 'full': 'Opus 5.5 xhigh', PATHS: 'Opus 5.5 xhigh'},
          'sentinel-quality': {'': 'Sonnet 5.5 high', 'full': 'Opus 5.5 high', PATHS: 'Opus 5.5 high'}}

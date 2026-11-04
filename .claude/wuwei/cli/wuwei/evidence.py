@@ -307,7 +307,7 @@ def needed(root, tier, files, item=None, rose=bool):
     wants = {'quality': code, 'security': std and risky or smart and (deep or rose()), 'arch': any(CONTRACT.search(f['path']) for f in files)
              or std and (lines(wide) > WIDE or len(code) > 10) or smart and (deep or any(not isinstance(f.get('patch'), str) and lines([f])
              or WAIVE.search(changed(f)) or re.search(TRUST, f['path'], re.I) and cynefin(item) != 'clear' for f in files if f['path'] in code)),
-             'goal': smart and bool((item or {}).get('in_doubt'))}
+             'goal': smart and (deep or risky or (item or {}).get('in_doubt'))}
     return tuple(g for g in REQUIRED['full'] if wants[g])
 
 

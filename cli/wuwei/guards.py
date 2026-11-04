@@ -186,7 +186,7 @@ def _sources(cwd, words):  # each symbolic ref's final target, and the ref git r
 def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
     flags = _flags(args, PUSH_VALUED, ('--', '--end-of-options'))  # -o x, -vo x, --rep x: x is a value; after the first end, a refspec
     operands, named = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes a unique prefix: --mirr is --mirror
-    if any(a.startswith('--force') or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args) or any('mirror'.startswith(n) for n in named):
+    if any(a.startswith('--force') or re.match('-[^-]*f', a) for a in args) or any('mirror'.startswith(n) for n in named):  # git reads a cluster letter by letter: -4f, -qf6, -fo=x
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
     if any(ref.startswith('+') for ref in operands[1:]):
         return deny('force push refused (a + refspec): push a new commit instead.')

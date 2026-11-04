@@ -2977,9 +2977,9 @@ def test_a_launch_records_whether_it_departed_and_the_report_counts_departures_b
     for variable in ('CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_SUBAGENT_MODEL'):
         monkeypatch.delenv(variable, raising=False)
     plan_one(root, 'standard')
-    for agent, model, prompt in (('g1', 'sonnet', 'Item: I-1'), ('g2', 'opus', 'Item: I-1\nModel reason: second family'), ('g3', 'opus', 'Item: I-1'), ('g4', 'opus', 'Item: I-1')):
+    for agent, model, prompt in (('g1', 'opus', 'Item: I-1'), ('g2', 'sonnet', 'Item: I-1\nModel reason: second family'), ('g3', 'sonnet', 'Item: I-1'), ('g4', 'sonnet', 'Item: I-1')):
         hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': agent},
-                                          'tool_input': {'subagent_type': 'wuwei:sentinel-goal', 'model': model, 'effort': 'high', 'prompt': prompt}})
+                                          'tool_input': {'subagent_type': 'wuwei:sentinel-arch', 'model': model, 'effort': 'high', 'prompt': prompt}})
     payload = json.loads((Path(__file__).parent / 'fixtures' / 'payloads' / 'codex-spawn-agent-post.json').read_text())
     hook.handle(root, 'PostToolUse', {**payload, 'cwd': str(root)})
     ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'old'})  # a row from before the field
