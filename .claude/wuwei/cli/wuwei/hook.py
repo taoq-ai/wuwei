@@ -580,7 +580,7 @@ def session_start(root, payload):
             parts.append('Owner answers, last 7 days (act on them; never ask again):\n' + '\n'.join(said[:12] + more))
         found, cut = board.rows(root), 0
         lines, items = (board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)) if planner(root, payload.get('session_id')) \
-            else ([f'{len(found)} open item{"s" * (len(found) != 1)}; wuwei status lists them.'], ())
+            else (board.text([], root).rsplit('\n', 1)[:-1] + [f'{len(found)} open item{"s" * (len(found) != 1)}; wuwei status lists them.'], ())
         while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
             lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
         parts.append('\n'.join(lines + left(cut)))

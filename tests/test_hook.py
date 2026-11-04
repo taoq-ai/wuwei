@@ -243,6 +243,14 @@ def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root, tool, 
     assert ws.rows(root, 'refused') and not ws.rows(root, 'hook.error')
 
 
+def test_a_session_that_is_not_a_planner_still_sees_an_andon_above_the_count(root, fake):
+    plan_one(root)
+    board.andon(root, 'acme/lib', 'base branch red\nsince the last merge')
+    context = opened(root, 'other')
+    assert 'ANDON acme/lib: base branch red\nsince the last merge\n1 open item; wuwei status lists them.' in context
+    assert not re.search(r'^- I-1 ', context, re.M) and 'Board (' not in context
+
+
 def test_session_start_orients_with_the_board(root, fake):
     plan_one(root)
     plan_pass(root)
