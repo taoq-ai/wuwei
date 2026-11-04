@@ -60,6 +60,25 @@ def test_a_footer_naming_an_item_the_plan_lacks_says_so_and_counts_once_added(ro
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
+def test_an_unlisted_dotted_item_id_stays_a_process_gap(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(body=footer('5.3'))
+    kinds = {g['text']: g['kind'] for g in evidence.gaps(root, 'acme/app', 42)}
+    assert kinds['PR names 5.3, which is not in the plan: add it with wuwei plan add 5.3 "<title>" ... --pr acme/app#42'] == 'process'
+
+
+def test_an_item_only_verdict_counts_once_the_cli_adds_the_unlisted_item(root, fake, monkeypatch):
+    from wuwei import __main__ as cli
+    standard(root)
+    fake.prs['42'] = make_pr(body=footer('X-9'))
+    attest(root, 'quality', item='X-9', pr='acme/app')  # names the item and repository, not this PR
+    monkeypatch.chdir(root)
+    assert cli.main(['plan', 'add', 'X-9', 'change', '--goal', 'G-1', '--repo', 'acme/app', '--tier', 'standard', '--value', '1',
+                     '--time', '1', '--risk', '1', '--size', '1', '--pr', 'acme/app#42']) == 0 and plan.find(root, 'X-9')['prs'] == ['acme/app#42']
+    forget(root)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
 OLD_LINE = 'PR names its item by the old WUWEI-Item line: end the body with the WUWEI footer'
 
 
