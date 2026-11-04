@@ -15,8 +15,9 @@ def plan_one(root, tier='light'):
                        'status': 'open', 'score': 3}])
 
 
-def plan_pass(root, session='s1', command='/opt/wuwei/bin/wuwei plan pass --reason "goals read"'):
-    return hook.handle(root, 'PostToolUse', {'session_id': session, 'tool_name': 'Bash', 'cwd': str(root), 'tool_input': {'command': command}})
+def plan_pass(root, session='s1', command='/opt/wuwei/bin/wuwei plan pass --reason "goals read"', stdout=''):
+    return hook.handle(root, 'PostToolUse', {'session_id': session, 'tool_name': 'Bash', 'cwd': str(root), 'tool_input': {'command': command},
+                                             'tool_response': {'stdout': stdout, 'stderr': '', 'interrupted': False}})
 
 
 def stop(root, active=False, session='s1', planner=True):
@@ -257,6 +258,14 @@ def test_only_the_wuwei_program_marks_a_planner_and_a_payload_with_no_session_ne
     assert stop(root, session='p1', planner=False) is None
     ws.record(root, 'seat.started', {'agent': 'a1', 'role': 'builder', 'item': 'I-1'})
     assert hook.handle(root, 'Stop', {'cwd': str(root)}) is None
+
+
+def test_a_plan_pass_through_a_variable_marks_the_session_by_the_cli_reply(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1', 'grep -rn "plan pass" cli', 'cli/wuwei/__main__.py:62: print("plan pass recorded; the day is open")\n')
+    assert stop(root, session='p1', planner=False) is None
+    plan_pass(root, 'p1', 'W=/opt/wuwei/bin/wuwei; $W plan pass --reason "goals read"', 'plan pass recorded; the day is open\n')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
 
 
 def test_a_session_that_is_not_a_planner_still_sees_an_andon_above_the_count(root, fake):

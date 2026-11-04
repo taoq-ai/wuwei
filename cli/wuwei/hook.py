@@ -417,8 +417,9 @@ def post_tool(root, payload):
             ws.record(root, 'sent', {'tool': tool, 'refs': named})
             ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
-    if tool == 'Bash' and any(argv[1:3] == ['plan', 'pass'] and Path(argv[0]).name == 'wuwei' for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
-        ws.record(root, 'plan.session', {'session': payload.get('session_id')})  # the CLI cannot see the session id
+    if tool == 'Bash' and (str((out.get('stdout') if isinstance(out := payload.get('tool_response'), dict) else out) or '').startswith('plan pass recorded')
+                           or any(argv[1:3] == ['plan', 'pass'] and Path(argv[0]).name == 'wuwei' for argv, _ in guards.segments(str(data.get('command', ''))) or ())):
+        ws.record(root, 'plan.session', {'session': payload.get('session_id')})  # the CLI cannot see the session id; its reply covers $W plan pass
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
         if match := re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response'))):
