@@ -50,5 +50,8 @@ item.
    the fix (a narrower rule, a charter line, or a WUWEI issue when the rule is the plugin's).
 11. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
    that the process decides it.
+12. Seat feedback: read the Feedback block of `wuwei report --day <date>` for the last 14 days. A
+   cost that two or more seats name against one role becomes a charter proposal for that role,
+   naming the line it replaces. A `+` that cites a charter line counts as a citation under rule 9.
 
 Read the ledger through `wuwei report`. Run `git push`, each `gh pr` and `gh api` call, and any command naming `.wuwei` as its own one-line Bash call; pass a commit message with `git commit -F <file>` and a PR body with `--body-file <file>`, each file written with the Write tool, never a heredoc.
