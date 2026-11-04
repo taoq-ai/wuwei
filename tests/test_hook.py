@@ -2915,7 +2915,7 @@ def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monk
 
 @pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none of the tests ran', 'none of the tests ran'),
                                         ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b'), ('Gap: a\nGap: none', None),
-                                        ('Gap: a\r\x1b[2K\u2028b\x85 c', 'a [2K b c')])
+                                        ('Gap: a\r\x1b[2K\u2028b\x85 c', 'a [2K b c'), ('Gap: a\x7fb\x9bc', 'a b c')])
 def test_a_seat_stop_keeps_the_last_gap_unless_blank_or_none(root, line, kept):
     assert _stopped(root, 'done\n' + line).get('gap') == kept
 
@@ -2940,3 +2940,11 @@ def test_a_seat_stop_masks_the_canary_in_a_kept_line(root):
 
 def test_a_seat_stop_keeps_at_most_ten_feedback_lines(root):
     assert _stopped(root, 'done\n' + '\n'.join(f'Feedback: lead -: cost {n}' for n in range(30)))['feedback'] == [f'lead -: cost {n}' for n in range(10)]
+
+
+def test_a_canary_across_the_200_character_cut_never_reaches_the_ledger(root):
+    (root / ws.DIR / 'canary').write_text('CANARYzq9k3m2p8v4t6w\n')
+    tail = 'x' * 190 + 'CANARYzq9k3m2p8v4t6w'
+    data = _stopped(root, f'done\nFeedback: lead -: {tail}\nGap: {tail}\nChange: {tail}')
+    assert data['gap'] == data['change'] == 'x' * 190 + '***' and data['feedback'] == [f'lead -: {"x" * 190}***'[:200]]
+    assert 'CANARY' not in json.dumps(ws.rows(root, 'seat.stopped'))
