@@ -94,3 +94,18 @@ def test_a_blocking_finding_with_a_bare_path_is_refused_for_its_file_line(place)
 def test_a_note_that_quotes_blocks_yes_later_stays_a_note():
     parsed = verdict.parse(verdict_text(findings='- [low] blocks: no. a limit that a blocks: yes finding would name'))
     assert parsed['errors'] == [] and parsed['findings'][0]['blocks'] is False
+
+
+def test_a_note_records_a_line_range_as_its_place():
+    parsed = verdict.parse(verdict_text(findings='- [low] src/app.py:12-14 blocks: no. x'))
+    assert parsed['findings'][0]['where'] == 'src/app.py:12-14'
+
+
+def test_an_upper_case_blocking_finding_before_a_quoted_note_stays_refused_under_pass():
+    text = verdict_text(findings='- [high] cli/auth.py:42 BLOCKS:YES. Failure: x; y blocks: no.')
+    assert verdict.parse(text)['errors']
+
+
+def test_the_place_ends_at_the_first_blocks_word():
+    found = verdict.parse(verdict_text(findings='- [low] a.py:3 blocks: no. x blocks: yes y blocks: no'))['findings'][0]
+    assert (found['where'], found['blocks']) == ('a.py:3', False)
