@@ -74,3 +74,22 @@ def test_the_pr_line_wording_says_gates_run_before_the_draft_pr_exists():
     errors = verdict.parse(verdict_text(pr='app#x'))['errors']
     assert any('<owner/repo> before its draft PR exists' in e for e in errors)
     assert '<owner/repo> alone before its draft PR exists' in verdict.FORMAT
+
+
+@pytest.mark.parametrize('note', ['- [low] infra/README.md blocks: no. x', '- [low] research.md:R4 blocks: no. x',
+                                  '- [low] none blocks: no. x'])
+def test_a_note_keeps_any_place_text_and_records_only_a_file_line(note):
+    parsed = verdict.parse(verdict_text(findings=note))
+    assert parsed['errors'] == [] and parsed['findings'][0]['blocks'] is False
+    assert parsed['findings'][0]['where'] is None
+    assert verdict.parse(verdict_text(findings='- [low] a.py:3 blocks: no. x'))['findings'][0]['where'] == 'a.py:3'
+
+
+def test_a_blocking_finding_with_a_bare_path_is_refused_for_its_file_line():
+    errors = verdict.parse(verdict_text(verdict='FIX', findings='- [high] infra/README.md blocks: yes. Failure: x'))['errors']
+    assert any(e.startswith('a blocking finding needs "<file>:<line>"') for e in errors)
+
+
+def test_a_note_that_quotes_blocks_yes_later_stays_a_note():
+    parsed = verdict.parse(verdict_text(findings='- [low] blocks: no. a limit that a blocks: yes finding would name'))
+    assert parsed['errors'] == [] and parsed['findings'][0]['blocks'] is False
