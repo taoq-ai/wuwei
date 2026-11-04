@@ -77,7 +77,8 @@ def merge(root, data):  # another clone's plan.json merged into this one by item
 def expedite(rows, item_id):  # at most one expedite item is in progress (open)
     if other := next((r['id'] for r in rows if r.get('class') == 'expedite' and r.get('status') == 'open'
                       and r['id'].lower() != str(item_id).lower()), None):
-        raise ValueError(f'{other} is already expedite: at most one expedite item is in progress; finish it first')
+        raise ValueError(f'{other} is already expedite: at most one expedite item is in progress; free the slot with '
+                         f'wuwei plan done {other} --reason "<what finished it>", or wuwei plan park {other} --reason "<why it waits>"')
 
 
 # The names a lead may give its scores, mapped to the framework's own.

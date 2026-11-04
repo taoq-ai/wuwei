@@ -352,3 +352,12 @@ def test_plan_session_records_a_host_session_builder_and_refuses_an_agent_item(r
         assert (plan.find(root, 'I-1')['status'], plan.find(root, 'I-1')['session']) == (status, 'session_01ABC')
     assert cli.main(['plan', 'session', 'I-9', 'session_09']) == 2 and capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'
     assert cli.main(['plan', 'session', 'I-9']) == 2 and capsys.readouterr().err == 'wuwei: I-9 is not in the plan\n'  # no session id: still a refusal
+
+
+def test_a_second_expedite_is_refused_naming_the_holder_and_the_commands_that_free_it(root):
+    plan.add(root, 'E-1', 'urgent', 'G-1', 'acme/app', 'light', scores(), cls='expedite')
+    with pytest.raises(ValueError) as refused:
+        plan.add(root, 'E-2', 'urgent too', 'G-1', 'acme/app', 'light', scores(), cls='expedite')
+    assert str(refused.value).startswith('E-1 is already expedite')
+    assert 'wuwei plan done E-1 --reason' in str(refused.value) and 'wuwei plan park E-1 --reason' in str(refused.value)
+    assert plan.find(root, 'E-2') is None
