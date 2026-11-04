@@ -472,7 +472,7 @@ def test_the_gate_charter_shows_finding_lines_the_parser_accepts_and_the_shapes_
     for line in examples:
         assert verdict.parse(head + line + '\n')['errors'] == [], line
     for bad in ('- [high] cli/app.py:42 blocks: yes. Failure: a blank token passes\n  - seen at line 50',
-                '- [low] PR body, "Size:" line. blocks: no.', '- [medium] specs/x/plan.md:29 blocks: yes. Failure (contract, R-1)'):
+                '- [high] PR body, "Size:" line. blocks: yes. Failure: x', '- [medium] specs/x/plan.md:29 blocks: yes. Failure (contract, R-1)'):
         assert verdict.parse(head + bad + '\n')['errors'], bad
 
 
