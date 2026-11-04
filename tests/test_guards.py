@@ -2118,13 +2118,15 @@ def test_a_word_an_option_takes_is_no_refspec_or_option_of_the_push(root, ahead,
     assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == ('push' if moves else 'pass'), command
 
 
-CLUSTERS = ['-4f', '-f4', '-6f', '-qf6', '-4vf', '-uf6', '-fo=x', '-fo.x']  # git's parse-options: f in a cluster forces, -o takes the rest
+CLUSTERS = ['-4f', '-f4', '-6f', '-qf6', '-4vf', '-uf6', '-vq4f', '-qvu46f', '-fo=x', '-fo.x']  # git's parse-options: f in a cluster forces, -o takes the rest
 PLAIN = ['-4', '-6', '-q', '-v', '-u', '-4v', '-qu6']
 
 
-@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in CLUSTERS] + [f'git push origin i-1-change {c}' for c in CLUSTERS])
+@pytest.mark.parametrize('command', [f'git push {c} origin i-1-change' for c in CLUSTERS] + [f'git push origin i-1-change {c}' for c in CLUSTERS] + [
+    'git push -of origin i-1-change', 'git push -=f origin i-1-change'])
 def test_a_force_push_in_a_short_option_cluster_is_refused(root, fake, repo, command):
-    """Item push-force-clusters: digits and flags beside f (-4f, -qf6, -fo=x) still force the push, on any branch."""
+    """Item push-force-clusters: digits and flags beside f (-4f, -qf6, -fo=x) still force the push, on any branch. -of and -=f
+    do not force under git, yet the door reads them as written: main refused -of (FR-2), and -=f holds f before any dash (FR-1)."""
     assert guards.pre_tool(root, bash(command))['reason'].startswith('force push refused: history'), command
 
 
