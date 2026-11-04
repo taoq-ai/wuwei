@@ -112,7 +112,9 @@ departure the planner can record with a reason: breaking it is an `exception:` f
   row gives on risky, owner or contract paths, or for a logic conflict, counts as a fit. A Haiku
   gate gets the note even with a reason line or a `models` row.
 - Each launch records the model that ran, the model and effort asked for, the reason and the item
-  (`unrecorded` or `unmeasured` where the hook cannot read them). A gate's verdict row copies the
+  (`unrecorded` or `unmeasured` where the hook cannot read them). It also records `departed`:
+  `yes` or `no` from the same table check, `unmeasured` for a Codex launch, a launch with no brief
+  and every row recorded before the field. A gate's verdict row copies the
   model and effort.
 - Your own `models` rows in `.wuwei/config.toml` override any table row, for example
   `models = {"builder light" = "opus medium"}`. A row for a role and tier wins over one for the
@@ -167,8 +169,12 @@ planner still chooses a different gate model when the item's selected settings s
 ## Learning from it
 
 At each close the steward reads outcomes by seat, model and effort. The report's Learning section
-gives one line for each: launches, fix rounds per item, blocking findings, escapes traced to a
-passing gate and tokens, and how many launches had no readable model or effort. Where the numbers back it, the retro proposes a change to a row,
+gives one line for each: launches, blocking findings, escapes traced to a passing gate and tokens,
+and how many launches had no readable model or effort. Across all seats it gives fix rounds per
+item (an item's gate launches on any model, so a second round on another model still counts once),
+tokens per merged item (the tokens of seats whose launch names an item the plan marks done with a
+merged PR), and departures from the table with a `Model reason:` line and without one, over all
+departures, with the unmeasured launches beside them. Where the numbers back it, the retro proposes a change to a row,
 with those numbers, as advice. See [the learning loop](learning.md).
 
 ## Sources
