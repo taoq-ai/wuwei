@@ -1,0 +1,36 @@
+head tests/test_smart.py on the main runtime (b566362):
+FAILED tests/test_smart.py::test_acceptance_2_a_clear_item_whose_branch_raises_complexity_on_a_risky_path_owes_security
+FAILED tests/test_smart.py::test_a_clear_plan_field_on_an_owner_path_still_owes_security
+FAILED tests/test_smart.py::test_a_trust_path_owes_arch_from_complicated_up[complicated: one rule]
+FAILED tests/test_smart.py::test_a_trust_path_owes_arch_from_complicated_up[clear: a typo]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[complex: a new protocol nobody has run]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[Clear: shouted]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[clear]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[None]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_all_four_gates[chaotic: x]
+FAILED tests/test_smart.py::test_goal_runs_at_smart_on_a_complex_item_an_owner_or_risky_path_or_a_promise_in_doubt[complex: x-src/app.py-False-arch, quality, security, goal]
+FAILED tests/test_smart.py::test_goal_runs_at_smart_on_a_complex_item_an_owner_or_risky_path_or_a_promise_in_doubt[clear: x-src/core/rules.py-False-quality, security, goal]
+FAILED tests/test_smart.py::test_goal_runs_at_smart_on_a_complex_item_an_owner_or_risky_path_or_a_promise_in_doubt[clear: x-deploy/run.py-False-quality, security, goal]
+FAILED tests/test_smart.py::test_goal_runs_at_smart_on_a_complex_item_an_owner_or_risky_path_or_a_promise_in_doubt[complicated: x-src/migrate.py-False-quality, security, goal]
+14 failed, 60 passed in 0.45s
+
+main tests/test_smart.py on the head runtime:
+FAILED tests/test_smart.py::test_acceptance_2_a_clear_item_whose_branch_raises_complexity_on_a_risky_path_owes_security
+FAILED tests/test_smart.py::test_a_clear_plan_field_on_an_owner_path_still_owes_security
+FAILED tests/test_smart.py::test_a_trust_path_owes_arch_from_complicated_up[complicated: one rule]
+FAILED tests/test_smart.py::test_a_trust_path_owes_arch_from_complicated_up[clear: a typo]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[complex: a new protocol nobody has run]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[Clear: shouted]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[clear]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[None]
+FAILED tests/test_smart.py::test_a_complex_or_unclassified_item_owes_quality_security_and_arch[chaotic: x]
+FAILED tests/test_smart.py::test_spec_artifacts_are_owed_only_by_a_complex_item_and_hold_its_merge
+11 failed, 56 passed in 0.50s
+
+head tests/test_smart.py on the head runtime:
+74 passed in 0.48s
+
+The main test_smart.py spec-artifact row on the head runtime: its gaps list holds one more item, (gates missing at head aaaaaaa: goal, safety), the complex trigger.
+Every other crossed failure differs only by goal added: 7 rows arch, quality, security -> + goal (complex or unclassified, complicated trust path); 3 rows quality, security -> + goal (risky rise, owner path, clear trust path).

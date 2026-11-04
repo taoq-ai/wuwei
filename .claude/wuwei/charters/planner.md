@@ -126,7 +126,7 @@ raises it (`_common.md`, Done). Where two settings in a row apply, the later one
 | `sentinel-security` | Opus 5.5 high; Opus 5.5 xhigh at full or on risky, owner or contract paths |
 | `sentinel-arch` | Opus 5.5 high |
 | `sentinel-quality` | Sonnet 5.5 high; Opus 5.5 high at full or on risky, owner or contract paths |
-| `sentinel-goal` | Sonnet 5.5 high |
+| `sentinel-goal` | Sonnet 5.5 high; Opus 5.5 high at full or on risky, owner or contract paths |
 | `shepherd` | Sonnet 5.5 medium; Opus 5.5 high for a conflict where both sides changed logic |
 | `steward` | Opus 5.5 high |
 | lookups and searches | Haiku 5.5 low |

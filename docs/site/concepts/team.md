@@ -8,7 +8,7 @@
 | sentinel-arch | architecture gate: conformance to the written design, coupling, contracts, quality attributes, budgets | coupling and contracts erode quietly |
 | sentinel-quality | quality gate, on a different model than the builder when the [model table](models.md) puts the rest on one | tests that do not test, code that should not exist |
 | sentinel-security | security gate | trust boundaries need a reviewer who looks only at them |
-| sentinel-goal | goal gate (full tier) | building the wrong thing well is still wrong |
+| sentinel-goal | goal gate and red team (full; smart when complex, on owner or risky paths, or in doubt) | building the wrong thing well is still wrong |
 | shepherd | PRs from raise to merge: reviewers, threads, CI, conflicts, the evidence comment | PRs die of neglect, not of bad code |
 | steward | the retro at each checkpoint | someone must learn from the day without being in it |
 

@@ -197,13 +197,15 @@ rows above and the domain and the measured signals at the head only add to them:
 | --- | --- |
 | clear | the standard rows above |
 | complicated, on a trust path (auth, sessions, tokens, secrets, permissions, grants, policies) | + arch |
-| complex, or no domain recorded, or a domain in another spelling | quality, security and arch, a short `How this fails` and the spec engine's artifacts, which hold the merge |
+| complex, or no domain recorded, or a domain in another spelling | all four gates, a short `How this fails` and the spec engine's artifacts, which hold the merge |
 | a changed Python function whose decision nodes (if, loop, except, assert, boolean operator, comprehension, match case, conditional expression), read with `ast` at the base and the head and summed over functions of one name, rise to 10 or more (McCabe complexity over 10); a head that cannot be read or parsed counts as a rise | + security |
 | a code patch that names what a guard waives or refuses (deny, ask, allow, refuse, waive, excepted, exception, `permissionDecision`, `PROCESS`, `DUTY`), or a code file with no patch | + arch |
-| the promise marked in doubt (`--in-doubt`) | + goal |
+| owner or risky paths, or the promise marked in doubt (`--in-doubt`) | + goal |
 
 A model-written or seat-written field can only raise the set: a `clear` domain on an owner path
-still takes security, and on a guard change still takes arch.
+still takes security and goal, and on a guard change still takes arch. The goal gate is the red
+team: it names the three likeliest ways the change fails its promise in real use and runs each as
+a probe in a `git archive` copy of the head.
 
 A one-line config flag costs one gate. After a fix round only the gate that found the problem
 re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
