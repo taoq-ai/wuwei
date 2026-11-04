@@ -33,7 +33,9 @@ DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merg
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
+LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
+SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[$\'"]*(config|plan)\b',))  # door words for a seat only
+SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -69,6 +71,8 @@ HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions
            '(<project>/memory/<file>) takes Write, Edit, a redirect, tee, sed -i, truncate or rm on its literal path, from outside memory.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
+OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gates a change owes and who reviews it, so only the owner's own session changes "
+              'them (wuwei config <key> <value>, wuwei plan add, done, park, ...): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
@@ -388,21 +392,22 @@ def leak(root, text):
     return None
 
 
-def bash(root, command, cwd, session):
-    parts = segments(command)
+def bash(root, command, cwd, session, seat=False):  # seat: the payload names an agent_type, so OWNED is not its to write
+    parts, own = segments(command), OWNED * seat
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
-            w, command, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS if all(re.search(w, command, re.I) for w in d)]):  # #1117
+            w, command, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS + SEAT_WORDS * seat if all(re.search(w, command, re.I) for w in d)]):
         return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
                     'anywhere in the text counts, a heredoc body or quoted prose included: run the door command in its own one-line '
-                    'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.')
+                    'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.' + OWNER_ONLY * any(
+                        re.search(w, command, re.I) for (w,) in SEAT_WORDS * seat))  # #1117
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
         program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
-        writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
-        if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
+        writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*i|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv}
+        if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
-            return deny(LEDGER_DENIED)
+            return deny(LEDGER_DENIED + OWNER_ONLY * seat)
         if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
                 held and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):  # ln, mv, cp, find, python can stage a link
             return deny(HARNESS)
@@ -410,6 +415,8 @@ def bash(root, command, cwd, session):
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
         if re.search(r'(^wuwei|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0(--\0)?hook(\0|$)', '\0'.join([program, *argv[1:]])):  # literal spellings
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
+        if seat and re.search(SEAT_CLI, '\0'.join([program, *argv[1:]])):
+            return deny(OWNER_ONLY.strip())
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
         if program in ('git', 'git-clean'):
@@ -438,10 +445,10 @@ def bash(root, command, cwd, session):
 def pre_tool(root, payload):
     tool = payload.get('tool_name', '')
     data = payload.get('tool_input') or {}
-    cwd = payload.get('cwd') or '.'
+    cwd, seat = payload.get('cwd') or '.', bool(payload.get('agent_type'))  # the harness names a seat's agent_type, never the owner's session
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny(LEDGER_DENIED) if any(records(path, CACHE) for path in paths) else deny(HARNESS) if any(harness(p, keep=True) for p in paths) else None
+        return deny(LEDGER_DENIED + OWNER_ONLY * seat) if any(records(p, CACHE + OWNED * seat) for p in paths) else deny(HARNESS) if any(harness(p, keep=True) for p in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
@@ -484,5 +491,5 @@ def pre_tool(root, payload):
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':
-        return bash(root, str(data.get('command', '')), cwd, payload.get('session_id', ''))
+        return bash(root, str(data.get('command', '')), cwd, payload.get('session_id', ''), seat)
     return None

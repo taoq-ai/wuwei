@@ -1,0 +1,864 @@
+0000	refuse	echo x > .wuwei/config.toml
+0001	refuse	echo x >> .wuwei/config.toml
+0002	refuse	echo x | tee .wuwei/config.toml
+0003	refuse	cp /dev/null .wuwei/config.toml
+0004	refuse	mv src.txt .wuwei/config.toml
+0005	refuse	dd if=/dev/null of=.wuwei/config.toml
+0006	refuse	sed -i 's/^/x/' .wuwei/config.toml
+0007	refuse	sed -i '' 's/^/x/' .wuwei/config.toml
+0008	refuse	sed -i.bak 's/^/x/' .wuwei/config.toml
+0009	refuse	truncate -s0 .wuwei/config.toml
+0010	refuse	rm .wuwei/config.toml
+0011	refuse	ln -sf /dev/null .wuwei/config.toml
+0012	refuse	python3 -c "open('.wuwei/config.toml', 'w')"
+0013	refuse	find .wuwei/config.toml -delete
+0014	refuse	bash -c 'echo x > .wuwei/config.toml'
+0015	refuse	echo x > .wuwei//config.toml
+0016	refuse	echo x >> .wuwei//config.toml
+0017	refuse	echo x | tee .wuwei//config.toml
+0018	refuse	cp /dev/null .wuwei//config.toml
+0019	refuse	mv src.txt .wuwei//config.toml
+0020	refuse	dd if=/dev/null of=.wuwei//config.toml
+0021	refuse	sed -i 's/^/x/' .wuwei//config.toml
+0022	refuse	sed -i '' 's/^/x/' .wuwei//config.toml
+0023	refuse	sed -i.bak 's/^/x/' .wuwei//config.toml
+0024	refuse	truncate -s0 .wuwei//config.toml
+0025	refuse	rm .wuwei//config.toml
+0026	refuse	ln -sf /dev/null .wuwei//config.toml
+0027	refuse	python3 -c "open('.wuwei//config.toml', 'w')"
+0028	refuse	find .wuwei//config.toml -delete
+0029	refuse	bash -c 'echo x > .wuwei//config.toml'
+0030	pass	echo x > .wuwei/%63onfig.toml
+0031	pass	echo x >> .wuwei/%63onfig.toml
+0032	pass	echo x | tee .wuwei/%63onfig.toml
+0033	pass	cp /dev/null .wuwei/%63onfig.toml
+0034	pass	mv src.txt .wuwei/%63onfig.toml
+0035	pass	dd if=/dev/null of=.wuwei/%63onfig.toml
+0036	pass	sed -i 's/^/x/' .wuwei/%63onfig.toml
+0037	pass	sed -i '' 's/^/x/' .wuwei/%63onfig.toml
+0038	pass	sed -i.bak 's/^/x/' .wuwei/%63onfig.toml
+0039	pass	truncate -s0 .wuwei/%63onfig.toml
+0040	pass	rm .wuwei/%63onfig.toml
+0041	pass	ln -sf /dev/null .wuwei/%63onfig.toml
+0042	pass	python3 -c "open('.wuwei/%63onfig.toml', 'w')"
+0043	pass	find .wuwei/%63onfig.toml -delete
+0044	pass	bash -c 'echo x > .wuwei/%63onfig.toml'
+0045	refuse	echo x > ./.wuwei/./config.toml
+0046	refuse	echo x >> ./.wuwei/./config.toml
+0047	refuse	echo x | tee ./.wuwei/./config.toml
+0048	refuse	cp /dev/null ./.wuwei/./config.toml
+0049	refuse	mv src.txt ./.wuwei/./config.toml
+0050	refuse	dd if=/dev/null of=./.wuwei/./config.toml
+0051	refuse	sed -i 's/^/x/' ./.wuwei/./config.toml
+0052	refuse	sed -i '' 's/^/x/' ./.wuwei/./config.toml
+0053	refuse	sed -i.bak 's/^/x/' ./.wuwei/./config.toml
+0054	refuse	truncate -s0 ./.wuwei/./config.toml
+0055	refuse	rm ./.wuwei/./config.toml
+0056	refuse	ln -sf /dev/null ./.wuwei/./config.toml
+0057	refuse	python3 -c "open('./.wuwei/./config.toml', 'w')"
+0058	refuse	find ./.wuwei/./config.toml -delete
+0059	refuse	bash -c 'echo x > ./.wuwei/./config.toml'
+0060	refuse	echo x > x/../.wuwei/config.toml
+0061	refuse	echo x >> x/../.wuwei/config.toml
+0062	refuse	echo x | tee x/../.wuwei/config.toml
+0063	refuse	cp /dev/null x/../.wuwei/config.toml
+0064	refuse	mv src.txt x/../.wuwei/config.toml
+0065	refuse	dd if=/dev/null of=x/../.wuwei/config.toml
+0066	refuse	sed -i 's/^/x/' x/../.wuwei/config.toml
+0067	refuse	sed -i '' 's/^/x/' x/../.wuwei/config.toml
+0068	refuse	sed -i.bak 's/^/x/' x/../.wuwei/config.toml
+0069	refuse	truncate -s0 x/../.wuwei/config.toml
+0070	refuse	rm x/../.wuwei/config.toml
+0071	refuse	ln -sf /dev/null x/../.wuwei/config.toml
+0072	refuse	python3 -c "open('x/../.wuwei/config.toml', 'w')"
+0073	refuse	find x/../.wuwei/config.toml -delete
+0074	refuse	bash -c 'echo x > x/../.wuwei/config.toml'
+0075	refuse	echo x > $PWD/.wuwei/config.toml
+0076	refuse	echo x >> $PWD/.wuwei/config.toml
+0077	refuse	echo x | tee $PWD/.wuwei/config.toml
+0078	refuse	cp /dev/null $PWD/.wuwei/config.toml
+0079	refuse	mv src.txt $PWD/.wuwei/config.toml
+0080	refuse	dd if=/dev/null of=$PWD/.wuwei/config.toml
+0081	refuse	sed -i 's/^/x/' $PWD/.wuwei/config.toml
+0082	refuse	sed -i '' 's/^/x/' $PWD/.wuwei/config.toml
+0083	refuse	sed -i.bak 's/^/x/' $PWD/.wuwei/config.toml
+0084	refuse	truncate -s0 $PWD/.wuwei/config.toml
+0085	refuse	rm $PWD/.wuwei/config.toml
+0086	refuse	ln -sf /dev/null $PWD/.wuwei/config.toml
+0087	refuse	python3 -c "open('$PWD/.wuwei/config.toml', 'w')"
+0088	refuse	find $PWD/.wuwei/config.toml -delete
+0089	refuse	bash -c 'echo x > $PWD/.wuwei/config.toml'
+0090	refuse	echo x > .wuwei/co*toml
+0091	refuse	echo x >> .wuwei/co*toml
+0092	refuse	echo x | tee .wuwei/co*toml
+0093	refuse	cp /dev/null .wuwei/co*toml
+0094	refuse	mv src.txt .wuwei/co*toml
+0095	refuse	dd if=/dev/null of=.wuwei/co*toml
+0096	refuse	sed -i 's/^/x/' .wuwei/co*toml
+0097	refuse	sed -i '' 's/^/x/' .wuwei/co*toml
+0098	refuse	sed -i.bak 's/^/x/' .wuwei/co*toml
+0099	refuse	truncate -s0 .wuwei/co*toml
+0100	refuse	rm .wuwei/co*toml
+0101	refuse	ln -sf /dev/null .wuwei/co*toml
+0102	refuse	python3 -c "open('.wuwei/co*toml', 'w')"
+0103	refuse	find .wuwei/co*toml -delete
+0104	refuse	bash -c 'echo x > .wuwei/co*toml'
+0105	refuse	echo x > .WUWEI/CONFIG.TOML
+0106	refuse	echo x >> .WUWEI/CONFIG.TOML
+0107	refuse	echo x | tee .WUWEI/CONFIG.TOML
+0108	refuse	cp /dev/null .WUWEI/CONFIG.TOML
+0109	refuse	mv src.txt .WUWEI/CONFIG.TOML
+0110	refuse	dd if=/dev/null of=.WUWEI/CONFIG.TOML
+0111	refuse	sed -i 's/^/x/' .WUWEI/CONFIG.TOML
+0112	refuse	sed -i '' 's/^/x/' .WUWEI/CONFIG.TOML
+0113	refuse	sed -i.bak 's/^/x/' .WUWEI/CONFIG.TOML
+0114	refuse	truncate -s0 .WUWEI/CONFIG.TOML
+0115	refuse	rm .WUWEI/CONFIG.TOML
+0116	refuse	ln -sf /dev/null .WUWEI/CONFIG.TOML
+0117	refuse	python3 -c "open('.WUWEI/CONFIG.TOML', 'w')"
+0118	refuse	find .WUWEI/CONFIG.TOML -delete
+0119	refuse	bash -c 'echo x > .WUWEI/CONFIG.TOML'
+0120	refuse	cd .wuwei && echo x > config.toml
+0121	refuse	cd .wuwei && echo x >> config.toml
+0122	refuse	cd .wuwei && echo x | tee config.toml
+0123	refuse	cd .wuwei && cp /dev/null config.toml
+0124	refuse	cd .wuwei && mv ../src.txt config.toml
+0125	refuse	cd .wuwei && dd if=/dev/null of=config.toml
+0126	refuse	cd .wuwei && sed -i 's/^/x/' config.toml
+0127	refuse	cd .wuwei && sed -i '' 's/^/x/' config.toml
+0128	refuse	cd .wuwei && sed -i.bak 's/^/x/' config.toml
+0129	refuse	cd .wuwei && truncate -s0 config.toml
+0130	refuse	cd .wuwei && rm config.toml
+0131	refuse	cd .wuwei && ln -sf /dev/null config.toml
+0132	refuse	cd .wuwei && python3 -c "open('config.toml', 'w')"
+0133	refuse	cd .wuwei && find config.toml -delete
+0134	refuse	cd .wuwei && bash -c 'echo x > config.toml'
+0135	refuse	cd .wuwei && echo x > .//config.toml
+0136	refuse	cd .wuwei && echo x >> .//config.toml
+0137	refuse	cd .wuwei && echo x | tee .//config.toml
+0138	refuse	cd .wuwei && cp /dev/null .//config.toml
+0139	refuse	cd .wuwei && mv ../src.txt .//config.toml
+0140	refuse	cd .wuwei && dd if=/dev/null of=.//config.toml
+0141	refuse	cd .wuwei && sed -i 's/^/x/' .//config.toml
+0142	refuse	cd .wuwei && sed -i '' 's/^/x/' .//config.toml
+0143	refuse	cd .wuwei && sed -i.bak 's/^/x/' .//config.toml
+0144	refuse	cd .wuwei && truncate -s0 .//config.toml
+0145	refuse	cd .wuwei && rm .//config.toml
+0146	refuse	cd .wuwei && ln -sf /dev/null .//config.toml
+0147	refuse	cd .wuwei && python3 -c "open('.//config.toml', 'w')"
+0148	refuse	cd .wuwei && find .//config.toml -delete
+0149	refuse	cd .wuwei && bash -c 'echo x > .//config.toml'
+0150	refuse	cd .wuwei && echo x > %63onfig.toml
+0151	refuse	cd .wuwei && echo x >> %63onfig.toml
+0152	refuse	cd .wuwei && echo x | tee %63onfig.toml
+0153	refuse	cd .wuwei && cp /dev/null %63onfig.toml
+0154	refuse	cd .wuwei && mv ../src.txt %63onfig.toml
+0155	refuse	cd .wuwei && dd if=/dev/null of=%63onfig.toml
+0156	refuse	cd .wuwei && sed -i 's/^/x/' %63onfig.toml
+0157	refuse	cd .wuwei && sed -i '' 's/^/x/' %63onfig.toml
+0158	refuse	cd .wuwei && sed -i.bak 's/^/x/' %63onfig.toml
+0159	refuse	cd .wuwei && truncate -s0 %63onfig.toml
+0160	refuse	cd .wuwei && rm %63onfig.toml
+0161	refuse	cd .wuwei && ln -sf /dev/null %63onfig.toml
+0162	refuse	cd .wuwei && python3 -c "open('%63onfig.toml', 'w')"
+0163	refuse	cd .wuwei && find %63onfig.toml -delete
+0164	refuse	cd .wuwei && bash -c 'echo x > %63onfig.toml'
+0165	refuse	cd .wuwei && echo x > ./config.toml
+0166	refuse	cd .wuwei && echo x >> ./config.toml
+0167	refuse	cd .wuwei && echo x | tee ./config.toml
+0168	refuse	cd .wuwei && cp /dev/null ./config.toml
+0169	refuse	cd .wuwei && mv ../src.txt ./config.toml
+0170	refuse	cd .wuwei && dd if=/dev/null of=./config.toml
+0171	refuse	cd .wuwei && sed -i 's/^/x/' ./config.toml
+0172	refuse	cd .wuwei && sed -i '' 's/^/x/' ./config.toml
+0173	refuse	cd .wuwei && sed -i.bak 's/^/x/' ./config.toml
+0174	refuse	cd .wuwei && truncate -s0 ./config.toml
+0175	refuse	cd .wuwei && rm ./config.toml
+0176	refuse	cd .wuwei && ln -sf /dev/null ./config.toml
+0177	refuse	cd .wuwei && python3 -c "open('./config.toml', 'w')"
+0178	refuse	cd .wuwei && find ./config.toml -delete
+0179	refuse	cd .wuwei && bash -c 'echo x > ./config.toml'
+0180	refuse	cd .wuwei && echo x > ../.wuwei/config.toml
+0181	refuse	cd .wuwei && echo x >> ../.wuwei/config.toml
+0182	refuse	cd .wuwei && echo x | tee ../.wuwei/config.toml
+0183	refuse	cd .wuwei && cp /dev/null ../.wuwei/config.toml
+0184	refuse	cd .wuwei && mv ../src.txt ../.wuwei/config.toml
+0185	refuse	cd .wuwei && dd if=/dev/null of=../.wuwei/config.toml
+0186	refuse	cd .wuwei && sed -i 's/^/x/' ../.wuwei/config.toml
+0187	refuse	cd .wuwei && sed -i '' 's/^/x/' ../.wuwei/config.toml
+0188	refuse	cd .wuwei && sed -i.bak 's/^/x/' ../.wuwei/config.toml
+0189	refuse	cd .wuwei && truncate -s0 ../.wuwei/config.toml
+0190	refuse	cd .wuwei && rm ../.wuwei/config.toml
+0191	refuse	cd .wuwei && ln -sf /dev/null ../.wuwei/config.toml
+0192	refuse	cd .wuwei && python3 -c "open('../.wuwei/config.toml', 'w')"
+0193	refuse	cd .wuwei && find ../.wuwei/config.toml -delete
+0194	refuse	cd .wuwei && bash -c 'echo x > ../.wuwei/config.toml'
+0195	refuse	cd .wuwei && echo x > $PWD/config.toml
+0196	refuse	cd .wuwei && echo x >> $PWD/config.toml
+0197	refuse	cd .wuwei && echo x | tee $PWD/config.toml
+0198	refuse	cd .wuwei && cp /dev/null $PWD/config.toml
+0199	refuse	cd .wuwei && mv ../src.txt $PWD/config.toml
+0200	refuse	cd .wuwei && dd if=/dev/null of=$PWD/config.toml
+0201	refuse	cd .wuwei && sed -i 's/^/x/' $PWD/config.toml
+0202	refuse	cd .wuwei && sed -i '' 's/^/x/' $PWD/config.toml
+0203	refuse	cd .wuwei && sed -i.bak 's/^/x/' $PWD/config.toml
+0204	refuse	cd .wuwei && truncate -s0 $PWD/config.toml
+0205	refuse	cd .wuwei && rm $PWD/config.toml
+0206	refuse	cd .wuwei && ln -sf /dev/null $PWD/config.toml
+0207	refuse	cd .wuwei && python3 -c "open('$PWD/config.toml', 'w')"
+0208	refuse	cd .wuwei && find $PWD/config.toml -delete
+0209	refuse	cd .wuwei && bash -c 'echo x > $PWD/config.toml'
+0210	refuse	cd .wuwei && echo x > co*toml
+0211	refuse	cd .wuwei && echo x >> co*toml
+0212	refuse	cd .wuwei && echo x | tee co*toml
+0213	refuse	cd .wuwei && cp /dev/null co*toml
+0214	refuse	cd .wuwei && mv ../src.txt co*toml
+0215	refuse	cd .wuwei && dd if=/dev/null of=co*toml
+0216	refuse	cd .wuwei && sed -i 's/^/x/' co*toml
+0217	refuse	cd .wuwei && sed -i '' 's/^/x/' co*toml
+0218	refuse	cd .wuwei && sed -i.bak 's/^/x/' co*toml
+0219	refuse	cd .wuwei && truncate -s0 co*toml
+0220	refuse	cd .wuwei && rm co*toml
+0221	refuse	cd .wuwei && ln -sf /dev/null co*toml
+0222	refuse	cd .wuwei && python3 -c "open('co*toml', 'w')"
+0223	refuse	cd .wuwei && find co*toml -delete
+0224	refuse	cd .wuwei && bash -c 'echo x > co*toml'
+0225	refuse	cd .wuwei && echo x > CONFIG.TOML
+0226	refuse	cd .wuwei && echo x >> CONFIG.TOML
+0227	refuse	cd .wuwei && echo x | tee CONFIG.TOML
+0228	refuse	cd .wuwei && cp /dev/null CONFIG.TOML
+0229	refuse	cd .wuwei && mv ../src.txt CONFIG.TOML
+0230	refuse	cd .wuwei && dd if=/dev/null of=CONFIG.TOML
+0231	refuse	cd .wuwei && sed -i 's/^/x/' CONFIG.TOML
+0232	refuse	cd .wuwei && sed -i '' 's/^/x/' CONFIG.TOML
+0233	refuse	cd .wuwei && sed -i.bak 's/^/x/' CONFIG.TOML
+0234	refuse	cd .wuwei && truncate -s0 CONFIG.TOML
+0235	refuse	cd .wuwei && rm CONFIG.TOML
+0236	refuse	cd .wuwei && ln -sf /dev/null CONFIG.TOML
+0237	refuse	cd .wuwei && python3 -c "open('CONFIG.TOML', 'w')"
+0238	refuse	cd .wuwei && find CONFIG.TOML -delete
+0239	refuse	cd .wuwei && bash -c 'echo x > CONFIG.TOML'
+0240	refuse	echo x | env -C .wuwei tee config.toml
+0241	refuse	env -C .wuwei cp /dev/null config.toml
+0242	refuse	env -C .wuwei mv ../src.txt config.toml
+0243	refuse	env -C .wuwei dd if=/dev/null of=config.toml
+0244	refuse	env -C .wuwei sed -i 's/^/x/' config.toml
+0245	refuse	env -C .wuwei sed -i '' 's/^/x/' config.toml
+0246	refuse	env -C .wuwei sed -i.bak 's/^/x/' config.toml
+0247	refuse	env -C .wuwei truncate -s0 config.toml
+0248	refuse	env -C .wuwei rm config.toml
+0249	refuse	env -C .wuwei ln -sf /dev/null config.toml
+0250	refuse	env -C .wuwei python3 -c "open('config.toml', 'w')"
+0251	refuse	env -C .wuwei find config.toml -delete
+0252	refuse	echo x | env -C .wuwei tee .//config.toml
+0253	refuse	env -C .wuwei cp /dev/null .//config.toml
+0254	refuse	env -C .wuwei mv ../src.txt .//config.toml
+0255	refuse	env -C .wuwei dd if=/dev/null of=.//config.toml
+0256	refuse	env -C .wuwei sed -i 's/^/x/' .//config.toml
+0257	refuse	env -C .wuwei sed -i '' 's/^/x/' .//config.toml
+0258	refuse	env -C .wuwei sed -i.bak 's/^/x/' .//config.toml
+0259	refuse	env -C .wuwei truncate -s0 .//config.toml
+0260	refuse	env -C .wuwei rm .//config.toml
+0261	refuse	env -C .wuwei ln -sf /dev/null .//config.toml
+0262	refuse	env -C .wuwei python3 -c "open('.//config.toml', 'w')"
+0263	refuse	env -C .wuwei find .//config.toml -delete
+0264	refuse	echo x | env -C .wuwei tee %63onfig.toml
+0265	refuse	env -C .wuwei cp /dev/null %63onfig.toml
+0266	refuse	env -C .wuwei mv ../src.txt %63onfig.toml
+0267	refuse	env -C .wuwei dd if=/dev/null of=%63onfig.toml
+0268	refuse	env -C .wuwei sed -i 's/^/x/' %63onfig.toml
+0269	refuse	env -C .wuwei sed -i '' 's/^/x/' %63onfig.toml
+0270	refuse	env -C .wuwei sed -i.bak 's/^/x/' %63onfig.toml
+0271	refuse	env -C .wuwei truncate -s0 %63onfig.toml
+0272	refuse	env -C .wuwei rm %63onfig.toml
+0273	refuse	env -C .wuwei ln -sf /dev/null %63onfig.toml
+0274	refuse	env -C .wuwei python3 -c "open('%63onfig.toml', 'w')"
+0275	refuse	env -C .wuwei find %63onfig.toml -delete
+0276	refuse	echo x | env -C .wuwei tee ./config.toml
+0277	refuse	env -C .wuwei cp /dev/null ./config.toml
+0278	refuse	env -C .wuwei mv ../src.txt ./config.toml
+0279	refuse	env -C .wuwei dd if=/dev/null of=./config.toml
+0280	refuse	env -C .wuwei sed -i 's/^/x/' ./config.toml
+0281	refuse	env -C .wuwei sed -i '' 's/^/x/' ./config.toml
+0282	refuse	env -C .wuwei sed -i.bak 's/^/x/' ./config.toml
+0283	refuse	env -C .wuwei truncate -s0 ./config.toml
+0284	refuse	env -C .wuwei rm ./config.toml
+0285	refuse	env -C .wuwei ln -sf /dev/null ./config.toml
+0286	refuse	env -C .wuwei python3 -c "open('./config.toml', 'w')"
+0287	refuse	env -C .wuwei find ./config.toml -delete
+0288	refuse	echo x | env -C .wuwei tee ../.wuwei/config.toml
+0289	refuse	env -C .wuwei cp /dev/null ../.wuwei/config.toml
+0290	refuse	env -C .wuwei mv ../src.txt ../.wuwei/config.toml
+0291	refuse	env -C .wuwei dd if=/dev/null of=../.wuwei/config.toml
+0292	refuse	env -C .wuwei sed -i 's/^/x/' ../.wuwei/config.toml
+0293	refuse	env -C .wuwei sed -i '' 's/^/x/' ../.wuwei/config.toml
+0294	refuse	env -C .wuwei sed -i.bak 's/^/x/' ../.wuwei/config.toml
+0295	refuse	env -C .wuwei truncate -s0 ../.wuwei/config.toml
+0296	refuse	env -C .wuwei rm ../.wuwei/config.toml
+0297	refuse	env -C .wuwei ln -sf /dev/null ../.wuwei/config.toml
+0298	refuse	env -C .wuwei python3 -c "open('../.wuwei/config.toml', 'w')"
+0299	refuse	env -C .wuwei find ../.wuwei/config.toml -delete
+0300	refuse	echo x | env -C .wuwei tee $PWD/config.toml
+0301	refuse	env -C .wuwei cp /dev/null $PWD/config.toml
+0302	refuse	env -C .wuwei mv ../src.txt $PWD/config.toml
+0303	refuse	env -C .wuwei dd if=/dev/null of=$PWD/config.toml
+0304	refuse	env -C .wuwei sed -i 's/^/x/' $PWD/config.toml
+0305	refuse	env -C .wuwei sed -i '' 's/^/x/' $PWD/config.toml
+0306	refuse	env -C .wuwei sed -i.bak 's/^/x/' $PWD/config.toml
+0307	refuse	env -C .wuwei truncate -s0 $PWD/config.toml
+0308	refuse	env -C .wuwei rm $PWD/config.toml
+0309	refuse	env -C .wuwei ln -sf /dev/null $PWD/config.toml
+0310	refuse	env -C .wuwei python3 -c "open('$PWD/config.toml', 'w')"
+0311	refuse	env -C .wuwei find $PWD/config.toml -delete
+0312	refuse	echo x | env -C .wuwei tee co*toml
+0313	refuse	env -C .wuwei cp /dev/null co*toml
+0314	refuse	env -C .wuwei mv ../src.txt co*toml
+0315	refuse	env -C .wuwei dd if=/dev/null of=co*toml
+0316	refuse	env -C .wuwei sed -i 's/^/x/' co*toml
+0317	refuse	env -C .wuwei sed -i '' 's/^/x/' co*toml
+0318	refuse	env -C .wuwei sed -i.bak 's/^/x/' co*toml
+0319	refuse	env -C .wuwei truncate -s0 co*toml
+0320	refuse	env -C .wuwei rm co*toml
+0321	refuse	env -C .wuwei ln -sf /dev/null co*toml
+0322	refuse	env -C .wuwei python3 -c "open('co*toml', 'w')"
+0323	refuse	env -C .wuwei find co*toml -delete
+0324	refuse	echo x | env -C .wuwei tee CONFIG.TOML
+0325	refuse	env -C .wuwei cp /dev/null CONFIG.TOML
+0326	refuse	env -C .wuwei mv ../src.txt CONFIG.TOML
+0327	refuse	env -C .wuwei dd if=/dev/null of=CONFIG.TOML
+0328	refuse	env -C .wuwei sed -i 's/^/x/' CONFIG.TOML
+0329	refuse	env -C .wuwei sed -i '' 's/^/x/' CONFIG.TOML
+0330	refuse	env -C .wuwei sed -i.bak 's/^/x/' CONFIG.TOML
+0331	refuse	env -C .wuwei truncate -s0 CONFIG.TOML
+0332	refuse	env -C .wuwei rm CONFIG.TOML
+0333	refuse	env -C .wuwei ln -sf /dev/null CONFIG.TOML
+0334	refuse	env -C .wuwei python3 -c "open('CONFIG.TOML', 'w')"
+0335	refuse	env -C .wuwei find CONFIG.TOML -delete
+0336	refuse	echo x | sudo -D .wuwei tee config.toml
+0337	refuse	sudo -D .wuwei cp /dev/null config.toml
+0338	refuse	sudo -D .wuwei mv ../src.txt config.toml
+0339	refuse	sudo -D .wuwei dd if=/dev/null of=config.toml
+0340	refuse	sudo -D .wuwei sed -i 's/^/x/' config.toml
+0341	refuse	sudo -D .wuwei sed -i '' 's/^/x/' config.toml
+0342	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' config.toml
+0343	refuse	sudo -D .wuwei truncate -s0 config.toml
+0344	refuse	sudo -D .wuwei rm config.toml
+0345	refuse	sudo -D .wuwei ln -sf /dev/null config.toml
+0346	refuse	sudo -D .wuwei python3 -c "open('config.toml', 'w')"
+0347	refuse	sudo -D .wuwei find config.toml -delete
+0348	refuse	echo x | sudo -D .wuwei tee .//config.toml
+0349	refuse	sudo -D .wuwei cp /dev/null .//config.toml
+0350	refuse	sudo -D .wuwei mv ../src.txt .//config.toml
+0351	refuse	sudo -D .wuwei dd if=/dev/null of=.//config.toml
+0352	refuse	sudo -D .wuwei sed -i 's/^/x/' .//config.toml
+0353	refuse	sudo -D .wuwei sed -i '' 's/^/x/' .//config.toml
+0354	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' .//config.toml
+0355	refuse	sudo -D .wuwei truncate -s0 .//config.toml
+0356	refuse	sudo -D .wuwei rm .//config.toml
+0357	refuse	sudo -D .wuwei ln -sf /dev/null .//config.toml
+0358	refuse	sudo -D .wuwei python3 -c "open('.//config.toml', 'w')"
+0359	refuse	sudo -D .wuwei find .//config.toml -delete
+0360	refuse	echo x | sudo -D .wuwei tee %63onfig.toml
+0361	refuse	sudo -D .wuwei cp /dev/null %63onfig.toml
+0362	refuse	sudo -D .wuwei mv ../src.txt %63onfig.toml
+0363	refuse	sudo -D .wuwei dd if=/dev/null of=%63onfig.toml
+0364	refuse	sudo -D .wuwei sed -i 's/^/x/' %63onfig.toml
+0365	refuse	sudo -D .wuwei sed -i '' 's/^/x/' %63onfig.toml
+0366	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' %63onfig.toml
+0367	refuse	sudo -D .wuwei truncate -s0 %63onfig.toml
+0368	refuse	sudo -D .wuwei rm %63onfig.toml
+0369	refuse	sudo -D .wuwei ln -sf /dev/null %63onfig.toml
+0370	refuse	sudo -D .wuwei python3 -c "open('%63onfig.toml', 'w')"
+0371	refuse	sudo -D .wuwei find %63onfig.toml -delete
+0372	refuse	echo x | sudo -D .wuwei tee ./config.toml
+0373	refuse	sudo -D .wuwei cp /dev/null ./config.toml
+0374	refuse	sudo -D .wuwei mv ../src.txt ./config.toml
+0375	refuse	sudo -D .wuwei dd if=/dev/null of=./config.toml
+0376	refuse	sudo -D .wuwei sed -i 's/^/x/' ./config.toml
+0377	refuse	sudo -D .wuwei sed -i '' 's/^/x/' ./config.toml
+0378	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' ./config.toml
+0379	refuse	sudo -D .wuwei truncate -s0 ./config.toml
+0380	refuse	sudo -D .wuwei rm ./config.toml
+0381	refuse	sudo -D .wuwei ln -sf /dev/null ./config.toml
+0382	refuse	sudo -D .wuwei python3 -c "open('./config.toml', 'w')"
+0383	refuse	sudo -D .wuwei find ./config.toml -delete
+0384	refuse	echo x | sudo -D .wuwei tee ../.wuwei/config.toml
+0385	refuse	sudo -D .wuwei cp /dev/null ../.wuwei/config.toml
+0386	refuse	sudo -D .wuwei mv ../src.txt ../.wuwei/config.toml
+0387	refuse	sudo -D .wuwei dd if=/dev/null of=../.wuwei/config.toml
+0388	refuse	sudo -D .wuwei sed -i 's/^/x/' ../.wuwei/config.toml
+0389	refuse	sudo -D .wuwei sed -i '' 's/^/x/' ../.wuwei/config.toml
+0390	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' ../.wuwei/config.toml
+0391	refuse	sudo -D .wuwei truncate -s0 ../.wuwei/config.toml
+0392	refuse	sudo -D .wuwei rm ../.wuwei/config.toml
+0393	refuse	sudo -D .wuwei ln -sf /dev/null ../.wuwei/config.toml
+0394	refuse	sudo -D .wuwei python3 -c "open('../.wuwei/config.toml', 'w')"
+0395	refuse	sudo -D .wuwei find ../.wuwei/config.toml -delete
+0396	refuse	echo x | sudo -D .wuwei tee $PWD/config.toml
+0397	refuse	sudo -D .wuwei cp /dev/null $PWD/config.toml
+0398	refuse	sudo -D .wuwei mv ../src.txt $PWD/config.toml
+0399	refuse	sudo -D .wuwei dd if=/dev/null of=$PWD/config.toml
+0400	refuse	sudo -D .wuwei sed -i 's/^/x/' $PWD/config.toml
+0401	refuse	sudo -D .wuwei sed -i '' 's/^/x/' $PWD/config.toml
+0402	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' $PWD/config.toml
+0403	refuse	sudo -D .wuwei truncate -s0 $PWD/config.toml
+0404	refuse	sudo -D .wuwei rm $PWD/config.toml
+0405	refuse	sudo -D .wuwei ln -sf /dev/null $PWD/config.toml
+0406	refuse	sudo -D .wuwei python3 -c "open('$PWD/config.toml', 'w')"
+0407	refuse	sudo -D .wuwei find $PWD/config.toml -delete
+0408	refuse	echo x | sudo -D .wuwei tee co*toml
+0409	refuse	sudo -D .wuwei cp /dev/null co*toml
+0410	refuse	sudo -D .wuwei mv ../src.txt co*toml
+0411	refuse	sudo -D .wuwei dd if=/dev/null of=co*toml
+0412	refuse	sudo -D .wuwei sed -i 's/^/x/' co*toml
+0413	refuse	sudo -D .wuwei sed -i '' 's/^/x/' co*toml
+0414	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' co*toml
+0415	refuse	sudo -D .wuwei truncate -s0 co*toml
+0416	refuse	sudo -D .wuwei rm co*toml
+0417	refuse	sudo -D .wuwei ln -sf /dev/null co*toml
+0418	refuse	sudo -D .wuwei python3 -c "open('co*toml', 'w')"
+0419	refuse	sudo -D .wuwei find co*toml -delete
+0420	refuse	echo x | sudo -D .wuwei tee CONFIG.TOML
+0421	refuse	sudo -D .wuwei cp /dev/null CONFIG.TOML
+0422	refuse	sudo -D .wuwei mv ../src.txt CONFIG.TOML
+0423	refuse	sudo -D .wuwei dd if=/dev/null of=CONFIG.TOML
+0424	refuse	sudo -D .wuwei sed -i 's/^/x/' CONFIG.TOML
+0425	refuse	sudo -D .wuwei sed -i '' 's/^/x/' CONFIG.TOML
+0426	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' CONFIG.TOML
+0427	refuse	sudo -D .wuwei truncate -s0 CONFIG.TOML
+0428	refuse	sudo -D .wuwei rm CONFIG.TOML
+0429	refuse	sudo -D .wuwei ln -sf /dev/null CONFIG.TOML
+0430	refuse	sudo -D .wuwei python3 -c "open('CONFIG.TOML', 'w')"
+0431	refuse	sudo -D .wuwei find CONFIG.TOML -delete
+0464	refuse	echo x > .wuwei/plan.json
+0465	refuse	echo x >> .wuwei/plan.json
+0466	refuse	echo x | tee .wuwei/plan.json
+0467	refuse	cp /dev/null .wuwei/plan.json
+0468	refuse	mv src.txt .wuwei/plan.json
+0469	refuse	dd if=/dev/null of=.wuwei/plan.json
+0470	refuse	sed -i 's/^/x/' .wuwei/plan.json
+0471	refuse	sed -i '' 's/^/x/' .wuwei/plan.json
+0472	refuse	sed -i.bak 's/^/x/' .wuwei/plan.json
+0473	refuse	truncate -s0 .wuwei/plan.json
+0474	refuse	rm .wuwei/plan.json
+0475	refuse	ln -sf /dev/null .wuwei/plan.json
+0476	refuse	python3 -c "open('.wuwei/plan.json', 'w')"
+0477	refuse	find .wuwei/plan.json -delete
+0478	refuse	bash -c 'echo x > .wuwei/plan.json'
+0479	refuse	echo x > .wuwei//plan.json
+0480	refuse	echo x >> .wuwei//plan.json
+0481	refuse	echo x | tee .wuwei//plan.json
+0482	refuse	cp /dev/null .wuwei//plan.json
+0483	refuse	mv src.txt .wuwei//plan.json
+0484	refuse	dd if=/dev/null of=.wuwei//plan.json
+0485	refuse	sed -i 's/^/x/' .wuwei//plan.json
+0486	refuse	sed -i '' 's/^/x/' .wuwei//plan.json
+0487	refuse	sed -i.bak 's/^/x/' .wuwei//plan.json
+0488	refuse	truncate -s0 .wuwei//plan.json
+0489	refuse	rm .wuwei//plan.json
+0490	refuse	ln -sf /dev/null .wuwei//plan.json
+0491	refuse	python3 -c "open('.wuwei//plan.json', 'w')"
+0492	refuse	find .wuwei//plan.json -delete
+0493	refuse	bash -c 'echo x > .wuwei//plan.json'
+0494	pass	echo x > .wuwei/%70lan.json
+0495	pass	echo x >> .wuwei/%70lan.json
+0496	pass	echo x | tee .wuwei/%70lan.json
+0497	pass	cp /dev/null .wuwei/%70lan.json
+0498	pass	mv src.txt .wuwei/%70lan.json
+0499	pass	dd if=/dev/null of=.wuwei/%70lan.json
+0500	pass	sed -i 's/^/x/' .wuwei/%70lan.json
+0501	pass	sed -i '' 's/^/x/' .wuwei/%70lan.json
+0502	pass	sed -i.bak 's/^/x/' .wuwei/%70lan.json
+0503	pass	truncate -s0 .wuwei/%70lan.json
+0504	pass	rm .wuwei/%70lan.json
+0505	pass	ln -sf /dev/null .wuwei/%70lan.json
+0506	pass	python3 -c "open('.wuwei/%70lan.json', 'w')"
+0507	pass	find .wuwei/%70lan.json -delete
+0508	pass	bash -c 'echo x > .wuwei/%70lan.json'
+0509	refuse	echo x > ./.wuwei/./plan.json
+0510	refuse	echo x >> ./.wuwei/./plan.json
+0511	refuse	echo x | tee ./.wuwei/./plan.json
+0512	refuse	cp /dev/null ./.wuwei/./plan.json
+0513	refuse	mv src.txt ./.wuwei/./plan.json
+0514	refuse	dd if=/dev/null of=./.wuwei/./plan.json
+0515	refuse	sed -i 's/^/x/' ./.wuwei/./plan.json
+0516	refuse	sed -i '' 's/^/x/' ./.wuwei/./plan.json
+0517	refuse	sed -i.bak 's/^/x/' ./.wuwei/./plan.json
+0518	refuse	truncate -s0 ./.wuwei/./plan.json
+0519	refuse	rm ./.wuwei/./plan.json
+0520	refuse	ln -sf /dev/null ./.wuwei/./plan.json
+0521	refuse	python3 -c "open('./.wuwei/./plan.json', 'w')"
+0522	refuse	find ./.wuwei/./plan.json -delete
+0523	refuse	bash -c 'echo x > ./.wuwei/./plan.json'
+0524	refuse	echo x > x/../.wuwei/plan.json
+0525	refuse	echo x >> x/../.wuwei/plan.json
+0526	refuse	echo x | tee x/../.wuwei/plan.json
+0527	refuse	cp /dev/null x/../.wuwei/plan.json
+0528	refuse	mv src.txt x/../.wuwei/plan.json
+0529	refuse	dd if=/dev/null of=x/../.wuwei/plan.json
+0530	refuse	sed -i 's/^/x/' x/../.wuwei/plan.json
+0531	refuse	sed -i '' 's/^/x/' x/../.wuwei/plan.json
+0532	refuse	sed -i.bak 's/^/x/' x/../.wuwei/plan.json
+0533	refuse	truncate -s0 x/../.wuwei/plan.json
+0534	refuse	rm x/../.wuwei/plan.json
+0535	refuse	ln -sf /dev/null x/../.wuwei/plan.json
+0536	refuse	python3 -c "open('x/../.wuwei/plan.json', 'w')"
+0537	refuse	find x/../.wuwei/plan.json -delete
+0538	refuse	bash -c 'echo x > x/../.wuwei/plan.json'
+0539	refuse	echo x > $PWD/.wuwei/plan.json
+0540	refuse	echo x >> $PWD/.wuwei/plan.json
+0541	refuse	echo x | tee $PWD/.wuwei/plan.json
+0542	refuse	cp /dev/null $PWD/.wuwei/plan.json
+0543	refuse	mv src.txt $PWD/.wuwei/plan.json
+0544	refuse	dd if=/dev/null of=$PWD/.wuwei/plan.json
+0545	refuse	sed -i 's/^/x/' $PWD/.wuwei/plan.json
+0546	refuse	sed -i '' 's/^/x/' $PWD/.wuwei/plan.json
+0547	refuse	sed -i.bak 's/^/x/' $PWD/.wuwei/plan.json
+0548	refuse	truncate -s0 $PWD/.wuwei/plan.json
+0549	refuse	rm $PWD/.wuwei/plan.json
+0550	refuse	ln -sf /dev/null $PWD/.wuwei/plan.json
+0551	refuse	python3 -c "open('$PWD/.wuwei/plan.json', 'w')"
+0552	refuse	find $PWD/.wuwei/plan.json -delete
+0553	refuse	bash -c 'echo x > $PWD/.wuwei/plan.json'
+0554	refuse	echo x > .wuwei/pl*json
+0555	refuse	echo x >> .wuwei/pl*json
+0556	refuse	echo x | tee .wuwei/pl*json
+0557	refuse	cp /dev/null .wuwei/pl*json
+0558	refuse	mv src.txt .wuwei/pl*json
+0559	refuse	dd if=/dev/null of=.wuwei/pl*json
+0560	refuse	sed -i 's/^/x/' .wuwei/pl*json
+0561	refuse	sed -i '' 's/^/x/' .wuwei/pl*json
+0562	refuse	sed -i.bak 's/^/x/' .wuwei/pl*json
+0563	refuse	truncate -s0 .wuwei/pl*json
+0564	refuse	rm .wuwei/pl*json
+0565	refuse	ln -sf /dev/null .wuwei/pl*json
+0566	refuse	python3 -c "open('.wuwei/pl*json', 'w')"
+0567	refuse	find .wuwei/pl*json -delete
+0568	refuse	bash -c 'echo x > .wuwei/pl*json'
+0569	refuse	echo x > .WUWEI/PLAN.JSON
+0570	refuse	echo x >> .WUWEI/PLAN.JSON
+0571	refuse	echo x | tee .WUWEI/PLAN.JSON
+0572	refuse	cp /dev/null .WUWEI/PLAN.JSON
+0573	refuse	mv src.txt .WUWEI/PLAN.JSON
+0574	refuse	dd if=/dev/null of=.WUWEI/PLAN.JSON
+0575	refuse	sed -i 's/^/x/' .WUWEI/PLAN.JSON
+0576	refuse	sed -i '' 's/^/x/' .WUWEI/PLAN.JSON
+0577	refuse	sed -i.bak 's/^/x/' .WUWEI/PLAN.JSON
+0578	refuse	truncate -s0 .WUWEI/PLAN.JSON
+0579	refuse	rm .WUWEI/PLAN.JSON
+0580	refuse	ln -sf /dev/null .WUWEI/PLAN.JSON
+0581	refuse	python3 -c "open('.WUWEI/PLAN.JSON', 'w')"
+0582	refuse	find .WUWEI/PLAN.JSON -delete
+0583	refuse	bash -c 'echo x > .WUWEI/PLAN.JSON'
+0584	refuse	cd .wuwei && echo x > plan.json
+0585	refuse	cd .wuwei && echo x >> plan.json
+0586	refuse	cd .wuwei && echo x | tee plan.json
+0587	refuse	cd .wuwei && cp /dev/null plan.json
+0588	refuse	cd .wuwei && mv ../src.txt plan.json
+0589	refuse	cd .wuwei && dd if=/dev/null of=plan.json
+0590	refuse	cd .wuwei && sed -i 's/^/x/' plan.json
+0591	refuse	cd .wuwei && sed -i '' 's/^/x/' plan.json
+0592	refuse	cd .wuwei && sed -i.bak 's/^/x/' plan.json
+0593	refuse	cd .wuwei && truncate -s0 plan.json
+0594	refuse	cd .wuwei && rm plan.json
+0595	refuse	cd .wuwei && ln -sf /dev/null plan.json
+0596	refuse	cd .wuwei && python3 -c "open('plan.json', 'w')"
+0597	refuse	cd .wuwei && find plan.json -delete
+0598	refuse	cd .wuwei && bash -c 'echo x > plan.json'
+0599	refuse	cd .wuwei && echo x > .//plan.json
+0600	refuse	cd .wuwei && echo x >> .//plan.json
+0601	refuse	cd .wuwei && echo x | tee .//plan.json
+0602	refuse	cd .wuwei && cp /dev/null .//plan.json
+0603	refuse	cd .wuwei && mv ../src.txt .//plan.json
+0604	refuse	cd .wuwei && dd if=/dev/null of=.//plan.json
+0605	refuse	cd .wuwei && sed -i 's/^/x/' .//plan.json
+0606	refuse	cd .wuwei && sed -i '' 's/^/x/' .//plan.json
+0607	refuse	cd .wuwei && sed -i.bak 's/^/x/' .//plan.json
+0608	refuse	cd .wuwei && truncate -s0 .//plan.json
+0609	refuse	cd .wuwei && rm .//plan.json
+0610	refuse	cd .wuwei && ln -sf /dev/null .//plan.json
+0611	refuse	cd .wuwei && python3 -c "open('.//plan.json', 'w')"
+0612	refuse	cd .wuwei && find .//plan.json -delete
+0613	refuse	cd .wuwei && bash -c 'echo x > .//plan.json'
+0614	refuse	cd .wuwei && echo x > %70lan.json
+0615	refuse	cd .wuwei && echo x >> %70lan.json
+0616	refuse	cd .wuwei && echo x | tee %70lan.json
+0617	refuse	cd .wuwei && cp /dev/null %70lan.json
+0618	refuse	cd .wuwei && mv ../src.txt %70lan.json
+0619	refuse	cd .wuwei && dd if=/dev/null of=%70lan.json
+0620	refuse	cd .wuwei && sed -i 's/^/x/' %70lan.json
+0621	refuse	cd .wuwei && sed -i '' 's/^/x/' %70lan.json
+0622	refuse	cd .wuwei && sed -i.bak 's/^/x/' %70lan.json
+0623	refuse	cd .wuwei && truncate -s0 %70lan.json
+0624	refuse	cd .wuwei && rm %70lan.json
+0625	refuse	cd .wuwei && ln -sf /dev/null %70lan.json
+0626	refuse	cd .wuwei && python3 -c "open('%70lan.json', 'w')"
+0627	refuse	cd .wuwei && find %70lan.json -delete
+0628	refuse	cd .wuwei && bash -c 'echo x > %70lan.json'
+0629	refuse	cd .wuwei && echo x > ./plan.json
+0630	refuse	cd .wuwei && echo x >> ./plan.json
+0631	refuse	cd .wuwei && echo x | tee ./plan.json
+0632	refuse	cd .wuwei && cp /dev/null ./plan.json
+0633	refuse	cd .wuwei && mv ../src.txt ./plan.json
+0634	refuse	cd .wuwei && dd if=/dev/null of=./plan.json
+0635	refuse	cd .wuwei && sed -i 's/^/x/' ./plan.json
+0636	refuse	cd .wuwei && sed -i '' 's/^/x/' ./plan.json
+0637	refuse	cd .wuwei && sed -i.bak 's/^/x/' ./plan.json
+0638	refuse	cd .wuwei && truncate -s0 ./plan.json
+0639	refuse	cd .wuwei && rm ./plan.json
+0640	refuse	cd .wuwei && ln -sf /dev/null ./plan.json
+0641	refuse	cd .wuwei && python3 -c "open('./plan.json', 'w')"
+0642	refuse	cd .wuwei && find ./plan.json -delete
+0643	refuse	cd .wuwei && bash -c 'echo x > ./plan.json'
+0644	refuse	cd .wuwei && echo x > ../.wuwei/plan.json
+0645	refuse	cd .wuwei && echo x >> ../.wuwei/plan.json
+0646	refuse	cd .wuwei && echo x | tee ../.wuwei/plan.json
+0647	refuse	cd .wuwei && cp /dev/null ../.wuwei/plan.json
+0648	refuse	cd .wuwei && mv ../src.txt ../.wuwei/plan.json
+0649	refuse	cd .wuwei && dd if=/dev/null of=../.wuwei/plan.json
+0650	refuse	cd .wuwei && sed -i 's/^/x/' ../.wuwei/plan.json
+0651	refuse	cd .wuwei && sed -i '' 's/^/x/' ../.wuwei/plan.json
+0652	refuse	cd .wuwei && sed -i.bak 's/^/x/' ../.wuwei/plan.json
+0653	refuse	cd .wuwei && truncate -s0 ../.wuwei/plan.json
+0654	refuse	cd .wuwei && rm ../.wuwei/plan.json
+0655	refuse	cd .wuwei && ln -sf /dev/null ../.wuwei/plan.json
+0656	refuse	cd .wuwei && python3 -c "open('../.wuwei/plan.json', 'w')"
+0657	refuse	cd .wuwei && find ../.wuwei/plan.json -delete
+0658	refuse	cd .wuwei && bash -c 'echo x > ../.wuwei/plan.json'
+0659	refuse	cd .wuwei && echo x > $PWD/plan.json
+0660	refuse	cd .wuwei && echo x >> $PWD/plan.json
+0661	refuse	cd .wuwei && echo x | tee $PWD/plan.json
+0662	refuse	cd .wuwei && cp /dev/null $PWD/plan.json
+0663	refuse	cd .wuwei && mv ../src.txt $PWD/plan.json
+0664	refuse	cd .wuwei && dd if=/dev/null of=$PWD/plan.json
+0665	refuse	cd .wuwei && sed -i 's/^/x/' $PWD/plan.json
+0666	refuse	cd .wuwei && sed -i '' 's/^/x/' $PWD/plan.json
+0667	refuse	cd .wuwei && sed -i.bak 's/^/x/' $PWD/plan.json
+0668	refuse	cd .wuwei && truncate -s0 $PWD/plan.json
+0669	refuse	cd .wuwei && rm $PWD/plan.json
+0670	refuse	cd .wuwei && ln -sf /dev/null $PWD/plan.json
+0671	refuse	cd .wuwei && python3 -c "open('$PWD/plan.json', 'w')"
+0672	refuse	cd .wuwei && find $PWD/plan.json -delete
+0673	refuse	cd .wuwei && bash -c 'echo x > $PWD/plan.json'
+0674	refuse	cd .wuwei && echo x > pl*json
+0675	refuse	cd .wuwei && echo x >> pl*json
+0676	refuse	cd .wuwei && echo x | tee pl*json
+0677	refuse	cd .wuwei && cp /dev/null pl*json
+0678	refuse	cd .wuwei && mv ../src.txt pl*json
+0679	refuse	cd .wuwei && dd if=/dev/null of=pl*json
+0680	refuse	cd .wuwei && sed -i 's/^/x/' pl*json
+0681	refuse	cd .wuwei && sed -i '' 's/^/x/' pl*json
+0682	refuse	cd .wuwei && sed -i.bak 's/^/x/' pl*json
+0683	refuse	cd .wuwei && truncate -s0 pl*json
+0684	refuse	cd .wuwei && rm pl*json
+0685	refuse	cd .wuwei && ln -sf /dev/null pl*json
+0686	refuse	cd .wuwei && python3 -c "open('pl*json', 'w')"
+0687	refuse	cd .wuwei && find pl*json -delete
+0688	refuse	cd .wuwei && bash -c 'echo x > pl*json'
+0689	refuse	cd .wuwei && echo x > PLAN.JSON
+0690	refuse	cd .wuwei && echo x >> PLAN.JSON
+0691	refuse	cd .wuwei && echo x | tee PLAN.JSON
+0692	refuse	cd .wuwei && cp /dev/null PLAN.JSON
+0693	refuse	cd .wuwei && mv ../src.txt PLAN.JSON
+0694	refuse	cd .wuwei && dd if=/dev/null of=PLAN.JSON
+0695	refuse	cd .wuwei && sed -i 's/^/x/' PLAN.JSON
+0696	refuse	cd .wuwei && sed -i '' 's/^/x/' PLAN.JSON
+0697	refuse	cd .wuwei && sed -i.bak 's/^/x/' PLAN.JSON
+0698	refuse	cd .wuwei && truncate -s0 PLAN.JSON
+0699	refuse	cd .wuwei && rm PLAN.JSON
+0700	refuse	cd .wuwei && ln -sf /dev/null PLAN.JSON
+0701	refuse	cd .wuwei && python3 -c "open('PLAN.JSON', 'w')"
+0702	refuse	cd .wuwei && find PLAN.JSON -delete
+0703	refuse	cd .wuwei && bash -c 'echo x > PLAN.JSON'
+0704	refuse	echo x | env -C .wuwei tee plan.json
+0705	refuse	env -C .wuwei cp /dev/null plan.json
+0706	refuse	env -C .wuwei mv ../src.txt plan.json
+0707	refuse	env -C .wuwei dd if=/dev/null of=plan.json
+0708	refuse	env -C .wuwei sed -i 's/^/x/' plan.json
+0709	refuse	env -C .wuwei sed -i '' 's/^/x/' plan.json
+0710	refuse	env -C .wuwei sed -i.bak 's/^/x/' plan.json
+0711	refuse	env -C .wuwei truncate -s0 plan.json
+0712	refuse	env -C .wuwei rm plan.json
+0713	refuse	env -C .wuwei ln -sf /dev/null plan.json
+0714	refuse	env -C .wuwei python3 -c "open('plan.json', 'w')"
+0715	refuse	env -C .wuwei find plan.json -delete
+0716	refuse	echo x | env -C .wuwei tee .//plan.json
+0717	refuse	env -C .wuwei cp /dev/null .//plan.json
+0718	refuse	env -C .wuwei mv ../src.txt .//plan.json
+0719	refuse	env -C .wuwei dd if=/dev/null of=.//plan.json
+0720	refuse	env -C .wuwei sed -i 's/^/x/' .//plan.json
+0721	refuse	env -C .wuwei sed -i '' 's/^/x/' .//plan.json
+0722	refuse	env -C .wuwei sed -i.bak 's/^/x/' .//plan.json
+0723	refuse	env -C .wuwei truncate -s0 .//plan.json
+0724	refuse	env -C .wuwei rm .//plan.json
+0725	refuse	env -C .wuwei ln -sf /dev/null .//plan.json
+0726	refuse	env -C .wuwei python3 -c "open('.//plan.json', 'w')"
+0727	refuse	env -C .wuwei find .//plan.json -delete
+0728	refuse	echo x | env -C .wuwei tee %70lan.json
+0729	refuse	env -C .wuwei cp /dev/null %70lan.json
+0730	refuse	env -C .wuwei mv ../src.txt %70lan.json
+0731	refuse	env -C .wuwei dd if=/dev/null of=%70lan.json
+0732	refuse	env -C .wuwei sed -i 's/^/x/' %70lan.json
+0733	refuse	env -C .wuwei sed -i '' 's/^/x/' %70lan.json
+0734	refuse	env -C .wuwei sed -i.bak 's/^/x/' %70lan.json
+0735	refuse	env -C .wuwei truncate -s0 %70lan.json
+0736	refuse	env -C .wuwei rm %70lan.json
+0737	refuse	env -C .wuwei ln -sf /dev/null %70lan.json
+0738	refuse	env -C .wuwei python3 -c "open('%70lan.json', 'w')"
+0739	refuse	env -C .wuwei find %70lan.json -delete
+0740	refuse	echo x | env -C .wuwei tee ./plan.json
+0741	refuse	env -C .wuwei cp /dev/null ./plan.json
+0742	refuse	env -C .wuwei mv ../src.txt ./plan.json
+0743	refuse	env -C .wuwei dd if=/dev/null of=./plan.json
+0744	refuse	env -C .wuwei sed -i 's/^/x/' ./plan.json
+0745	refuse	env -C .wuwei sed -i '' 's/^/x/' ./plan.json
+0746	refuse	env -C .wuwei sed -i.bak 's/^/x/' ./plan.json
+0747	refuse	env -C .wuwei truncate -s0 ./plan.json
+0748	refuse	env -C .wuwei rm ./plan.json
+0749	refuse	env -C .wuwei ln -sf /dev/null ./plan.json
+0750	refuse	env -C .wuwei python3 -c "open('./plan.json', 'w')"
+0751	refuse	env -C .wuwei find ./plan.json -delete
+0752	refuse	echo x | env -C .wuwei tee ../.wuwei/plan.json
+0753	refuse	env -C .wuwei cp /dev/null ../.wuwei/plan.json
+0754	refuse	env -C .wuwei mv ../src.txt ../.wuwei/plan.json
+0755	refuse	env -C .wuwei dd if=/dev/null of=../.wuwei/plan.json
+0756	refuse	env -C .wuwei sed -i 's/^/x/' ../.wuwei/plan.json
+0757	refuse	env -C .wuwei sed -i '' 's/^/x/' ../.wuwei/plan.json
+0758	refuse	env -C .wuwei sed -i.bak 's/^/x/' ../.wuwei/plan.json
+0759	refuse	env -C .wuwei truncate -s0 ../.wuwei/plan.json
+0760	refuse	env -C .wuwei rm ../.wuwei/plan.json
+0761	refuse	env -C .wuwei ln -sf /dev/null ../.wuwei/plan.json
+0762	refuse	env -C .wuwei python3 -c "open('../.wuwei/plan.json', 'w')"
+0763	refuse	env -C .wuwei find ../.wuwei/plan.json -delete
+0764	refuse	echo x | env -C .wuwei tee $PWD/plan.json
+0765	refuse	env -C .wuwei cp /dev/null $PWD/plan.json
+0766	refuse	env -C .wuwei mv ../src.txt $PWD/plan.json
+0767	refuse	env -C .wuwei dd if=/dev/null of=$PWD/plan.json
+0768	refuse	env -C .wuwei sed -i 's/^/x/' $PWD/plan.json
+0769	refuse	env -C .wuwei sed -i '' 's/^/x/' $PWD/plan.json
+0770	refuse	env -C .wuwei sed -i.bak 's/^/x/' $PWD/plan.json
+0771	refuse	env -C .wuwei truncate -s0 $PWD/plan.json
+0772	refuse	env -C .wuwei rm $PWD/plan.json
+0773	refuse	env -C .wuwei ln -sf /dev/null $PWD/plan.json
+0774	refuse	env -C .wuwei python3 -c "open('$PWD/plan.json', 'w')"
+0775	refuse	env -C .wuwei find $PWD/plan.json -delete
+0776	refuse	echo x | env -C .wuwei tee pl*json
+0777	refuse	env -C .wuwei cp /dev/null pl*json
+0778	refuse	env -C .wuwei mv ../src.txt pl*json
+0779	refuse	env -C .wuwei dd if=/dev/null of=pl*json
+0780	refuse	env -C .wuwei sed -i 's/^/x/' pl*json
+0781	refuse	env -C .wuwei sed -i '' 's/^/x/' pl*json
+0782	refuse	env -C .wuwei sed -i.bak 's/^/x/' pl*json
+0783	refuse	env -C .wuwei truncate -s0 pl*json
+0784	refuse	env -C .wuwei rm pl*json
+0785	refuse	env -C .wuwei ln -sf /dev/null pl*json
+0786	refuse	env -C .wuwei python3 -c "open('pl*json', 'w')"
+0787	refuse	env -C .wuwei find pl*json -delete
+0788	refuse	echo x | env -C .wuwei tee PLAN.JSON
+0789	refuse	env -C .wuwei cp /dev/null PLAN.JSON
+0790	refuse	env -C .wuwei mv ../src.txt PLAN.JSON
+0791	refuse	env -C .wuwei dd if=/dev/null of=PLAN.JSON
+0792	refuse	env -C .wuwei sed -i 's/^/x/' PLAN.JSON
+0793	refuse	env -C .wuwei sed -i '' 's/^/x/' PLAN.JSON
+0794	refuse	env -C .wuwei sed -i.bak 's/^/x/' PLAN.JSON
+0795	refuse	env -C .wuwei truncate -s0 PLAN.JSON
+0796	refuse	env -C .wuwei rm PLAN.JSON
+0797	refuse	env -C .wuwei ln -sf /dev/null PLAN.JSON
+0798	refuse	env -C .wuwei python3 -c "open('PLAN.JSON', 'w')"
+0799	refuse	env -C .wuwei find PLAN.JSON -delete
+0800	refuse	echo x | sudo -D .wuwei tee plan.json
+0801	refuse	sudo -D .wuwei cp /dev/null plan.json
+0802	refuse	sudo -D .wuwei mv ../src.txt plan.json
+0803	refuse	sudo -D .wuwei dd if=/dev/null of=plan.json
+0804	refuse	sudo -D .wuwei sed -i 's/^/x/' plan.json
+0805	refuse	sudo -D .wuwei sed -i '' 's/^/x/' plan.json
+0806	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' plan.json
+0807	refuse	sudo -D .wuwei truncate -s0 plan.json
+0808	refuse	sudo -D .wuwei rm plan.json
+0809	refuse	sudo -D .wuwei ln -sf /dev/null plan.json
+0810	refuse	sudo -D .wuwei python3 -c "open('plan.json', 'w')"
+0811	refuse	sudo -D .wuwei find plan.json -delete
+0812	refuse	echo x | sudo -D .wuwei tee .//plan.json
+0813	refuse	sudo -D .wuwei cp /dev/null .//plan.json
+0814	refuse	sudo -D .wuwei mv ../src.txt .//plan.json
+0815	refuse	sudo -D .wuwei dd if=/dev/null of=.//plan.json
+0816	refuse	sudo -D .wuwei sed -i 's/^/x/' .//plan.json
+0817	refuse	sudo -D .wuwei sed -i '' 's/^/x/' .//plan.json
+0818	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' .//plan.json
+0819	refuse	sudo -D .wuwei truncate -s0 .//plan.json
+0820	refuse	sudo -D .wuwei rm .//plan.json
+0821	refuse	sudo -D .wuwei ln -sf /dev/null .//plan.json
+0822	refuse	sudo -D .wuwei python3 -c "open('.//plan.json', 'w')"
+0823	refuse	sudo -D .wuwei find .//plan.json -delete
+0824	refuse	echo x | sudo -D .wuwei tee %70lan.json
+0825	refuse	sudo -D .wuwei cp /dev/null %70lan.json
+0826	refuse	sudo -D .wuwei mv ../src.txt %70lan.json
+0827	refuse	sudo -D .wuwei dd if=/dev/null of=%70lan.json
+0828	refuse	sudo -D .wuwei sed -i 's/^/x/' %70lan.json
+0829	refuse	sudo -D .wuwei sed -i '' 's/^/x/' %70lan.json
+0830	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' %70lan.json
+0831	refuse	sudo -D .wuwei truncate -s0 %70lan.json
+0832	refuse	sudo -D .wuwei rm %70lan.json
+0833	refuse	sudo -D .wuwei ln -sf /dev/null %70lan.json
+0834	refuse	sudo -D .wuwei python3 -c "open('%70lan.json', 'w')"
+0835	refuse	sudo -D .wuwei find %70lan.json -delete
+0836	refuse	echo x | sudo -D .wuwei tee ./plan.json
+0837	refuse	sudo -D .wuwei cp /dev/null ./plan.json
+0838	refuse	sudo -D .wuwei mv ../src.txt ./plan.json
+0839	refuse	sudo -D .wuwei dd if=/dev/null of=./plan.json
+0840	refuse	sudo -D .wuwei sed -i 's/^/x/' ./plan.json
+0841	refuse	sudo -D .wuwei sed -i '' 's/^/x/' ./plan.json
+0842	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' ./plan.json
+0843	refuse	sudo -D .wuwei truncate -s0 ./plan.json
+0844	refuse	sudo -D .wuwei rm ./plan.json
+0845	refuse	sudo -D .wuwei ln -sf /dev/null ./plan.json
+0846	refuse	sudo -D .wuwei python3 -c "open('./plan.json', 'w')"
+0847	refuse	sudo -D .wuwei find ./plan.json -delete
+0848	refuse	echo x | sudo -D .wuwei tee ../.wuwei/plan.json
+0849	refuse	sudo -D .wuwei cp /dev/null ../.wuwei/plan.json
+0850	refuse	sudo -D .wuwei mv ../src.txt ../.wuwei/plan.json
+0851	refuse	sudo -D .wuwei dd if=/dev/null of=../.wuwei/plan.json
+0852	refuse	sudo -D .wuwei sed -i 's/^/x/' ../.wuwei/plan.json
+0853	refuse	sudo -D .wuwei sed -i '' 's/^/x/' ../.wuwei/plan.json
+0854	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' ../.wuwei/plan.json
+0855	refuse	sudo -D .wuwei truncate -s0 ../.wuwei/plan.json
+0856	refuse	sudo -D .wuwei rm ../.wuwei/plan.json
+0857	refuse	sudo -D .wuwei ln -sf /dev/null ../.wuwei/plan.json
+0858	refuse	sudo -D .wuwei python3 -c "open('../.wuwei/plan.json', 'w')"
+0859	refuse	sudo -D .wuwei find ../.wuwei/plan.json -delete
+0860	refuse	echo x | sudo -D .wuwei tee $PWD/plan.json
+0861	refuse	sudo -D .wuwei cp /dev/null $PWD/plan.json
+0862	refuse	sudo -D .wuwei mv ../src.txt $PWD/plan.json
+0863	refuse	sudo -D .wuwei dd if=/dev/null of=$PWD/plan.json
+0864	refuse	sudo -D .wuwei sed -i 's/^/x/' $PWD/plan.json
+0865	refuse	sudo -D .wuwei sed -i '' 's/^/x/' $PWD/plan.json
+0866	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' $PWD/plan.json
+0867	refuse	sudo -D .wuwei truncate -s0 $PWD/plan.json
+0868	refuse	sudo -D .wuwei rm $PWD/plan.json
+0869	refuse	sudo -D .wuwei ln -sf /dev/null $PWD/plan.json
+0870	refuse	sudo -D .wuwei python3 -c "open('$PWD/plan.json', 'w')"
+0871	refuse	sudo -D .wuwei find $PWD/plan.json -delete
+0872	refuse	echo x | sudo -D .wuwei tee pl*json
+0873	refuse	sudo -D .wuwei cp /dev/null pl*json
+0874	refuse	sudo -D .wuwei mv ../src.txt pl*json
+0875	refuse	sudo -D .wuwei dd if=/dev/null of=pl*json
+0876	refuse	sudo -D .wuwei sed -i 's/^/x/' pl*json
+0877	refuse	sudo -D .wuwei sed -i '' 's/^/x/' pl*json
+0878	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' pl*json
+0879	refuse	sudo -D .wuwei truncate -s0 pl*json
+0880	refuse	sudo -D .wuwei rm pl*json
+0881	refuse	sudo -D .wuwei ln -sf /dev/null pl*json
+0882	refuse	sudo -D .wuwei python3 -c "open('pl*json', 'w')"
+0883	refuse	sudo -D .wuwei find pl*json -delete
+0884	refuse	echo x | sudo -D .wuwei tee PLAN.JSON
+0885	refuse	sudo -D .wuwei cp /dev/null PLAN.JSON
+0886	refuse	sudo -D .wuwei mv ../src.txt PLAN.JSON
+0887	refuse	sudo -D .wuwei dd if=/dev/null of=PLAN.JSON
+0888	refuse	sudo -D .wuwei sed -i 's/^/x/' PLAN.JSON
+0889	refuse	sudo -D .wuwei sed -i '' 's/^/x/' PLAN.JSON
+0890	refuse	sudo -D .wuwei sed -i.bak 's/^/x/' PLAN.JSON
+0891	refuse	sudo -D .wuwei truncate -s0 PLAN.JSON
+0892	refuse	sudo -D .wuwei rm PLAN.JSON
+0893	refuse	sudo -D .wuwei ln -sf /dev/null PLAN.JSON
+0894	refuse	sudo -D .wuwei python3 -c "open('PLAN.JSON', 'w')"
+0895	refuse	sudo -D .wuwei find PLAN.JSON -delete

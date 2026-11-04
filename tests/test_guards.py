@@ -2443,3 +2443,67 @@ def test_find_with_a_delete_after_a_wrapper_is_refused(root, repo, wrapper, targ
     for action in ('-delete', '-exec rm {} +'):
         assert word in guards.pre_tool(root, bash(f'{wrapper} find {target} {action}'))['reason']
     assert guards.pre_tool(root, bash(f'{wrapper} find . -name x')) is None
+
+
+OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .wuwei/plan.json, by each route the ledger door reads
+    'echo x >> .wuwei/plan.json', 'echo x > .wuwei/config.toml', 'tee -a .wuwei/plan.json', 'cp x .wuwei/config.toml',
+    'mv x /w/.wuwei/plan.json', 'rm .wuwei/plan.json', 'rm -f .wuwei/config.toml', 'sed -i s/a/b/ .wuwei/config.toml',
+    'truncate -s0 .wuwei/plan.json', 'dd if=x of=.wuwei/plan.json', 'python3 -c "open(\'.wuwei/config.toml\', \'w\')"',
+    'ln -sf x .wuwei/plan.json', 'find .wuwei/plan.json -delete', 'echo x > .wuwei//plan.json', 'echo x > .wuwei/./config.toml',
+    'echo x > src/../.wuwei/plan.json', 'echo x > .wuwei/pl*.json', 'tee .wuwei/{config.toml,x}', 'echo x > .WUWEI/Plan.JSON',
+    'bash -c "echo x > .wuwei/plan.json"', "echo x > $'.wuwei/plan.json'", 'echo x >$PWD/.wuwei/config.toml',
+    'wuwei config owner_paths x', "wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
+    'wuwei plan add I-2 x --goal G-1', 'wuwei plan add --from c.json', 'wuwei plan done I-1 --reason x', 'wuwei plan --reason x park I-1',
+    'wuwei plan drop I-1', 'wuwei plan restore I-1', 'wuwei plan run I-1 --reason x', 'wuwei plan session I-1 s2', 'wuwei plan approve',
+    'python3 -m wuwei config owner_paths x', 'python3 -mwuwei plan done I-1', '/opt/wuwei/bin/wuwei plan restore I-1', 'WUWEI plan done I-1',
+    '"$(cat .wuwei/executable)" config owner_paths x', '$(cat .wuwei/executable) plan done I-1', '`cat .wuwei/executable` plan done I-1',
+    "$'wuwei' config owner_paths x", 'bash -c "wuwei plan done I-1"', 'cd src && wuwei plan done I-1', 'env A=1 wuwei -- config tiers x']
+INSIDE = ['cd .wuwei && echo x > plan.json', 'env -C .wuwei tee plan.json', 'sudo -D .wuwei tee config.toml']  # refused for all on main
+OWNER_ONLY = "only the owner's own session"
+
+
+@pytest.mark.parametrize('role', ['wuwei:builder', 'wuwei:sentinel-security'])
+@pytest.mark.parametrize('command', OWNED_WRITES + INSIDE)
+def test_a_seat_write_to_the_config_or_the_plan_is_refused_naming_the_owner(root, repo, command, role):
+    decision = guards.pre_tool(root, {**bash(command), 'agent_type': role})
+    assert decision['decision'] == 'deny' and OWNER_ONLY in decision['reason'], command
+
+
+@pytest.mark.parametrize('command', OWNED_WRITES + ["wuwei config models 'builder light=opus medium'"])
+def test_the_owner_session_keeps_every_config_and_plan_write(root, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+@pytest.mark.parametrize('path', ['/w/.wuwei/config.toml', '.wuwei/plan.json', '/w/.wuwei//plan.json', '/w/x/../.wuwei/config.toml',
+                                  '/w/.WUWEI/PLAN.JSON', '/w/.wuwei/./plan.json'])
+def test_a_seat_edit_of_the_config_or_the_plan_is_refused_and_the_owner_edit_passes(root, tool, path):
+    data = {'notebook_path' if tool == 'NotebookEdit' else 'file_path': path}
+    decision = guards.pre_tool(root, {'tool_name': tool, 'tool_input': data, 'agent_type': 'wuwei:builder'})
+    assert decision['decision'] == 'deny' and OWNER_ONLY in decision['reason'], (tool, path)
+    assert guards.pre_tool(root, {'tool_name': tool, 'tool_input': data}) is None, (tool, path)
+
+
+@pytest.mark.parametrize('command', ['wuwei plan show I-1', 'wuwei plan', 'wuwei plan view', 'wuwei plan view --html', 'wuwei plan --json',
+                                     'wuwei config', 'wuwei status', 'cat .wuwei/plan.json', 'grep owner .wuwei/config.toml',
+                                     'cat < .wuwei/config.toml', 'python3 -m wuwei plan show I-1', '"$(cat .wuwei/executable)" plan show I-1',
+                                     'git -C /x/wuwei config user.name', 'git config user.email', 'git commit -m "wuwei plan done"',
+                                     'echo x > .wuwei/%70lan.json', 'ls .wuwei', 'echo x > plan.json', 'cp a .wuwei-plan.json'])
+def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
+    assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
+
+
+def test_the_hook_refuses_a_seat_plan_write_and_passes_the_owner(root, repo):
+    from wuwei import hook
+    seat = {**bash('wuwei plan tier I-1 light'), 'cwd': str(root), 'agent_id': 'b1', 'agent_type': 'wuwei:builder'}
+    out = hook.handle(root, 'PreToolUse', seat)['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and OWNER_ONLY in out['permissionDecisionReason']
+    assert hook.handle(root, 'PreToolUse', {**bash('wuwei plan add I-2 x --goal G-1'), 'cwd': str(root)}) is None
+
+
+@pytest.mark.parametrize('flag', ['-i.bak', '-ibak', '--in-place', '--in-place=.bak', '-Ei', '--i'])
+def test_sed_in_place_in_any_spelling_is_a_write(root, repo, flag):
+    """The config-door probe's sed class: sed -i.bak was not a writer, so it passed on the ledger too."""
+    assert 'the ledger is written only' in guards.pre_tool(root, bash(f'sed {flag} s/a/b/ .wuwei/ledger/x.jsonl'))['reason'], flag
+    assert OWNER_ONLY in guards.pre_tool(root, {**bash(f'sed {flag} s/a/b/ .wuwei/plan.json'), 'agent_type': 'b'})['reason'], flag
+    assert guards.pre_tool(root, bash(f'sed {flag} s/a/b/ src/x.py')) is None, flag
