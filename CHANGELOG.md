@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.3.1](https://github.com/taoq-ai/wuwei/compare/v5.3.0...v5.3.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **answers:** confirm an owner answer from the harness's user row, not the api-request-blob copy ([#1273](https://github.com/taoq-ai/wuwei/issues/1273)) ([6d0a227](https://github.com/taoq-ai/wuwei/commit/6d0a22704da5fed9834e1af261ee1e0a92fe88fc))
+* **evidence:** skip a finding from another repository's PR before any compare ([#1272](https://github.com/taoq-ai/wuwei/issues/1272)) ([255676f](https://github.com/taoq-ai/wuwei/commit/255676f095f8ce46431fd37d45752dcafc41f5a3))
+
+
+### Documentation
+
+* **charters:** seats run door commands as one-line Bash calls ([#1269](https://github.com/taoq-ai/wuwei/issues/1269)) ([#1270](https://github.com/taoq-ai/wuwei/issues/1270)) ([e4654af](https://github.com/taoq-ai/wuwei/commit/e4654afda6a4f4baeb85b5db0cdc6872d4aed767))
+
 ## [5.3.0](https://github.com/taoq-ai/wuwei/compare/v5.2.0...v5.3.0) (2026-10-27)
 
 
