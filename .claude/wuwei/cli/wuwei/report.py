@@ -65,9 +65,9 @@ def day(root, date=None):
     out += ['', '## Seats and gates', 'Seats: ' + (', '.join(f'{k} {v}' for k, v in sorted(stops.items())) or 'none') + '.',
             'Verdicts: ' + (', '.join(f'{k} {v}' for k, v in sorted(verdicts.items())) or 'none') + '.',
             f'Verdicts missing after a reminder: {len(rows("verdict.missing"))}.']
-    given = [(r['data'].get('role'), f, (m := re.match(r'([\w:-]+)\s*([+-]):', f)) and f'{m[1]} {m[2]}') for r in rows('seat.stopped') for f in r['data'].get('feedback') or ()]
-    out += ['Feedback: ' + (', '.join(f'{k} {n}' for k, n in Counter(s or 'unnamed' for _, _, s in given).most_common()) or 'none') + '.']
-    out += [f'- {g} on {f}' for g, f, s in given if s and s.endswith('-')][:10]
+    given = [(g, a, f, (m := re.match(r'([\w:-]+)\s*([+-]):', f)) and f'{m[1]} {m[2]}') for g, a, _, f in dict.fromkeys((d.get('role'), d.get('agent'), d.get('session'), f) for d in [r['data'] for r in rows('seat.stopped')] for f in d.get('feedback') or ())]  # a twice-stopped seat once
+    out += ['Feedback: ' + (', '.join(f'{k} {n}' for k, n in Counter(s or 'unnamed' for *_, s in given).most_common()) or 'none') + '.']
+    out += [f'- {g} ({str(a or "?")[:12]}) on {f}' for g, a, f, s in given if s and s.endswith('-')][:10]
     traces = ws.traces(root, date)
     tools = Counter(t.get('tool') for t in traces)
     out += ['', '## Telemetry', f'Tool calls: {len(traces)}; outward (MCP) calls: '

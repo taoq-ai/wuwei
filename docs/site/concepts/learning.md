@@ -58,12 +58,13 @@ starts as a note for its first five days, so its false alarms show before it cos
 
 Every seat ends its handoff with one line per seat whose work it used:
 `Feedback: sentinel-quality -: finding 2 asked for a test tests/test_x.py:12 already has`. A `+`
-says what helped, a `-` what cost time. The stop record keeps the Feedback, Gap and Change lines,
-each cut to 200 characters with secrets masked; a `none` is not kept. The report counts the lines
-by role and sign under Seats and gates and lists up to ten costs with the seat that gave them. A
-cost that two or more seats name against one role in 14 days becomes a charter proposal for that
-role, naming the line it replaces. A `+` that cites a charter line keeps that line from the
-deletion rule.
+says what helped, a `-` what cost time. The stop record keeps the Feedback lines (at most ten),
+the last Gap line and the last Change line, each cut to 200 characters with secrets and the canary
+masked; a `none` is not kept. The report counts the lines by role and sign under Seats and gates
+and lists up to ten costs with the seat that gave them. A seat that stops twice with the same lines
+counts once. A cost that two or more seats name against one role in 14 days becomes a charter
+proposal for that role, naming the line it replaces. A `+` that cites a charter line counts as a
+citation under the deletion rule.
 
 **Why:** each seat sees what the seat before it got wrong. Kept and counted, that view shows which
 rule to change, not only that something went wrong.

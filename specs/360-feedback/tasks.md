@@ -7,3 +7,4 @@
 - [x] T005 [US2] Print the Feedback block in cli/wuwei/report.py; run focused tests green; add the ten-line cap and unnamed test.
 - [x] T006 [US3] Add the Feedback line to charters/_common.md with an equal word cut, rule 12 to charters/steward.md, and a section to docs/site/concepts/learning.md.
 - [x] T007 Run `bin/wuwei agents build` and `setup.vendor`; run the full suite and the runtime budget test.
+- [x] T008 Fix round 1: mask the canary, take the last Gap and Change before the none filter, clean control characters, keep ten Feedback lines, count a twice-stopped seat once and print the giving agent; tests first.

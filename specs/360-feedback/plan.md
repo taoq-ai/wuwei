@@ -7,8 +7,8 @@ Python 3.11 stdlib runtime. Reuse `last_text`, `guards.SECRETS`, `ws.record` and
 
 ## Constitution check
 
-Stdlib only, test first, runtime estimate +5 with a cap of +8: the diff adds 6 runtime lines
-(3,881 to 3,887 against the 4,000 budget). The hook change touches `_seat_stop` only; no guard
+Stdlib only, test first, runtime estimate +5 with a cap of +8: the diff adds 8 runtime lines
+(3,881 to 3,889 against the 4,000 budget). The hook change touches `_seat_stop` only; no guard
 parsing, so the route corpus and parser probes do not apply.
 
 ## Design

@@ -293,9 +293,11 @@ def subagent_stop(root, payload):
 
 
 def _seat_stop(root, payload, role, tokens, ended):
-    kept = {k.lower(): [guards.SECRETS.sub('***', v)[:200] for v in map(str.strip, re.findall(rf'^{k}:(.*)', last_text(payload), re.M)) if v and not re.match(r'none\b', v, re.I)] for k in ('Feedback', 'Gap', 'Change')}  # masked before the cut, as traces are
+    text, canary = last_text(payload), (c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else '')
+    clean = lambda v: ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', guards.SECRETS.sub('***', v).replace(canary or '\0', '***')).split())[:200]  # masked before the cut
+    kept = {k.lower(): [v for v in map(clean, re.findall(rf'^{k}:(.*)', text, re.M)[-(k != 'Feedback'):]) if v and not re.fullmatch(r'none\W*', v, re.I)][:10] for k in ('Feedback', 'Gap', 'Change')}  # the last Gap and Change
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
-                                     'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
+                                     'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', text, re.M | re.I)) and m[1].lower(),
                                      'session': payload.get('session_id'), **{k: payload[k] for k in ('recorded_model', 'recorded_effort') if k in payload},
                                      **{k: v if k == 'feedback' else v[-1] for k, v in kept.items() if v}})
     if not role.startswith('sentinel-'):

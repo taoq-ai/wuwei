@@ -41,14 +41,16 @@ one role into a charter proposal naming the line it replaces.
 
 - FR-001: hook.py `_seat_stop` reads `^Feedback:`, `^Gap:` and `^Change:` lines from the report it
   already reads for Confidence.
-- FR-002: each kept value is masked with `guards.SECRETS` (as traces are), then cut to 200.
+- FR-002: each kept value is masked for secrets and the canary, cleaned of control characters, then
+  cut to 200.
 - FR-003: no new ledger kind, no rating, no outward send.
 - FR-004: `_common.md` gains the Feedback line with an equal word cut; arch keeps 100 words of room.
 
 ## How this fails
 
-1. A seat quotes a `Gap:` line inside its report body, and the record keeps the quote. The last
-   match wins, so the closing block is the one kept.
+1. A seat quotes a `Gap:` line inside its report body, and the record keeps the quote. The hook
+   takes the last Gap and Change line first and only then drops a `none`, so the closing block
+   wins. A quoted Feedback line still counts; the report prints the giving agent per cost line.
 2. Seats write `Feedback: none` or free text with no role; the counts fill with `unnamed` and the
    steward has nothing to act on. The report shows that, so the retro can tighten the line.
 3. A secret straddles the 200-character cut. Masking runs first, so the cut never leaves a
@@ -61,7 +63,11 @@ one role into a charter proposal naming the line it replaces.
 - Gap and Change keep the last line, Feedback keeps every line, matching the report block order.
 - The report reads one day, as the rest of the report does; the steward reads 14 days with
   `--day`. A need for a 14-day block in one call would overturn this.
-- The canary is not masked here: the promise says "masked as traces are", and traces mask only
-  `guards.SECRETS`.
+- Kept values mask `guards.SECRETS` and the workspace canary, as seat.started does, because the
+  ledger syncs to the wuwei/state branch. Control characters and line separators become spaces
+  and runs of whitespace collapse, so a value cannot forge a report line.
+- At most ten Feedback lines are kept per stop. A `none` is the word alone with punctuation, so
+  `none of the tests ran` is kept.
+- A seat that stops twice with the same lines (same session and agent) counts once in the report.
 
 Rollback: revert the commit.

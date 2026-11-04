@@ -2913,8 +2913,9 @@ def test_windows_open_handles_cannot_claim_one_report_twice(root, tmp_path, monk
     assert sum(bool(o and 'ONE WINDOWS CLAIM' in str(o)) for o in found) == 1
 
 
-@pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none (clear brief)', None),
-                                        ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b')])
+@pytest.mark.parametrize('line, kept', [('Gap:', None), ('Gap:   ', None), ('Gap: None.', None), ('Gap: none of the tests ran', 'none of the tests ran'),
+                                        ('Gap: nonexistent path', 'nonexistent path'), ('Gap: a\nGap: b', 'b'), ('Gap: a\nGap: none', None),
+                                        ('Gap: a\r\x1b[2K\u2028b\x85 c', 'a [2K b c')])
 def test_a_seat_stop_keeps_the_last_gap_unless_blank_or_none(root, line, kept):
     assert _stopped(root, 'done\n' + line).get('gap') == kept
 
@@ -2923,4 +2924,19 @@ def test_the_day_report_reads_the_feedback_a_real_stop_recorded(root, fake):
     from wuwei import report
     _stopped(root, 'done\nFeedback: planner -: the brief named no tier\nFeedback: sentinel-arch +: finding 1 named the file')
     text = report.day(root)
-    assert 'Feedback: planner - 1, sentinel-arch + 1.' in text and '- builder on planner -: the brief named no tier' in text
+    assert 'Feedback: planner - 1, sentinel-arch + 1.' in text and '- builder (b1) on planner -: the brief named no tier' in text
+
+
+def test_a_seat_stop_keeps_the_last_change_unless_none(root):
+    assert 'change' not in _stopped(root, 'done\nChange: quoted\nChange: none')
+
+
+def test_a_seat_stop_masks_the_canary_in_a_kept_line(root):
+    (root / ws.DIR / 'canary').write_text('wuwei-canary-abcdef\n')
+    data = _stopped(root, 'done\nFeedback: lead -: leaked wuwei-canary-abcdef\nGap: wuwei-canary-abcdef\nChange: x wuwei-canary-abcdef')
+    assert data['feedback'] == ['lead -: leaked ***'] and data['gap'] == '***' and data['change'] == 'x ***'
+    assert 'abcdef' not in json.dumps(ws.rows(root, 'seat.stopped'))
+
+
+def test_a_seat_stop_keeps_at_most_ten_feedback_lines(root):
+    assert _stopped(root, 'done\n' + '\n'.join(f'Feedback: lead -: cost {n}' for n in range(30)))['feedback'] == [f'lead -: cost {n}' for n in range(10)]
