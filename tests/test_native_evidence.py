@@ -41,6 +41,12 @@ def test_genuine_native_builder_stop_uses_its_canonical_task_path(root, native):
     assert not ws.rows(root, 'seat.unconfirmed')
 
 
+def test_a_native_stop_is_recorded_when_the_canary_is_not_utf8(root, native):
+    payload, parent, child, save = native
+    (root / ws.DIR / 'canary').write_bytes(b'wuwei-canary-\xff\n')
+    hook.handle(root, 'SubagentStop', payload)
+    assert ws.rows(root, 'seat.stopped')[-1]['data']['agent'] == '/root/codex_transcript_probe' and ws.rows(root, 'hook.error') == []
+
 @pytest.mark.parametrize('bad', ['parent', 'role', 'path', 'call', 'inherited', 'completion', 'earlier', 'outer', 'duplicate'])
 def test_native_seat_proof_rejects_unmatched_and_replayed_records(root, native, bad):
     payload, parent, child, save = native
@@ -88,6 +94,25 @@ def test_native_notification_uses_the_exact_frame_and_canonical_or_hashed_identi
     parent[-1]['payload']['content'][0]['text'] = 'quoted ' + parent[-1]['payload']['content'][0]['text']
     save()
     assert not hook._native_told(payload['transcript_path'], agent, payload['last_assistant_message'], '2000-01-01T00:00:00+00:00')
+
+
+def test_native_kept_report_is_masked_and_its_raw_final_answer_still_makes_it_a_pointer(root, native):
+    payload, parent, child, save = native
+    (root / ws.DIR / 'canary').write_text('wuwei-canary-abcdef\n')
+    text = 'Done with ghp_' + 'A1b2' * 9 + ' and wuwei-canary-abcdef'
+    payload = report(native, text)
+    hook.handle(root, 'SubagentStop', payload)
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done with *** and ***'
+    delivery = copy.deepcopy(FIXTURE['parent_delivery'])
+    body = delivery['payload']['content'][0]
+    body['text'] = body['text'].split('Payload:\n')[0] + 'Payload:\n' + text  # the parent's copy holds the raw text
+    delivery['timestamp'] = ws.now().isoformat()
+    parent.append(delivery)
+    save()
+    note = hook.handle(root, 'PreToolUse', {'session_id': payload['session_id'], 'cwd': str(root), 'tool_name': 'Read', 'transcript_path':
+                                            payload['transcript_path'], 'tool_input': {'file_path': str(root / 'README.md')}})['hookSpecificOutput']['additionalContext']
+    assert 'report already notified' in note and 'ghp_' not in note and 'canary-abcdef' not in note
 
 
 def test_native_nonmessage_state_rows_do_not_break_report_proof(root, native):

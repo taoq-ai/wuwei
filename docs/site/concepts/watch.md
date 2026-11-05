@@ -51,8 +51,10 @@ The plugin runs no background process; Claude Code's own scheduling does:
 | Claude Code cloud | an hourly routine running `/wuwei-watch` in the workspace repository, and a GitHub PR subscription on each open PR so reviews and CI wake the session between passes |
 
 Hooks cannot wake an idle session: they fire only on events inside a running one. They still do
-their part: the Stop hook does not let a turn end while someone waits on a reply, and a send closes
-the reply it answers.
+their part: in a planner session the Stop hook does not let a turn end while someone waits on a
+reply, and a send closes the reply it answers. A watch session is a planner session once it runs a
+plan pass or launches a seat for an item; until then it sees the board through `wuwei status`, which
+the watch runs, and its Stop stays quiet (see [hooks](hooks.md)).
 
 ## Owed replies
 
@@ -69,7 +71,8 @@ The report shows replies owed, closed, open and overdue, and the median response
 When `.wuwei/standards.md` names where the team asks for reviews (`Review requests: Slack
 #eng-reviews`), every ready PR the team raises owes one post there with its link. Until a send
 naming the PR is recorded, or someone other than the author has reviewed it, the PR carries
-`review not requested in <place>` on the board, and the Stop hook does not let the turn end on it.
+`review not requested in <place>` on the board, and in a planner session the Stop hook does not let
+the turn end on it.
 It is a duty, not a safety gap: it never holds the merge. A post made outside the session is
 recorded with `wuwei sent owner/repo#n <link to the post>`. A 0.34 workspace's `review_channel`
 becomes that line on upgrade.

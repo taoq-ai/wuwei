@@ -301,6 +301,13 @@
     {"command": "wuwei config models 'builder light=opus medium'", "source": "config-door acceptance 2 (only the owner's own session changes .wuwei/config.toml and .wuwei/plan.json; a seat reads them)", "verdict": "pass"},
     {"command": "wuwei plan add I-2 x --goal G-1", "source": "config-door acceptance 2 (only the owner's own session changes .wuwei/config.toml and .wuwei/plan.json; a seat reads them)", "verdict": "pass"},
     {"command": "wuwei plan show I-1", "source": "config-door acceptance 3 (only the owner's own session changes .wuwei/config.toml and .wuwei/plan.json; a seat reads them)", "verdict": "pass", "seat": true},
-    {"command": "cat .wuwei/plan.json", "source": "config-door acceptance 3 (only the owner's own session changes .wuwei/config.toml and .wuwei/plan.json; a seat reads them)", "verdict": "pass", "seat": true}
+    {"command": "cat .wuwei/plan.json", "source": "config-door acceptance 3 (only the owner's own session changes .wuwei/config.toml and .wuwei/plan.json; a seat reads them)", "verdict": "pass", "seat": true},
+    {"command": "echo x > .wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "rm .wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cp /dev/null .wuwei//canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cd src && echo x > ../.wuwei/./canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "env -C src tee ../x/../.wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "sudo -D src truncate -s0 ../x%2F/../.wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cat .wuwei/canary", "source": "canary-guard acceptance 3 (reading the canary passes, as reading the ledger does)", "verdict": "pass"}
   ]
 }

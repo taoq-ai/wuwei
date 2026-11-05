@@ -30,10 +30,10 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|/canary|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
+LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl', 'canary'), ('ledger', 'ledger.jsonl', 'canary', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
 SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan|sync)\b',))  # door words for a seat only
 SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|sync(\0|$)|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'

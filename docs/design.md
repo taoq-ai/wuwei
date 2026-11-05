@@ -254,7 +254,8 @@ SECURITY.md reads it); a git
 command naming `push` after an option before the subcommand that git 2.43 does not take, or after a
 `-c` or `--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default`; a git command
 after a `-c` or `--config-env` that sets an alias or an include, whatever the subcommand; a secret
-or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
+or the canary in an MCP call or network command; writes to the ledger, the canary (`.wuwei/canary`, which
+the leak check reads; `rm` included) or the cache in the spellings
 sh expands (`//`, `/./`, `..`, globs, braces; on every OS also in any case, with a backslash read as a
 separator as well as a name character, and as Windows reads a name: no drive-relative `X:`, no `:stream`
 or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program named in any case or with
@@ -271,7 +272,7 @@ and a push to `wuwei/state`, while the owner's own session keeps them all and se
 (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); a command whose `eval` or `sh -c`
 bodies nest more than 64 deep; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
-pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself; and from a seat,
+pr, api or repo; wuwei followed by hook; `.wuwei/ledger`, `.wuwei/canary` or `.wuwei` itself; and from a seat,
 `.wuwei/config.toml`, `.wuwei/plan.json`, or wuwei followed by config, plan or sync, also read with
 its quotes and backslashes removed and its `$'..'` escapes decoded), with a hint to run the door command in its own
 one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
@@ -307,11 +308,11 @@ flow.
 
 | Hook | Role |
 |---|---|
-| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the owner's answers of the last 7 days (the latest 12, those not recorded first, with their reason), the board with how many items it left out; at every source, compaction included. After a compaction (`source: compact`) the planner-charter line becomes a re-orientation: re-read the planner charter and the running skill's SKILL.md, re-arm `/wuwei-watch`, read `wuwei plan` and `wuwei status`, and keep `Item: <id>`, `wuwei plan run` and the ADR rule |
+| SessionStart | under Claude Code's 10,000-character cap: the CLI path, the way of working, `_common.md` Decisions and Done, where the planner charter, goals and standards are, the owner's answers of the last 7 days (the latest 12, those not recorded first, with their reason), the board with how many items it left out; at every source, compaction included. After a compaction (`source: compact`) the planner-charter line becomes a re-orientation: re-read the planner charter and the running skill's SKILL.md, re-arm `/wuwei-watch`, read `wuwei plan` and `wuwei status`, and keep `Item: <id>`, `wuwei plan run` and the ADR rule. Only a planner session (one that ran `wuwei plan pass` or launched a seat for an item) gets the board; any other session gets the andon lines and one line, `<n> open items; wuwei status lists them.` |
 | PreToolUse | the doors; an owner question answered in the last 7 days (same class and text, case and spacing aside) sent back with its answer and date, unless it is `plan:` and the plan has an unapproved item; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back; outside auto mode a hand-back, which the harness refuses, is answered with the plain-text report rule so the seat ends instead of retrying; a note, never a refusal, on a launch that takes this session's live seats over the seat ceiling |
-| PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
-| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
-| Stop | a reminder only when actionable work is new since the last one, naming only what changed, in board order (an item waiting on another is left out); once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
+| PostToolUse | traces; a `plan.session` row with the session id when a Bash command runs `<path>/wuwei plan pass` or its output starts with the CLI's `plan pass recorded` reply (the CLI cannot see the session id); what a new PR lacks; prompts, rulings, exceptions, ADR notes, recorded only once the session transcript shows the answer (below) |
+| SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat; all only when the session transcript shows the seat's launch, else `seat.unconfirmed`; outside auto mode a seat's report is kept for the planner, with `guards.SECRETS` and the canary masked, once per text, and given once on its next call or stop; one the seat's own task notification enqueued after it was kept gave (or its hand-back), and no cleared queue dropped, is a pointer on a call and never blocks a Stop |
+| Stop | in a planner session only, a reminder only when actionable work is new since the last one, naming only what changed, in board order (an item waiting on another is left out); once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
 
 An owner answer and a seat stop count only when the harness wrote them (#962). The harness keeps
 each session's transcript under the projects folder (`.claude/projects` in the account's home,

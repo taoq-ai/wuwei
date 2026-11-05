@@ -11,7 +11,7 @@ import timeit
 import pytest
 
 from conftest import BASH, footer, make_pr, verdict_text, write_plan
-from wuwei import guards, ws
+from wuwei import guards, hook, ws
 
 
 def best(run):
@@ -203,6 +203,35 @@ def test_the_records_are_protected(root, repo, payload):
 
 def test_reading_the_ledger_passes(root, repo):
     assert guards.pre_tool(root, bash('tail -5 .wuwei/ledger.jsonl')) is None
+
+
+CANARY_PATHS = {'plain': '.wuwei/canary', '//': '.wuwei//canary', '%xx': 'x%2F/../.wuwei/canary', '/./': './.wuwei/./canary',
+                '/../': 'x/../.wuwei/canary'}  # %xx: sh never decodes it, so the input holds one in a folder .. leaves
+CANARY_WRITES = ('echo x > {}', 'echo x >> {}', 'tee {}', 'cp /dev/null {}', 'mv a {}', 'rm {}', 'dd if=/dev/null of={}',
+                 'sed -i s/a/b/ {}', 'python3 fix.py {}', 'ls\necho x > {}')
+CANARY_WRAPPERS = {'none': '', 'cd': 'cd src && ', 'env -C': 'env -C src ', 'sudo -D': 'sudo -D src '}
+
+
+@pytest.mark.parametrize('wrapper', CANARY_WRAPPERS)
+@pytest.mark.parametrize('kind', CANARY_PATHS)
+def test_a_write_to_the_canary_meets_the_ledger_door_in_every_path_class_and_wrapper(root, repo, kind, wrapper):
+    """The leak check looks for the canary: a session that rewrites or removes it turns the check off (item canary-guard)."""
+    path = CANARY_PATHS[kind] if wrapper == 'none' else '../' + CANARY_PATHS[kind]
+    for write in CANARY_WRITES:
+        command = CANARY_WRAPPERS[wrapper] + write.format(path)
+        found, ledger = guards.pre_tool(root, bash(command)), guards.pre_tool(root, bash(command.replace('canary', 'ledger.jsonl')))
+        assert ledger['decision'] == 'deny' and {**found, 'reason': found['reason'].replace('canary', 'ledger')} == ledger, command
+        assert hook.door(bash(command)), command
+    for tool in guards.DOORS['edit']:
+        found = guards.pre_tool(root, {'tool_name': tool, 'cwd': '/w', 'tool_input': {
+            'notebook_path' if tool == 'NotebookEdit' else 'file_path': '/w/src/' + path}})
+        assert found == guards.deny(guards.LEDGER_DENIED), (tool, path)
+    patch = {'tool_name': 'apply_patch', 'cwd': '/w/src', 'tool_input': {'command': f'*** Begin Patch\n*** Add File: {path}\n+x\n*** End Patch\n'}}
+    assert guards.pre_tool(root, hook.codex(patch)) == guards.deny(guards.LEDGER_DENIED), path
+
+
+def test_reading_the_canary_passes(root, repo):
+    assert guards.pre_tool(root, bash('cat .wuwei/canary')) is None and guards.pre_tool(root, bash('grep -c x .wuwei/canary')) is None
 
 
 @pytest.mark.parametrize('payload', [

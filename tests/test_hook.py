@@ -15,8 +15,46 @@ def plan_one(root, tier='light'):
                        'status': 'open', 'score': 3}])
 
 
-def stop(root, active=False, session='s1'):
+def plan_pass(root, session='s1', command='/opt/wuwei/bin/wuwei plan pass --reason "goals read"', stdout=''):
+    return hook.handle(root, 'PostToolUse', {'session_id': session, 'tool_name': 'Bash', 'cwd': str(root), 'tool_input': {'command': command},
+                                             'tool_response': {'stdout': stdout, 'stderr': '', 'interrupted': False}})
+
+
+def stop(root, active=False, session='s1', planner=True):
+    if planner and not any(r['data'].get('session') == session for r in ws.rows(root, 'plan.session')):
+        plan_pass(root, session)
     return hook.handle(root, 'Stop', {'session_id': session, 'stop_hook_active': active, 'cwd': str(root)})
+
+
+def opened(root, session='s1', source='startup'):
+    return hook.handle(root, 'SessionStart', {'session_id': session, 'source': source, 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
+
+
+def test_only_a_planner_session_gets_the_stop_reminder(root, fake):
+    plan_one(root)
+    assert stop(root, session='other', planner=False) is None
+    plan_pass(root, 'p1', 'cd /repo && /opt/wuwei/bin/wuwei plan show I-1')
+    assert stop(root, session='p1', planner=False) is None
+    plan_pass(root, 'p1', 'cd /repo && /opt/wuwei/bin/wuwei plan pass --reason "goals read"')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
+    assert stop(root, session='other', planner=False) is None
+
+
+def test_a_session_that_is_not_a_planner_gets_a_count_instead_of_the_board(root, fake):
+    write_plan(root, [{'id': f'I-{n}', 'title': f'change {n}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                       'status': 'open', 'score': n} for n in range(1, 6)])
+    context = opened(root, 'other')
+    assert '5 open items; wuwei status lists them.' in context and 'WUWEI CLI:' in context and '## Done' in context
+    assert not re.search(r'^- I-[0-9] ', context, re.M) and 'Board (' not in context
+    compacted = opened(root, 'other', 'compact')
+    assert 'just compacted' in compacted and '5 open items; wuwei status lists them.' in compacted
+    assert not re.search(r'^- I-[0-9] ', compacted, re.M) and 'Board (' not in compacted
+    plan_pass(root, 'p1')
+    assert re.search(r'^- I-1 ', opened(root, 'p1', 'resume'), re.M)
+    ws.record(root, 'seat.started', {'session': 'p2', 'agent': 'a1', 'role': 'builder', 'item': 'I-2'})
+    assert 'Board (' in opened(root, 'p2', 'resume')
+    ws.record(root, 'seat.started', {'session': 'p3', 'agent': 'a2', 'role': 'builder', 'item': ''})
+    assert 'Board (' not in opened(root, 'p3', 'resume')
 
 
 def test_stop_reminds_once_per_set_of_open_gaps(root, fake):
@@ -209,8 +247,41 @@ def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root, tool, 
     assert ws.rows(root, 'refused') and not ws.rows(root, 'hook.error')
 
 
+def test_a_ledger_row_with_no_kind_or_data_keeps_the_planner_reminder_and_board(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1')
+    (root / ws.DIR / 'ledger' / 'planted.jsonl').write_text('{}\n{"ts": "2026-01-01T00:00:00", "kind": "seat.started"}\n')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
+    assert re.search(r'^- I-1 ', opened(root, 'p1', 'resume'), re.M)
+
+
+def test_only_the_wuwei_program_marks_a_planner_and_a_payload_with_no_session_never_is_one(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1', 'echo plan pass')
+    assert stop(root, session='p1', planner=False) is None
+    ws.record(root, 'seat.started', {'agent': 'a1', 'role': 'builder', 'item': 'I-1'})
+    assert hook.handle(root, 'Stop', {'cwd': str(root)}) is None
+
+
+def test_a_plan_pass_through_a_variable_marks_the_session_by_the_cli_reply(root, fake):
+    plan_one(root)
+    plan_pass(root, 'p1', 'grep -rn "plan pass" cli', 'cli/wuwei/__main__.py:62: print("plan pass recorded; the day is open")\n')
+    assert stop(root, session='p1', planner=False) is None
+    plan_pass(root, 'p1', 'W=/opt/wuwei/bin/wuwei; $W plan pass --reason "goals read"', 'plan pass recorded; the day is open\n')
+    assert 'I-1: no pull request yet' in stop(root, session='p1', planner=False)['reason']
+
+
+def test_a_session_that_is_not_a_planner_still_sees_an_andon_above_the_count(root, fake):
+    plan_one(root)
+    board.andon(root, 'acme/lib', 'base branch red\nsince the last merge')
+    context = opened(root, 'other')
+    assert 'ANDON acme/lib: base branch red\nsince the last merge\n1 open item; wuwei status lists them.' in context
+    assert not re.search(r'^- I-1 ', context, re.M) and 'Board (' not in context
+
+
 def test_session_start_orients_with_the_board(root, fake):
     plan_one(root)
+    plan_pass(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
     assert 'WUWEI' in context and 'I-1' in context
 
@@ -220,6 +291,7 @@ def session(root, **payload):
 
 
 def test_after_a_compaction_session_start_names_the_skill_steps_the_session_lost(root, fake):
+    plan_pass(root)
     write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
                        'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries ' + 'x' * 80}
                       for n in range(40)])
@@ -1865,6 +1937,72 @@ def test_a_report_the_harness_already_notified_is_a_pointer_once_and_stays_kept(
     assert kept.read_text() == REPORT_1198 and str(kept) in note
 
 
+TOKEN, CANARY = 'ghp_' + 'A1b2' * 9, 'wuwei-canary-abcdef'
+LEAKY = f'Done: pushed with {TOKEN}, canary {CANARY}.\nBlocked: none'
+
+
+def test_a_kept_report_is_masked_for_secrets_and_the_canary_before_it_is_written(root, tmp_path):
+    """.wuwei/reports syncs to the public wuwei/state branch: the kept text holds *** for both, so the planner's copy does too."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: pushed with ***, canary ***.\nBlocked: none'
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'Done: pushed with ***, canary ***.' in note and TOKEN not in note and CANARY not in note
+
+
+def test_a_kept_report_with_no_secret_or_canary_is_written_unchanged(root, tmp_path):
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == REPORT_1198
+
+
+def test_a_full_length_token_glued_to_the_canary_leaves_no_canary_fragment(root, tmp_path):
+    """The canary is masked first: a greedy token match would otherwise take its 'wuwei' start and keep '-canary-<hex>'."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    key, pat = 'sk-' + 'a1' * 24, 'github_pat_' + 'x' * 22
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: {key}{CANARY} and {pat}{CANARY}.'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: ****** and ******.'
+
+
+@pytest.mark.parametrize('canary', [None, '', '\n'])
+def test_a_kept_report_with_no_canary_still_has_every_secret_masked_and_keeps_a_nul(root, tmp_path, canary):
+    if canary is not None:
+        (root / ws.DIR / 'canary').write_text(canary)
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: pushed with {TOKEN}.\0'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: pushed with ***.\0'
+
+
+def test_a_masked_report_repeated_is_kept_once_and_its_raw_notification_makes_it_a_pointer(root, tmp_path):
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
+    notified('lead1', LEAKY)  # the harness shows the planner the seat's raw text
+    assert planner_call(root, event='Stop') is None
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert POINTER in note and TOKEN not in note
+
+
+@pytest.mark.parametrize('broken', ['not utf-8', 'unreadable'])
+def test_a_broken_canary_never_drops_a_seat_row_or_a_kept_report(root, tmp_path, broken):
+    """A canary file that cannot be read as text masks no canary; the seat's rows and its kept report are still written."""
+    canary = root / ws.DIR / 'canary'
+    canary.write_bytes(b'wuwei-canary-\xff\xfe\n')
+    canary.chmod(0o000 if broken == 'unreadable' else 0o644)
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': 'lead1'},
+                                      'tool_input': {'subagent_type': 'wuwei:lead', 'description': f'lead {TOKEN}', 'prompt': 'go'}})
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert ws.rows(root, 'hook.error') == [] and [r['data']['description'] for r in ws.rows(root, 'seat.started')] == ['lead ***']
+    assert [r['data']['role'] for r in ws.rows(root, 'seat.stopped')] == ['lead']
+    [kept] = (root / ws.DIR / 'reports').rglob('*.md')
+    assert kept.read_text() == f'Done: pushed with ***, canary {CANARY}.\nBlocked: none' and kept.read_text() in note
+
+
 @pytest.mark.parametrize('event', ['Stop', 'PreToolUse'])
 def test_a_notification_the_queue_dropped_is_no_delivery_so_the_report_is_given_in_full_once(root, tmp_path, event):
     """The kill-agents chord or an interrupt clears queued notifications: the row stays, the planner never sees it (#1222)."""
@@ -2801,6 +2939,7 @@ SCOPE = 'scope: may I-1 also change the CLI help text?'
 
 
 def start(root, source='compact'):
+    ws.record(root, 'plan.session', {'session': 's1'})  # a planner session (#1276)
     return hook.handle(root, 'SessionStart', {'session_id': 's1', 'source': source, 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
 
 

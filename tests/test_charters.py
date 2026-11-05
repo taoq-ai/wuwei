@@ -372,7 +372,8 @@ def session_plan(root, items, newline='', pad=0, first=0):
 
 
 def session_context(root):
-    from wuwei import hook
+    from wuwei import hook, ws
+    ws.record(root, 'plan.session', {'session': 's1'})  # a planner session (#1276)
     return hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
 
 
