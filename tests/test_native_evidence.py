@@ -41,6 +41,12 @@ def test_genuine_native_builder_stop_uses_its_canonical_task_path(root, native):
     assert not ws.rows(root, 'seat.unconfirmed')
 
 
+def test_a_native_stop_is_recorded_when_the_canary_is_not_utf8(root, native):
+    payload, parent, child, save = native
+    (root / ws.DIR / 'canary').write_bytes(b'wuwei-canary-\xff\n')
+    hook.handle(root, 'SubagentStop', payload)
+    assert ws.rows(root, 'seat.stopped')[-1]['data']['agent'] == '/root/codex_transcript_probe' and ws.rows(root, 'hook.error') == []
+
 @pytest.mark.parametrize('bad', ['parent', 'role', 'path', 'call', 'inherited', 'completion', 'earlier', 'outer', 'duplicate'])
 def test_native_seat_proof_rejects_unmatched_and_replayed_records(root, native, bad):
     payload, parent, child, save = native

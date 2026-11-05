@@ -293,6 +293,13 @@
     {"command": "echo x >> ~/.claude/projects/-repo/memory/../s.jsonl", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
     {"command": "echo x >> ~/.claude/projects/-repo/%6demory/n.md", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
     {"command": "ln -s ../s.jsonl ~/.claude/projects/-repo/memory/n.md", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
-    {"command": "cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"}
+    {"command": "cd ~/.claude/projects/-repo/memory && echo x >> ../s.jsonl", "source": "memory-writable acceptance 4 (#1196: Claude Code memory under the projects folder stays writable; transcripts and look-alikes are refused)", "verdict": "refusal"},
+    {"command": "echo x > .wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "rm .wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cp /dev/null .wuwei//canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cd src && echo x > ../.wuwei/./canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "env -C src tee ../x/../.wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "sudo -D src truncate -s0 ../x%2F/../.wuwei/canary", "source": "canary-guard acceptance 2 (a write to .wuwei/canary meets the ledger door: the leak check looks for the canary)", "verdict": "refusal"},
+    {"command": "cat .wuwei/canary", "source": "canary-guard acceptance 3 (reading the canary passes, as reading the ledger does)", "verdict": "pass"}
   ]
 }
