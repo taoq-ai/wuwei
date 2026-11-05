@@ -1,5 +1,31 @@
 # Changelog
 
+## [5.4.0](https://github.com/taoq-ai/wuwei/compare/v5.3.1...v5.4.0) (2026-11-05)
+
+
+### Features
+
+* **gates:** the goal gate becomes the red team and runs at smart on complex items and owner or risky paths ([#1282](https://github.com/taoq-ai/wuwei/issues/1282)) ([3be9354](https://github.com/taoq-ai/wuwei/commit/3be93545d37b615023de4abb6d1d782c7f26b784))
+* **report:** record model table departures and report them, fix rounds per item and tokens per merged item ([#1279](https://github.com/taoq-ai/wuwei/issues/1279)) ([8ece25f](https://github.com/taoq-ai/wuwei/commit/8ece25f4684434d055d376df793ecaba1448caf5))
+* **team:** seats give each other 360 feedback in their reports ([#1278](https://github.com/taoq-ai/wuwei/issues/1278)) ([b566362](https://github.com/taoq-ai/wuwei/commit/b5663626c689d3dbc86f2db2202d0c0cc01a2d98))
+
+
+### Bug Fixes
+
+* **guards:** a force push written in a short option cluster with digits (-4f, -f4, -qf6) meets the push door ([#1274](https://github.com/taoq-ai/wuwei/issues/1274)) ([1ee40b5](https://github.com/taoq-ai/wuwei/commit/1ee40b59a73416be7cec1c0b893ccfceb65f92c3))
+* **guards:** a seat's write to .wuwei/config.toml or .wuwei/plan.json meets a door, and the guard reads eval's words ([#1288](https://github.com/taoq-ai/wuwei/issues/1288)) ([00c8fda](https://github.com/taoq-ai/wuwei/commit/00c8fdae1e9f55c23a03fd3d279aefdd9bdd1d1e))
+* **hook:** after a compaction, SessionStart re-orients the planner to the skill steps it lost ([#1287](https://github.com/taoq-ai/wuwei/issues/1287)) ([0a72b5e](https://github.com/taoq-ai/wuwei/commit/0a72b5e8127902a8cd71575c8d1473fb0225cd07))
+* **hook:** mask secrets and the canary in a kept seat report before it is written ([#1285](https://github.com/taoq-ai/wuwei/issues/1285)) ([7704420](https://github.com/taoq-ai/wuwei/commit/770442049232900a3fd4639c5e94f718a9696986))
+* **hook:** open items reach only the planner session, unless a session asks ([#1283](https://github.com/taoq-ai/wuwei/issues/1283)) ([804f94e](https://github.com/taoq-ai/wuwei/commit/804f94e9fc6eb0df4c94b0f4e3242a3b8ab2ac05))
+* **hook:** the canary is read by one reader a broken file cannot raise, and a seat's write to .wuwei/canary meets the ledger door ([#1289](https://github.com/taoq-ai/wuwei/issues/1289)) ([82bedb4](https://github.com/taoq-ai/wuwei/commit/82bedb47ac8d022d94d38b65f6ab6e3279acd9bf))
+* **plan:** name an unlisted footer item and the commands that free the expedite slot ([#1281](https://github.com/taoq-ai/wuwei/issues/1281)) ([e95bafb](https://github.com/taoq-ai/wuwei/commit/e95bafbae98dc385a9b371eca94a1a50421b3ea1))
+* **verdict:** a non-blocking note keeps any place text before blocks: ([#1277](https://github.com/taoq-ai/wuwei/issues/1277)) ([6196b2d](https://github.com/taoq-ai/wuwei/commit/6196b2dc7620b207fd622cc271bec3d4ef921aba))
+
+
+### Tests
+
+* bound the timing tests by work done, and pin the sync test's change stamps ([#1284](https://github.com/taoq-ai/wuwei/issues/1284)) ([c514c6f](https://github.com/taoq-ai/wuwei/commit/c514c6fe4a6a1ce1a88604495ecc0dcbc6da76d9))
+
 ## [5.3.1](https://github.com/taoq-ai/wuwei/compare/v5.3.0...v5.3.1) (2026-11-03)
 
 
