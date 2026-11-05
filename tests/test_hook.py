@@ -225,10 +225,20 @@ def test_after_a_compaction_session_start_names_the_skill_steps_the_session_lost
                       for n in range(40)])
     text = session(root, source='compact')
     assert len(text) < hook.SESSION_CAP and re.search(r'^\d+ more items left out', text, re.M)
-    for said in (str(ws.PLUGIN / 'charters' / 'planner.md'), str(ws.PLUGIN / 'skills'), 'compacted', '/wuwei-watch',
-                 '`wuwei plan`', '`wuwei status`', '`Item: <id>`', '`wuwei plan run <id>`', '`one-way:`', 'ADR'):
+    for said in (f're-read {ws.PLUGIN / "charters" / "planner.md"} and the SKILL.md of the WUWEI skill in use under '
+                 f'{ws.PLUGIN / "skills"};', 'just compacted', 'check /wuwei-watch is still armed and arm it if not',
+                 'read `wuwei plan` and `wuwei status`', 'carries `Item: <id>` from `wuwei plan`',
+                 'each ops step a `wuwei plan run <id>` record', 'each owner `one-way:` answer an ADR'):
         assert said in text, said
     assert 'Read before the first plan pass' not in text
+
+
+def test_after_a_compaction_a_vendored_session_is_pointed_at_the_skills_it_has(root, fake, tmp_path, monkeypatch):
+    from wuwei import setup
+    claude = setup.vendor(tmp_path)
+    monkeypatch.setattr(ws, 'PLUGIN', claude / 'wuwei')
+    text = session(root, source='compact')
+    assert f'in use under {claude / "skills"};' in text and (claude / 'skills' / 'wuwei-run' / 'SKILL.md').is_file()
 
 
 @pytest.mark.parametrize('source', ['startup', 'resume', 'clear', None])

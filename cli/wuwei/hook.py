@@ -567,8 +567,9 @@ def session_start(root, payload):
              f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
              f'and the goals and standards in {Path(root) / ws.DIR}.']
     if payload.get('source') == 'compact':  # a compacted session is past its first pass and lost the skill text it followed
+        skills = next((p for p in (ws.PLUGIN / 'skills', ws.PLUGIN.parent / 'skills') if p.is_dir()), ws.PLUGIN / 'skills')  # vendored: .claude/skills
         parts[-1] = (f'The context was just compacted: the WUWEI skill text you followed is cut. Before your next action re-read '
-                     f'{charters / "planner.md"} and the SKILL.md of the WUWEI skill in use under {ws.PLUGIN / "skills"}; check '
+                     f'{charters / "planner.md"} and the SKILL.md of the WUWEI skill in use under {skills}; check '
                      '/wuwei-watch is still armed and arm it if not; read `wuwei plan` and `wuwei status`. Each seat brief carries '
                      '`Item: <id>` from `wuwei plan`, each ops step a `wuwei plan run <id>` record, each owner `one-way:` answer an ADR.')
     left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
