@@ -2458,7 +2458,12 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     'python3 -m wuwei config owner_paths x', 'python3 -mwuwei plan done I-1', '/opt/wuwei/bin/wuwei plan restore I-1', 'WUWEI plan done I-1',
     '"$(cat .wuwei/executable)" config owner_paths x', '$(cat .wuwei/executable) plan done I-1', '`cat .wuwei/executable` plan done I-1',
     "$'wuwei' config owner_paths x", "wuwei $'plan' done I-1", 'bash -c "wuwei plan done I-1"', 'cd src && wuwei plan done I-1',
-    'env A=1 wuwei -- config tiers x']
+    'env A=1 wuwei -- config tiers x',
+    # the CLI class of the probe at the first head: an ANSI-C quoted word read as $word hid the call (117 holes)
+    "$'wuwei' -- config owner_paths x", "w''uwei $'plan' done I-1", "python3 -mwuwei $'plan' done I-1",
+    '"$(cat .wuwei/executable)" $\'plan\' done I-1', '`cat .wuwei/executable` $\'plan\' done I-1', 'bash -c "$\'wuwei\' plan done I-1"',
+    'sh -c "true && $\'wuwei\' config tiers"', 'bash -c ' + shlex.quote("$'wuwei' plan done I-1"), 'sh -c ' + shlex.quote("w''uwei $'plan' run I-1"),
+    "env A=1 $'wuwei' -- config owner_paths x", "command $'wuwei' pl''an done I-1"]
 INSIDE = ['cd .wuwei && echo x > plan.json', 'env -C .wuwei tee plan.json', 'sudo -D .wuwei tee config.toml']  # refused for all on main
 OWNER_ONLY = "only the owner's own session"
 

@@ -167,7 +167,7 @@ def _unwrap(tokens):
         argv = argv[1:]
     if argv and progname(argv[0]) in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
         argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
-                     and (progname(a) in READ or progname(a).startswith('python'))), argv)
+                     and (progname(a.lstrip('$')) in READ or progname(a).startswith('python'))), argv)  # $'wuwei' too
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
         return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
@@ -415,7 +415,7 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
         held = held or program in ('cd', 'pushd') and any(map(harness, argv[1:]))
         if re.search(r'(^wuwei|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0(--\0)?hook(\0|$)', '\0'.join([program, *argv[1:]])):  # literal spellings
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
-        if seat and re.search(SEAT_CLI, '\0'.join([program, *argv[1:]])):
+        if seat and re.search(SEAT_CLI, re.sub(r'(^|\0)\$', r'\1', '\0'.join([program, *argv[1:]]))):  # $'plan' reads as $plan
             return deny(OWNER_ONLY.strip())
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
