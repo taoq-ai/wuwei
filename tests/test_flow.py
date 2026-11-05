@@ -1,6 +1,7 @@
 """In-progress work flows as a Kanban board (flow-order): class of service, then closest to done, then age."""
 
 import datetime
+import sys
 
 import pytest
 
@@ -184,11 +185,21 @@ def test_a_wait_on_a_merged_cycle_with_forks_is_checked_in_linear_time(root):
     for row in rows:
         row['after'] = {'X': ['Y', 'Z'], 'Y': ['X'], 'Z': ['X']}[row['id']]
     plan.save(root, rows)
-    started = datetime.datetime.now()
-    assert plan.add(root, 'W', 'W', 'G-1', 'acme/app', 'light', ONE, after=['X'])['after'] == ['X']
-    with pytest.raises(ValueError, match='is not in the plan, or is this item or waits on it'):
-        plan.add(root, 'X', 'X', 'G-1', 'acme/app', 'light', ONE, after=['Y', 'Z'])
-    assert (datetime.datetime.now() - started).total_seconds() < 5
+    walks = []
+
+    def count(frame, event, arg):  # each call of the cycle walk is counted; a walk with no seen set would make 2^99 and never end
+        if event == 'call' and frame.f_code.co_name == 'reaches':
+            walks.append(1)
+            if len(walks) > 1000:
+                raise AssertionError('the cycle walk visits an item more than once')
+    sys.setprofile(count)
+    try:
+        assert plan.add(root, 'W', 'W', 'G-1', 'acme/app', 'light', ONE, after=['X'])['after'] == ['X']
+        with pytest.raises(ValueError, match='is not in the plan, or is this item or waits on it'):
+            plan.add(root, 'X', 'X', 'G-1', 'acme/app', 'light', ONE, after=['Y', 'Z'])
+    finally:
+        sys.setprofile(None)
+    assert len(walks) < 20, len(walks)
 
 
 @pytest.mark.parametrize('closed', ['done', 'dropped', 'parked'])

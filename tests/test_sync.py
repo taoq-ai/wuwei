@@ -1,3 +1,4 @@
+import datetime
 import json
 import subprocess
 
@@ -154,14 +155,18 @@ def test_two_clones_that_each_add_an_item_both_keep_both(remote, tmp_path):
     assert {i['id'] for i in shown} == {'I-1', 'A-2', 'B-2'}
 
 
-def test_the_newest_change_to_an_item_wins_whichever_clone_syncs_last(remote, tmp_path):
+def test_the_newest_change_to_an_item_wins_whichever_clone_syncs_last(remote, tmp_path, monkeypatch):
     a = workspace(clone(remote, tmp_path / 'a'))
     plan.add(a, 'I-1', 'first', 'G-1', 'acme/app', 'light', SCORES)
     sync.push(a)
     b = clone(remote, tmp_path / 'b')
     sync.restore(b)
-    plan.mark(b, 'I-1', 'parked', 'older change')
-    plan.mark(a, 'I-1', 'dropped', 'newer change')
+    now = ws.now()  # the stamps are clock reads: a coarse clock (Windows, 15 ms) gives both changes one stamp, and a tie keeps this clone's
+    with monkeypatch.context() as m:  # monkeypatch.undo() would also undo the autouse offline fixtures
+        m.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=1))
+        plan.mark(b, 'I-1', 'parked', 'older change')
+        m.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=2))
+        plan.mark(a, 'I-1', 'dropped', 'newer change')
     sync.push(a)
     assert 'kept local' not in sync.pull(b)  # changed here and there: merged by item, the newer change wins
     assert plan.find(b, 'I-1')['reason'] == 'newer change'
