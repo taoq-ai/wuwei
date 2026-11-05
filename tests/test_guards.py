@@ -2468,7 +2468,7 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     "echo wuwei $'plan' done I-1 | sh", 'echo "wuwei config owner_paths x" | bash', "eval $'wuwei plan done I-1'",
     # the probe's eval and stdin positions at c3d77512 (282 holes): eval's words were never read, and sh's stdin text
     # was matched with its quotes and its -- in place
-    "eval 'wuwei plan done I-1'", "eval -- 'wuwei config tiers x'", 'eval "python3 -mwuwei plan tier I-1 light"',
+    "eval 'wuwei plan done I-1'", "eval -- 'wuwei config tiers x'", 'eval "python3 -mwuwei plan tier I-1 light"', 'eval wuwei plan done I-1',
     "echo 'wuwei -- config owner_paths x' | sh", "echo 'python3 -mwuwei plan done I-1' | sh",
     "echo '$(cat .wuwei/executable) plan done I-1' | bash", 'echo ' + shlex.quote("w''uwei pl''an done I-1") + ' | sh']
 INSIDE = ['cd .wuwei && echo x > plan.json', 'env -C .wuwei tee plan.json', 'sudo -D .wuwei tee config.toml']  # refused for all on main
@@ -2509,7 +2509,8 @@ def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
 
 
 @pytest.mark.parametrize('command', ["eval 'echo x >> .wuwei/ledger/a.jsonl'", 'eval -- "rm -rf .wuwei/ledger"',
-                                     "eval 'bash -c \"echo x > .wuwei/ledger.jsonl\"'"])
+                                     "eval 'bash -c \"echo x > .wuwei/ledger.jsonl\"'", 'eval rm -rf .wuwei/ledger',
+                                     "eval echo x '>>' .wuwei/ledger/a.jsonl"])
 def test_eval_runs_its_words_so_the_guard_reads_them(root, repo, command):
     """config-door probe: eval's words were one argument the guard never read, for every door and every session."""
     assert 'the ledger is written only' in guards.pre_tool(root, bash(command))['reason'], command

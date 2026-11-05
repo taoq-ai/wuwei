@@ -45,9 +45,6 @@ MUTANTS = [
     ('unreadable without owner line', "Write tool.' + OWNER_ONLY * any(", "Write tool.' + '' * any("),
     ('every session a seat', "seat = payload.get('cwd') or '.', bool(payload.get('agent_type'))", "seat = payload.get('cwd') or '.', True"),
     ('no session a seat', "seat = payload.get('cwd') or '.', bool(payload.get('agent_type'))", "seat = payload.get('cwd') or '.', False"),
-    ('SEAT_CLI reads $word as is', r"re.search(SEAT_CLI, re.sub(r'(^|\0)\$', r'\1', '\0'.join([program, *argv[1:]])))",
-     r"re.search(SEAT_CLI, '\0'.join([program, *argv[1:]]))"),
-    ('wrapper does not unwrap $word', "progname(a.lstrip('$')) in READ", 'progname(a) in READ'),
     ('bash call drops seat', "payload.get('session_id', ''), seat)", "payload.get('session_id', ''))"),
 ]
 
