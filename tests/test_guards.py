@@ -6,7 +6,7 @@ import shlex
 import shutil
 import subprocess
 import threading
-import time
+import timeit
 
 import pytest
 
@@ -14,26 +14,23 @@ from conftest import BASH, footer, make_pr, verdict_text, write_plan
 from wuwei import guards, ws
 
 
-def best(run, repeat=3):
-    """The fastest of a few runs of run(): a loaded machine slows every run, so the minimum is the least noisy."""
-    took = []
-    for _ in range(repeat):
-        start = time.perf_counter()
-        run()
-        took.append(time.perf_counter() - start)
-    return min(took)
+def best(run):
+    """The fastest per-call time of run() over five timeit rounds: a loaded machine slows every round, so the minimum is the least noisy."""
+    timer = timeit.Timer(run)
+    number = timer.autorange()[0]
+    return min(timer.repeat(5, number)) / number
 
 
 def assert_scales(run, small, big, label=''):
     """run(n) costs about linearly in n: the ratio of the two best times sits well under the quadratic ratio, so a loaded
     machine (both runs slow alike) passes and a quadratic walk fails. Bound: the geometric mean of linear and quadratic."""
-    ratio = best(lambda: run(big)) / max(best(lambda: run(small)), 1e-4)
+    ratio = best(lambda: run(big)) / best(lambda: run(small))
     assert ratio < (big / small) ** 1.5, (label, ratio, big / small)
 
 
 def assert_no_slower_than(run, baseline, factor, label=''):
     """run() costs at most factor times a baseline measured in the same process."""
-    ratio = best(run) / max(best(baseline), 1e-4)
+    ratio = best(run) / best(baseline)
     assert ratio < factor, (label, ratio)
 
 
@@ -499,7 +496,7 @@ def test_an_exception_in_the_shape_reaches_the_owner(root, question):
                                                      ('exception: ', 'o/r#1 at abc1234: ', '', 2000), ('exception: ', 'o/r#1 at abc1234 and ', '', 1700)],
                          ids=['letters', 'spaces', 'newlines', 'dots', 'colons', 'ands'])  # Windows caps the test id pytest puts in the env
 def test_a_long_exception_question_is_read_in_linear_time(root, head, unit, tail, count):
-    assert_scales(lambda n: guards.pre_tool(root, ask(head + unit * n + tail)), count // 4, count, unit)
+    assert_scales(lambda n: guards.pre_tool(root, ask(head + unit * n + tail)), count // 16, count, unit)
 
 
 def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
@@ -830,7 +827,7 @@ def test_git_clean_joins_its_directories_once_however_many_pathspecs_follow(root
     """Security gate records at 4fbaabc: 10,000 -C dirs joined to each of 25,000 pathspecs took 56.7 s, then bash deleted the ledger."""
     assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000 + ' .wuwei'))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000)) is None
-    assert_scales(lambda n: guards.pre_tool(root, bash('git' + ' -C .' * n + ' clean -fdx' + ' b' * (n * 5 // 2) + ' .wuwei')), 2500, 10000)
+    assert_scales(lambda n: guards.pre_tool(root, bash('git' + ' -C .' * n + ' clean -fdx' + ' b' * (n * 5 // 2) + ' .wuwei')), 625, 10000)
 
 
 @pytest.mark.parametrize('command', ['env -C .wuwei git clean -fdx ledger', 'env --chdir=.wuwei git clean -fdx ledger',
@@ -1873,14 +1870,14 @@ def test_known_git_options_before_ordinary_work_pass(root, fake, repo, command):
 def test_the_git_option_loop_stays_linear_at_125_kb(root, fake, repo):
     for word in ('-p ', '-c a.b=c ', '--x ', '-c alias.p=x ', '-C . ', '--x -c alias.p=x '):
         assert_scales(lambda size: guards.bash(root, 'git ' + word * (size // len(word)) + 'push origin main', '/repo', 's1'),
-                      31_250, 125_000, word)
+                      125_000 // 16, 125_000, word)
 
 
 @pytest.mark.parametrize('word', ['true;', '>x '])
 def test_segments_and_redirects_stay_linear_at_125_and_500_kb(root, word):
     """Item git-globals: a hook that times out lets the tool run, so the split stays linear (quadratic took 50 s at 500 KB)."""
     assert guards.bash(root, word * (125_000 // len(word)) + ' git push origin main', '/repo', 's1'), word
-    assert_scales(lambda size: guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), 125_000, 500_000, word)
+    assert_scales(lambda size: guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), 500_000 // 16, 500_000, word)
 
 
 @pytest.fixture

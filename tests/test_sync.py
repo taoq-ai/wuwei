@@ -162,11 +162,11 @@ def test_the_newest_change_to_an_item_wins_whichever_clone_syncs_last(remote, tm
     b = clone(remote, tmp_path / 'b')
     sync.restore(b)
     now = ws.now()  # the stamps are clock reads: a coarse clock (Windows, 15 ms) gives both changes one stamp, and a tie keeps this clone's
-    monkeypatch.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=1))
-    plan.mark(b, 'I-1', 'parked', 'older change')
-    monkeypatch.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=2))
-    plan.mark(a, 'I-1', 'dropped', 'newer change')
-    monkeypatch.undo()
+    with monkeypatch.context() as m:  # monkeypatch.undo() would also undo the autouse offline fixtures
+        m.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=1))
+        plan.mark(b, 'I-1', 'parked', 'older change')
+        m.setattr(ws, 'now', lambda: now + datetime.timedelta(minutes=2))
+        plan.mark(a, 'I-1', 'dropped', 'newer change')
     sync.push(a)
     assert 'kept local' not in sync.pull(b)  # changed here and there: merged by item, the newer change wins
     assert plan.find(b, 'I-1')['reason'] == 'newer change'
