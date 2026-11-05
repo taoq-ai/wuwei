@@ -2463,7 +2463,14 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     "$'wuwei' -- config owner_paths x", "w''uwei $'plan' done I-1", "python3 -mwuwei $'plan' done I-1",
     '"$(cat .wuwei/executable)" $\'plan\' done I-1', '`cat .wuwei/executable` $\'plan\' done I-1', 'bash -c "$\'wuwei\' plan done I-1"',
     'sh -c "true && $\'wuwei\' config tiers"', 'bash -c ' + shlex.quote("$'wuwei' plan done I-1"), 'sh -c ' + shlex.quote("w''uwei $'plan' run I-1"),
-    "env A=1 $'wuwei' -- config owner_paths x", "command $'wuwei' pl''an done I-1"]
+    "env A=1 $'wuwei' -- config owner_paths x", "command $'wuwei' pl''an done I-1",
+    # a call sh reads from stdin or eval: only the seat's door words see it (mutants 'seat cli word gone' and 'without $')
+    "echo wuwei $'plan' done I-1 | sh", 'echo "wuwei config owner_paths x" | bash', "eval $'wuwei plan done I-1'",
+    # the probe's eval and stdin positions at c3d77512 (282 holes): eval's words were never read, and sh's stdin text
+    # was matched with its quotes and its -- in place
+    "eval 'wuwei plan done I-1'", "eval -- 'wuwei config tiers x'", 'eval "python3 -mwuwei plan tier I-1 light"',
+    "echo 'wuwei -- config owner_paths x' | sh", "echo 'python3 -mwuwei plan done I-1' | sh",
+    "echo '$(cat .wuwei/executable) plan done I-1' | bash", 'echo ' + shlex.quote("w''uwei pl''an done I-1") + ' | sh']
 INSIDE = ['cd .wuwei && echo x > plan.json', 'env -C .wuwei tee plan.json', 'sudo -D .wuwei tee config.toml']  # refused for all on main
 OWNER_ONLY = "only the owner's own session"
 
@@ -2495,9 +2502,17 @@ def test_a_seat_edit_of_the_config_or_the_plan_is_refused_and_the_owner_edit_pas
                                      'cat < .wuwei/config.toml', 'python3 -m wuwei plan show I-1', '"$(cat .wuwei/executable)" plan show I-1',
                                      'git -C /x/wuwei config user.name', 'git config user.email', 'git commit -m "wuwei plan done"',
                                      'echo x > .wuwei/%70lan.json', 'ls .wuwei', 'echo x > plan.json', 'cp a .wuwei-plan.json',
-                                     'wuwei plan show run-evidence', 'wuwei plan show done-check --json'])
+                                     'wuwei plan show run-evidence', 'wuwei plan show done-check --json', "eval 'wuwei plan show I-1'",
+                                     'eval "$(ssh-agent -s)"', "printf 'x\\ny\\n' | grep plan specs/wuwei/plan.md"])
 def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
     assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
+
+
+@pytest.mark.parametrize('command', ["eval 'echo x >> .wuwei/ledger/a.jsonl'", 'eval -- "rm -rf .wuwei/ledger"',
+                                     "eval 'bash -c \"echo x > .wuwei/ledger.jsonl\"'"])
+def test_eval_runs_its_words_so_the_guard_reads_them(root, repo, command):
+    """config-door probe: eval's words were one argument the guard never read, for every door and every session."""
+    assert 'the ledger is written only' in guards.pre_tool(root, bash(command))['reason'], command
 
 
 def test_the_hook_refuses_a_seat_plan_write_and_passes_the_owner(root, repo):

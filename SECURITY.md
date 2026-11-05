@@ -21,7 +21,8 @@ host's protected refs, required checks and required reviews, and publication cre
 kept out of seat environments.
 
 The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
-brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
+brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), the words `eval` runs
+(joined, as sh joins them), and the command after a
 wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
 `);`) is split into the operators sh reads, so process substitution and glued separators reach
 their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
@@ -57,8 +58,9 @@ which gates a change owes, its tier and who reviews it. A seat is a call whose h
 `agent_type`. From a seat the records rule also covers both files, by every route above, removal
 included. So are `wuwei config <key> [<value>]` and the `wuwei plan` actions that write the plan:
 `add`, `park`, `drop`, `done`, `restore`, `run` and `session`. These are refused when called as
-`wuwei` on any path, through `python -m wuwei`, or through `$(cat .wuwei/executable)`.
-A seat's unreadable command naming either file or `wuwei config` or `wuwei plan` is refused too.
+`wuwei` on any path, through `python -m wuwei`, or through `$(cat .wuwei/executable)`, with any
+word in ANSI-C quotes (`$'plan'`). A seat's unreadable command naming either file or
+`wuwei config` or `wuwei plan`, quotes removed, is refused too.
 Reads pass: `wuwei plan show`, `wuwei plan view`, `wuwei config` alone, `wuwei status`, `cat` and
 the Read tool. The owner's own session (no `agent_type`) keeps every one of these writes.
 
@@ -140,7 +142,7 @@ through a script file, a writer the guards do not list (`install`, `perl`, `rsyn
 at run time, a symlink or hard link made outside the guards' sight (a hard link from a memory file
 to a transcript included), or a command that sets `HOME` before its `~` expands.
 Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
-(`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
+(`$'...'`, `$"..."`) of the `.claude` segment. That is a forged
 transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
 since each answer id is recorded once. A gate's attestation, at its SubagentHandback (PreToolUse) and
 at its SubagentStop, reads the report from the seat's own transcript: the one the payload names, or

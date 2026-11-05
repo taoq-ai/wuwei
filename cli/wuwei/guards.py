@@ -34,7 +34,7 @@ DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
-SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[$\'"]*(config|plan)\b',))  # door words for a seat only
+SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan)\b',))  # door words for a seat only
 SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
@@ -169,8 +169,9 @@ def _unwrap(tokens):
         argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
                      and (progname(a.lstrip('$')) in READ or progname(a).startswith('python'))), argv)  # $'wuwei' too
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
-    if body and progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
-        return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
+    if body and (progname(argv[0]) == 'eval' or progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body])):
+        return (n if (n := segments(' '.join(argv[body:]) if progname(argv[0]) == 'eval' else argv[body])) is not None else [UNREAD]) + (
+            [([], targets)] if targets else [])  # eval runs its words joined, as sh -c runs its body
     return [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
 
 
@@ -393,13 +394,13 @@ def leak(root, text):
 
 
 def bash(root, command, cwd, session, seat=False):  # seat: the payload names an agent_type, so OWNED is not its to write
-    parts, own = segments(command), OWNED * seat
+    parts, own, text = segments(command), OWNED * seat, command + re.sub(r'[\'"\\]', '', ' ' + command) * seat  # a seat's text unquoted too
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
-            w, command, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS + SEAT_WORDS * seat if all(re.search(w, command, re.I) for w in d)]):
+            w, text, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS + SEAT_WORDS * seat if all(re.search(w, text, re.I) for w in d)]):
         return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
                     'anywhere in the text counts, a heredoc body or quoted prose included: run the door command in its own one-line '
                     'Bash call, and pass long text by --body-file, -F or a file written with the Write tool.' + OWNER_ONLY * any(
-                        re.search(w, command, re.I) for (w,) in SEAT_WORDS * seat))  # #1117
+                        re.search(w, text, re.I) for (w,) in SEAT_WORDS * seat))  # #1117
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
