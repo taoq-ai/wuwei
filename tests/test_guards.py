@@ -2492,6 +2492,8 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     r"$'wuwei' plan done I-1", "echo x > .wuwei/pla$'n'.json", "wuwei con$'f'ig owner_paths x", "wu$'w'ei config owner_paths x",
     "rm $'.wuwei/config.toml'", "echo 'echo x > .wuwei/config.toml' | sh", r"echo 'w\uwei plan done I-1' | sh", r"w\uwei $'plan' done I-1",
     'wuwei sync', 'python3 -m wuwei sync', '"$(cat .wuwei/executable)" sync', "eval 'wuwei sync'",
+    # mutant round 7: sync and a \u escape in unreadable text
+    "echo 'wuwei sync' | sh", r"$'\u0077uwei' plan done I-1",
     # the round 1 probe: an escape inside $'..' inside a quoted body (1,107 holes before escapes were decoded at any depth)
     'bash -c ' + shlex.quote(r"wuwei $'\x63onfig' owner_paths x"), 'eval ' + shlex.quote(r"echo x > $'.\x77uwei/plan.json'"),
     'echo ' + shlex.quote(r"wuwei $'pl\x61n' done I-1") + ' | sh']
@@ -2558,7 +2560,8 @@ def test_an_eval_nested_too_deep_to_read_is_refused(root, repo, command, agent):
     payload = {**bash('eval ' * 600 + shlex.quote(command)), 'cwd': str(root), **agent}
     assert guards.pre_tool(root, payload)['decision'] == 'deny'
     assert hook.handle(root, 'PreToolUse', payload)['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert guards.pre_tool(root, {**bash('eval ' * 50 + "'echo hi'"), **agent}) is None
+    assert guards.pre_tool(root, {**bash('eval ' * 64 + 'echo hi'), **agent}) is None  # the bound, not the stack (mutant 'no depth bound')
+    assert guards.pre_tool(root, {**bash('eval ' * 65 + 'echo hi'), **agent})['decision'] == 'deny'
 
 
 @pytest.mark.parametrize('command', ['git push origin HEAD:wuwei/state', 'git push origin st:refs/heads/wuwei/state',

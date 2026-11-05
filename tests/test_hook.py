@@ -911,7 +911,8 @@ def test_a_quoted_door_word_or_a_network_call_fails_closed_when_the_guard_raises
     assert ws.rows(root, 'hook.error')
 
 
-@pytest.mark.parametrize('command', ['wuwei config owner_paths x', 'echo x > .wuwei/plan.json', "w''uwei pl''an done I-1"])
+@pytest.mark.parametrize('command', ['wuwei config owner_paths x', 'echo x > .wuwei/plan.json', "w''uwei pl''an done I-1",
+                                     "wuwei $'config' owner_paths x", 'wuwei sync'])
 def test_a_seat_config_or_plan_command_fails_closed_when_the_guard_raises(root, monkeypatch, command):
     """config-door gate round 1: the error path knew the door words but not the seat's, so a crash let a seat's write through."""
     monkeypatch.setattr(guards, 'bash', lambda *args: 1 / 0)
