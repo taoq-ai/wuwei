@@ -264,23 +264,31 @@ or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program name
 after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, `.codex/sessions`, or their parent configuration folders) in the
 same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
-a literal `-m wuwei hook` through any interpreter; an
-owner question without a class.
+a literal `-m wuwei hook` through any interpreter; from a seat (a hook payload that names an
+`agent_type`), a write to `.wuwei/config.toml` or `.wuwei/plan.json` by every route the ledger rule
+reads, `wuwei config <key> [<value>]`, the `wuwei plan` actions that write the plan, `wuwei sync`,
+and a push to `wuwei/state`, while the owner's own session keeps them all and seats keep the reads
+(`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); a command whose `eval` or `sh -c`
+bodies nest more than 64 deep; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
-pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
+pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself; and from a seat,
+`.wuwei/config.toml`, `.wuwei/plan.json`, or wuwei followed by config, plan or sync, also read with
+its quotes and backslashes removed and its `$'..'` escapes decoded), with a hint to run the door command in its own
 one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
 counts, a heredoc body or quoted prose included, and says to write such text to a file with the Write tool (#1117); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
 makes a command unreadable, and so does a shell with no `-c` body (fed by a pipe, a here-string, `-s` or
 `< file`, or given a script path), while its segments still meet the other doors; a run of punctuation such
 as `<(` or `;>` is split into the operators sh reads, and every redirect (`<x`, `>&2`, `2>&1`, `{fd}>x`, `<<x`) is
 read as one, so process substitution, glued separators and redirects reach their doors. The doors read a command
-inside a loop, an if or a brace group, a shell's `-c` body after combined flags (`bash -lc`), and,
-after a wrapper (env, timeout, nice, sudo, xargs), the first program a door reads.
+inside a loop, an if or a brace group, a shell's `-c` body after combined flags (`bash -lc`), the
+words `eval` runs (joined, as sh joins them), and, after a wrapper (env, command, builtin, time,
+timeout, nice, sudo, xargs), the first program a door reads, `eval` included.
 Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 
 A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (an edit
 tool in `guards.DOORS` or a Codex apply_patch, any MCP tool, or a Bash command that names a door program
-or a network program in `guards.NETWORK`, read with its quotes and backslashes removed) refuses
+or a network program in `guards.NETWORK`, or from a seat the config and plan door words, read with
+its quotes and backslashes removed) refuses
 it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`.
 The launcher is the one exception: when the PreToolUse hook fails before it can judge (an import, its
 arguments, the version read), `bin/wuwei` exits 2 and refuses every PreToolUse call, not only door calls.

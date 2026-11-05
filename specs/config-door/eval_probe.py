@@ -1,7 +1,7 @@
 """The checks that do not rely on door words, read under the new eval shape (AGENTS.md "Testing the guards").
 
-Each command is read through guards.pre_tool plain and as eval '<command>', as the owner and as a seat, in one tree.
-A row is the plain verdict and the eval verdict; at the head they agree, at main eval passes what plain refuses.
+Each command is read through guards.pre_tool plain and as <prefix> '<command>', as the owner and as a seat, in one tree.
+Prefixes: eval, behind command, command -p, time -p, builtin and env command, and 66 evals deep (refused for all).
 
     python3 -I eval_probe.py <tree> <scratch folder>
 """
@@ -28,10 +28,12 @@ def verdict(command, seat):
     return 'pass' if not found else found.get('decision', 'other')
 
 
-agree = 0
-for command in COMMANDS:
-    for seat in (False, True):
-        plain, wrapped = verdict(command, seat), verdict('eval ' + shlex.quote(command), seat)
-        agree += plain == wrapped
-        print(f"{'seat ' if seat else 'owner'} plain {plain:<5} eval {wrapped:<5} {command[:60]}")
-print(f'{agree} of {2 * len(COMMANDS)} agree')
+PREFIXES = ('eval', 'command eval', 'command -p eval', 'time -p eval', 'builtin eval', 'env command eval', 'eval ' * 65 + 'eval')
+agree = shut = 0
+for prefix in PREFIXES:
+    for command in COMMANDS:
+        for seat in (False, True):
+            plain, wrapped = verdict(command, seat), verdict(f'{prefix} {shlex.quote(command)}', seat)
+            agree += plain == wrapped
+            shut += plain == 'pass' or wrapped != 'pass'  # what plain refuses or asks, the prefix does not pass
+print(f'{len(PREFIXES)} prefixes x {2 * len(COMMANDS)} reads: {agree} agree with the plain verdict; {shut} keep a refused or asked call shut')

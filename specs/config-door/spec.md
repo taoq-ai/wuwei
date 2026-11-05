@@ -91,7 +91,12 @@ The acceptance scenarios, restated:
 - FR-004: `sed` with `-i` in any spelling is a writer.
 - FR-005: The owner's session verdicts do not move, apart from FR-004 inside `.wuwei`.
 - FR-006: SECURITY.md and docs/site/reference.md state the rule; the vendored copy matches.
-- FR-007: The guard reads the words `eval` runs, joined, as it reads a `sh -c` body, for every session.
+- FR-007: The guard reads the words `eval` runs, joined, as it reads a `sh -c` body, for every session, behind
+  `command`, `builtin`, `time` and the other wrappers too; bodies nested more than 64 deep are refused.
+- FR-008 (gate round 1): From a seat, `wuwei sync` and a git push whose destination is `wuwei/state` are refused.
+- FR-009 (gate round 1): A seat's unreadable text is also read with quotes, a `$` before a quote and backslashes
+  removed, and the `$'..'` escapes that spell a word (`\xHH`, `\NNN`, `\uHHHH`, `\UHHHHHHHH`) decoded.
+- FR-010 (gate round 1): The hook's fail-closed filter reads the seat words for a seat.
 
 ## Success criteria
 
@@ -123,5 +128,18 @@ The acceptance scenarios, restated:
   eval position was a seat route to this door, and the root fix is one condition in the shared unwrap; a
   seat-only patch would leave the ledger and push doors open under `eval`. Overturn: an owner workflow that
   needs `eval` around a door command to pass; the corpus has none (0 owner moves).
+- Gate round 1, the planner's decision: a seat's push to `wuwei/state` and a seat's `wuwei sync` are refused. Why:
+  `wuwei sync` takes plan.json and config.toml from that branch, so a seat that pushes a crafted copy and syncs
+  sets its own tier and owner_paths; seats never need either (the owner's session and the Stop hook sync). The
+  destination is read as git reads it (`wuwei/state`, `heads/...`, `refs/heads/...`, a deletion, globs and `--all`).
+  Not read: a local branch whose upstream is `wuwei/state` pushed with `push.default=upstream` from git config,
+  and `gh api` writes to the branch's refs (refused for every session already). Overturn: a seat role that must
+  sync state, which would need its own owner-signed route.
+- A command whose `eval` or `sh -c` bodies nest more than 64 deep is refused for every session. Why: the reader
+  recursed once per level, overflowed Python's stack near 500 and let a seat's write through the hook's error
+  path; a bound fails closed for every door (leak, infra, transcript) at once and keeps the read fast. Overturn:
+  a real command that nests more than 64 bodies.
+- `sed -I` (BSD's in-place flag) is a writer. Why: the security gate's low finding, one character in the existing
+  test. Overturn: a `sed -I` that does not edit in place on a platform the guards serve.
 
 Rollback: revert the commits; no data or config migrates.

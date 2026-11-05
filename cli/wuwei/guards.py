@@ -17,7 +17,7 @@ from urllib.parse import unquote
 from wuwei import evidence, gh, plan, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
-WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
+WRAPPERS = {'env', 'command', 'builtin', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL, REDIRECTS = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}, {'>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<', '<<<'}
 OPS = r'&>>|<<<|&&|\|\||>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first (;; splits the same)
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
@@ -25,7 +25,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
-READ = {'git', 'gh', 'wuwei', 'sed', 'find'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
+READ = {'git', 'gh', 'wuwei', 'sed', 'find', 'eval'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
@@ -34,8 +34,8 @@ DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
-SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan)\b',))  # door words for a seat only
-SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
+SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan|sync)\b',))  # door words for a seat only
+SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|sync(\0|$)|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -72,7 +72,7 @@ HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gates a change owes and who reviews it, so only the owner's own session changes "
-              'them (wuwei config <key> <value>, wuwei plan add, done, park, ...): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat.')
+              'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
@@ -132,8 +132,10 @@ def current_branch(cwd):
     return _git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD')
 
 
-def segments(command):
+def segments(command, depth=0):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
+    if depth > 64:  # eval or sh -c nested 65 deep: bash() refuses it, rather than reading it slowly or overflowing Python's stack
+        raise RecursionError('nested too deep')
     try:
         lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])(?<![<>]&)([0-9]+|\{[A-Za-z_]\w*\})(?=[<>])",
             lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0][0] in '{0123456789' else m[0]), command), posix=True, punctuation_chars=True)
@@ -147,7 +149,7 @@ def segments(command):
         out = [UNREAD] if dollar or glued else []
         for token in tokens:  # $'..', $".." or a redirect with no word after it (<(x) is one) is unread; its segments are still read
             if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
-                out[len(out):], current = _unwrap(current) if current else [], []  # in place: a copy per token is quadratic
+                out[len(out):], current = _unwrap(current, depth) if current else [], []  # in place: a copy per token is quadratic
             else:
                 current.append(token)
         return out
@@ -155,7 +157,7 @@ def segments(command):
         return None
 
 
-def _unwrap(tokens):
+def _unwrap(tokens, depth=0):
     argv, targets, i = [], [], 0
     while i < len(tokens):
         if tokens[i] in REDIRECTS and i + 1 < len(tokens):
@@ -170,7 +172,7 @@ def _unwrap(tokens):
                      and (progname(a) in READ or progname(a).startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and (progname(argv[0]) == 'eval' or progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body])):
-        return (n if (n := segments(' '.join(argv[body:]) if progname(argv[0]) == 'eval' else argv[body])) is not None else [UNREAD]) + (
+        return (n if (n := segments(' '.join(argv[body:]) if progname(argv[0]) == 'eval' else argv[body], depth + 1)) is not None else [UNREAD]) + (
             [([], targets)] if targets else [])  # eval runs its words joined, as sh -c runs its body
     return [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
 
@@ -188,7 +190,7 @@ def _sources(cwd, words):  # each symbolic ref's final target, and the ref git r
     return None if None in (listed, found) else (dict(re.findall(r'(?m)^([^ \n]+) ([^ \n]+)$', listed)), found.split())
 
 
-def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
+def git_push(root, args, cwd, seat=False):  # git 2.43 (refspec.c): the last colon splits a refspec; main, heads/main and refs/heads/main name main
     flags = _flags(args, PUSH_VALUED, ('--', '--end-of-options'))  # -o x, -vo x, --rep x: x is a value; after the first end, a refspec
     operands, named = [v for n, v in flags if not n], [n for n, v in flags if n]  # parse-options takes a unique prefix: --mirr is --mirror
     if any(a.startswith('--force') or re.match('-[^-]*f', a) for a in args) or any('mirror'.startswith(n) for n in named):  # git reads a cluster letter by letter: -4f, -qf6, -fo=x
@@ -212,9 +214,9 @@ def git_push(root, args, cwd):  # git 2.43 (refspec.c): the last colon splits a 
         if destination in ('', 'HEAD'):
             destination = '*' if ref == ':' else head  # : pushes each branch both sides hold
         targets.append(destination if '*' in destination else 'refs/heads/' + re.sub('^(refs/)?heads/', '', destination))  # a glob is whole
-    protected = _default(root, origin(cwd))
+    protected = [*_default(root, origin(cwd)), *['wuwei/state'] * seat]  # wuwei sync takes the plan and the config from it
     if hit := [b for b in protected for t in targets if t == 'refs/heads/' + b or '*' in t and fnmatchcase('refs/heads/' + b, t)]:
-        return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
+        return deny(OWNER_ONLY.strip() if hit[0] == 'wuwei/state' else f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
 
@@ -393,8 +395,17 @@ def leak(root, text):
     return None
 
 
+def unquoted(text):  # quotes gone, then the escapes $'..' decodes that can spell a word (\x77, \167, \u0077), then backslashes
+    return re.sub(r'\\', '', re.sub(r'\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3})', lambda e: chr(min(int(
+        e[1].lstrip('xuU'), 8 if e[1][0] in '01234567' else 16), 0x10FFFF)), re.sub('\\$?[\'"]', '', text)))  # at any depth of quoting
+
+
 def bash(root, command, cwd, session, seat=False):  # seat: the payload names an agent_type, so OWNED is not its to write
-    parts, own, text = segments(command), OWNED * seat, command + re.sub(r'[\'"\\]', '', ' ' + command) * seat  # a seat's text unquoted too
+    try:
+        parts = segments(command)
+    except RecursionError:  # eval in eval, hundreds deep: no door can read it, so none lets it through
+        return deny('a command nested too deep to read is refused: run what the innermost eval runs as its own Bash call.')
+    own, text = OWNED * seat, command + ' ' + unquoted(command) * seat  # a seat's text unquoted and decoded too
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and (found := [' '.join(re.sub(r'[\s\\\'"]+', ' ', re.search(
             w, text, re.I)[0]).strip()[:40] for w in d) for d in DOOR_WORDS + SEAT_WORDS * seat if all(re.search(w, text, re.I) for w in d)]):
         return deny(f'a multi-line or unreadable command naming a door program (found: {", ".join(found)}) is refused, and a door name '
@@ -405,7 +416,7 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
     for argv, targets in parts or ():
         program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
-        writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*i|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv}
+        writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*[iI]|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED + OWNER_ONLY * seat)
@@ -433,7 +444,7 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
                     n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
                     not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
                 return deny(LEDGER_DENIED)
-            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)) and not scratch(cwd, rest[:i], rest[i + 1:], command):
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here, seat)) and not scratch(cwd, rest[:i], rest[i + 1:], command):
                 return found
         elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
             return found

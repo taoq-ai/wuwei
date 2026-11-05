@@ -1,5 +1,6 @@
 #!/bin/sh
-# The config-door probe, part (b), run by hand: each Bash case in cases.tsv (written by probe.py report) runs under real
+# The config-door probe, part (b), run by hand: probe.py writes cases.tsv with this checkout's seat verdicts into the
+# folder given, and each Bash case runs under real
 # bash in a fresh copy of a workspace. A case reaches the door when it changed .wuwei/config.toml or .wuwei/plan.json,
 # or ran the wuwei stub with a call that writes (wuwei config <key>, wuwei plan add, done, park, ...). A hole is a case
 # that reached the door while the head's guard passes it for a seat. sudo -D and env -C are stubs on PATH that change
@@ -8,8 +9,10 @@
 # Usage: sh specs/config-door/run.sh <a folder that does not exist yet>; it deletes the folder when done.
 set -u
 [ $# -eq 1 ] && [ ! -e "$1" ] || { echo "usage: sh $0 <a folder that does not exist yet>" >&2; exit 2; }
-cases=$(cd "$(dirname "$0")" && pwd)/cases.tsv
-mkdir -p "$1/bin" "$1/py/wuwei" && out=$(cd "$1" && pwd) || exit 2
+here=$(cd "$(dirname "$0")" && pwd)
+mkdir -p "$1/bin" "$1/py/wuwei" "$1/verdicts" && out=$(cd "$1" && pwd) || exit 2
+cases=$out/cases.tsv
+python3 -I "$here/probe.py" cases "$here/../../cli" "$out/verdicts" "$cases" || exit 2
 printf '#!/bin/sh\n[ "$1" = -D ] && { cd "$2" || exit 1; shift 2; }\nexec "$@"\n' > "$out/bin/sudo"
 printf '#!/bin/sh\n[ "$1" = -C ] && { cd "$2" || exit 1; shift 2; }\nexec /usr/bin/env "$@"\n' > "$out/bin/env"
 cat > "$out/bin/wuwei" <<'STUB'
@@ -19,6 +22,7 @@ cat > "$out/bin/wuwei" <<'STUB'
 kind=read
 case "${1-}" in
 config) [ $# -gt 1 ] && kind=write ;;
+sync) kind=write ;;
 plan) shift
     while [ $# -gt 0 ]; do
         case $1 in

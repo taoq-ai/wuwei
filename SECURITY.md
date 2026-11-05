@@ -22,8 +22,9 @@ kept out of seat environments.
 
 The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
 brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), the words `eval` runs
-(joined, as sh joins them), and the command after a
-wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
+(joined, as sh joins them, also behind `command`, `builtin`, `time` and the other wrappers), and the
+command after a wrapper's options. A command whose `eval` or `sh -c` bodies nest more than 64 deep
+is refused for every session. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
 `);`) is split into the operators sh reads, so process substitution and glued separators reach
 their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
 `&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), or with a named fd glued before it
@@ -57,10 +58,15 @@ spelling (`-i`, `-i.bak`, `-Ei`, `--in-place`).
 which gates a change owes, its tier and who reviews it. A seat is a call whose hook payload names an
 `agent_type`. From a seat the records rule also covers both files, by every route above, removal
 included. So are `wuwei config <key> [<value>]` and the `wuwei plan` actions that write the plan:
-`add`, `park`, `drop`, `done`, `restore`, `run` and `session`. These are refused when called as
-`wuwei` on any path, through `python -m wuwei`, or through `$(cat .wuwei/executable)`, with any
-word in ANSI-C quotes (`$'plan'`). A seat's unreadable command naming either file or
-`wuwei config` or `wuwei plan`, quotes removed, is refused too.
+`add`, `park`, `drop`, `done`, `restore`, `run` and `session`; `wuwei sync`; and a push to the
+`wuwei/state` branch, which `wuwei sync` reads both files from (a destination git reads as that
+ref: `wuwei/state`, `heads/wuwei/state`, `refs/heads/wuwei/state`, a deletion, `--all`). These are
+refused when called as `wuwei` on any path, through `python -m wuwei`, or through
+`$(cat .wuwei/executable)`, with any word in ANSI-C quotes (`$'plan'`, `$'\x77uwei'`: the escapes
+`\xHH`, `\NNN`, `\uHHHH` and `\UHHHHHHHH` are decoded) or spliced (`con$'f'ig`). A seat's unreadable
+command naming either file, `wuwei config`, `wuwei plan` or `wuwei sync`, quotes and backslashes
+removed, is refused too. A push to `wuwei/state` through a local branch whose upstream is that
+ref, with `push.default` set to `upstream` in git config, is not read.
 Reads pass: `wuwei plan show`, `wuwei plan view`, `wuwei config` alone, `wuwei status`, `cat` and
 the Read tool. The owner's own session (no `agent_type`) keeps every one of these writes.
 
@@ -98,9 +104,9 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A `-c` body that is a variable or a substitution (`bash -c "$C"`, `xargs -I{} bash -c {}`).
 - `env -S 'bash -s'` fed on stdin (the quoted string hides the shell), and shells outside the
   guards' list (`ksh`, `busybox sh`).
-- `$(...)` inside double quotes, and quote splicing inside a word.
-- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
-  unquoted backticks.
+- `$(...)` inside double quotes, and quote splicing inside a word (a seat's config and plan
+  door decodes `$'..'` splices; the other doors do not).
+- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, and unquoted backticks.
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
 - A records write through a path the guards do not see: a symlink, a path a program builds at
