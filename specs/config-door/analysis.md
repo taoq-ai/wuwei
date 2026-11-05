@@ -23,5 +23,5 @@ acceptance and the constitution.
 | S4 | Scope | MEDIUM | SC-004 | Runtime +20 against a budget of 8 | Recorded: a `Size:` line in the PR; each added line closes a gate finding |
 
 No CRITICAL or HIGH finding is open. Constitution: test first (129 red on main, 16 red at 3dffaf94, 17 red at
-c3d77512, 64 red for gate round 1), stdlib only, no new dependency or config key, runtime 3,910 at main and 3,930
+c3d77512, 64 red for gate round 1), stdlib only, no new dependency or config key, runtime 3,929 at main 82bedb4 and 3,949
 at the head (+20, over the item's budget of 8; the 4,000 cap holds).

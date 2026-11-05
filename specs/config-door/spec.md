@@ -102,9 +102,10 @@ The acceptance scenarios, restated:
 
 - SC-001: The new tests fail on main (129 failed) and pass at the head; the 16 `$'..'` tests failed at
   3dffaf94, and the 17 eval and stdin tests at c3d77512.
-- SC-002: Route differential over the corpus (sha256 63c64780...09ff69, 301 routes, each read as the owner and
-  as a seat): no owner verdict moves; 6 seat verdicts move pass to refusal (the acceptance writes), and 29 seat
-  refusals move reason only (the owner line is added). Each route run as `eval '<route>'`: at main 220 of 301
+- SC-002: Route differential over the corpus after merging main 82bedb4 (sha256 7be704ca...6e4158, 308 routes with
+  canary-guard's seven, each read as the owner and
+  as a seat): no owner verdict moves; 6 seat verdicts move pass to refusal (the acceptance writes), and 35 seat
+  refusals move reason only (the owner line is added; 6 of them are the canary rows). Each route run as `eval '<route>'`: at main 226 of 308
   per session read differently from the plain route; at the head 0.
 - SC-003: In-process probe at the head after gate round 1, 11,736 cases (11,672 Bash, 64 edit tools): 9,410 door
   cases, holes 0 (1,107 at the first try of round 1, all escapes inside a quoted body, closed by decoding at any
@@ -112,7 +113,7 @@ The acceptance scenarios, restated:
   unreadable spellings (`$'..'`, a backslash), 68 fed to `sh` on stdin, 170 nested more than 64 deep. The owner's
   864 moves are 48 `sed -i.bak` inside `.wuwei` (FR-005) and 816 nested more than 64 deep (FR-007). `run.sh`
   reports the real-bash holes when the owner runs it.
-- SC-004: Runtime: +20 lines (3,910 to 3,930), over the item's budget of 8 by 12; the PR carries a `Size:` line.
+- SC-004: Runtime: +20 lines (3,929 at main 82bedb4 to 3,949), over the item's budget of 8 by 12; the PR carries a `Size:` line.
 
 ## Assumptions
 
