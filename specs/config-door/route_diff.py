@@ -7,10 +7,14 @@ from one tests folder, so only the runtime moves. Case folders are made and remo
 
     python3 -I route_diff.py <tree> <tests folder> <base> > <out>.json
     python3 -I route_diff.py compare <main>.json <head>.json
+    python3 -I route_diff.py <tree> <tests folder> <base> eval > <out>.json   # each route run as eval '<route>'
+
+The eval run, compared with the plain run of the same tree, names each route that eval reads differently.
 """
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -28,6 +32,7 @@ if sys.argv[1] == 'compare':
               + ('' if key in doors else ' (reason only)'))
     sys.exit(0)
 tree, tests, base = (Path(arg).resolve() for arg in sys.argv[1:4])
+wrap = sys.argv[4:5] == ['eval']
 sys.path[:0] = [str(tree / 'cli'), str(tests)]
 
 from wuwei import gh, guards, ws  # noqa: E402  (before conftest, which puts its own tree's cli first on the path)
@@ -53,7 +58,7 @@ def run(who, command):
     fake.prs['5'] = make_pr(number=5, files=('src/app.py',))
     fake.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True}
     branch(fake, ('src/app.py',))
-    payload = {'tool_name': 'Bash', 'tool_input': {'command': command}, 'cwd': '/repo', 'session_id': 's1',
+    payload = {'tool_name': 'Bash', 'tool_input': {'command': 'eval ' + shlex.quote(command) if wrap else command}, 'cwd': '/repo', 'session_id': 's1',
                **({'agent_type': 'wuwei:builder'} if who == 'seat' else {})}
     found = guards.pre_tool(root, payload)
     shutil.rmtree(case)

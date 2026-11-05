@@ -44,7 +44,14 @@ The acceptance scenarios, restated:
    over; the new shapes are the CLI's own spellings (`$(cat .wuwei/executable)`, unquoted, which sh splits into
    its own segment, and in backticks) and `$'...'` quoting of the path or the program. Each has a test. A
    `sed -i.bak` was not a writer at all, for the ledger too; the probe's sed class found it and the writer test
-   now reads `-i` in any spelling.
+   now reads `-i` in any spelling. A second probe class, the wuwei program's spellings x writing calls x
+   positions, found 117 holes at the first head: an ANSI-C quoted word (`$'plan'`) reads as `$plan`, so it hid the
+   call after `--`, behind `env` or `command`, in `sh -c`, or after `python3 -mwuwei` and `.wuwei/executable`. The
+   seat check now reads `$word` as `word`, and a wrapper unwraps to it. Two more positions, `eval '<call>'` and
+   `echo '<call>' | sh`, found 282 holes at c3d77512. `eval`'s words were one argument the guard never read, for
+   every door and every session (at main, 220 of 301 corpus routes read differently under `eval`); the guard now
+   reads them as it reads a `sh -c` body. A seat's unreadable text is also matched with its quotes removed, and
+   the door word takes `--` and `executable)`.
 2. A false refusal stops a seat's normal work. Ways in: `git config user.name` in a checkout named `wuwei`, a
    commit message naming `wuwei plan done`, `cp a .wuwei-plan.json`, a literal `.wuwei/%70lan.json`, and every
    read. Each has a test that expects a pass. A seat's multi-line command that names `wuwei plan` is refused
@@ -83,15 +90,22 @@ The acceptance scenarios, restated:
 - FR-004: `sed` with `-i` in any spelling is a writer.
 - FR-005: The owner's session verdicts do not move, apart from FR-004 inside `.wuwei`.
 - FR-006: SECURITY.md and docs/site/reference.md state the rule; the vendored copy matches.
+- FR-007: The guard reads the words `eval` runs, joined, as it reads a `sh -c` body, for every session.
 
 ## Success criteria
 
-- SC-001: The new tests fail on main (129 failed) and pass at the head.
-- SC-002: Route differential over the corpus: no owner verdict moves; the seat moves are the six new seat
-  routes, pass to refusal.
-- SC-003: In-process probe at the head: every seat case that names the real file is refused; the 38 seat
-  passes are the `%xx` class, which sh does not decode. `run.sh` reports holes 0 when the owner runs it.
-- SC-004: Runtime within budget: +7 lines (3,904 to 3,911), budget 8.
+- SC-001: The new tests fail on main (129 failed) and pass at the head; the 16 `$'..'` tests failed at
+  3dffaf94, and the 17 eval and stdin tests at c3d77512.
+- SC-002: Route differential over the corpus (sha256 63c64780...09ff69, 301 routes, each read as the owner and
+  as a seat): no owner verdict moves; 6 seat verdicts move pass to refusal (the acceptance writes), and 29 seat
+  refusals move reason only (the owner line is added). Each route run as `eval '<route>'`: at main 220 of 301
+  per session read differently from the plain route; at the head 0.
+- SC-003: In-process probe at the head, 4,528 cases (4,464 Bash, 64 edit tools): 3,512 door cases, holes 0.
+  The 38 seat path passes are the `%xx` class, which sh does not decode. 104 seat reads are refused, all
+  unreadable: 60 spelled `$'wuwei'` and 44 fed to `sh` on stdin. They take the one-line hint (FR-003).
+  The owner's 48 moves are all `sed -i.bak` inside `.wuwei` (FR-005). `run.sh` reports the real-bash holes
+  when the owner runs it.
+- SC-004: Runtime within budget: +8 lines (3,904 to 3,912), budget 8.
 
 ## Assumptions
 
@@ -104,5 +118,9 @@ The acceptance scenarios, restated:
 - The guard is cooperative mistake prevention (SECURITY.md). A seat running Python that imports `wuwei.ws` and
   calls `set_config`, or a path built in a variable (`D=.wuwei; echo x > $D/plan.json`), is not read, as for
   the ledger.
+- Reading `eval`'s words is in this item, though it tightens every door for every session. Why: the probe's
+  eval position was a seat route to this door, and the root fix is one condition in the shared unwrap; a
+  seat-only patch would leave the ledger and push doors open under `eval`. Overturn: an owner workflow that
+  needs `eval` around a door command to pass; the corpus has none (0 owner moves).
 
 Rollback: revert the commits; no data or config migrates.

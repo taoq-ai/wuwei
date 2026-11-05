@@ -1,11 +1,12 @@
-"""The config-door path probe, part (a): every path spelling x write route x working-directory wrapper, as data, read
-in-process through guards.pre_tool and the hook's PreToolUse, for a seat (agent_type set) and for the owner's session.
+"""The config-door probe, part (a): every path spelling x write route x working-directory wrapper, and every spelling of
+the wuwei program x call (writing or reading) x position, as data, read in-process through guards.pre_tool and the hook's
+PreToolUse, for a seat (agent_type set) and for the owner's session.
 
     python3 specs/config-door/probe.py verdicts <cli dir> <scratch folder> <out.json>   # one tree: main or head
     python3 specs/config-door/probe.py report <main.json> <head.json> <cases.tsv>     # counts, moves, and run.sh's cases
 
-Part (b) is run.sh: it runs each Bash case under real bash in a scratch copy and counts the holes (a seat write that
-changed config.toml or plan.json while the head passed it). The cases are written by code, never typed into a shell.
+Part (b) is run.sh: it runs each Bash case under real bash in a scratch copy, with a wuwei stub that logs, and counts
+the holes (a case that changed config.toml or plan.json, or ran a writing wuwei call, while the head passed it). The cases are written by code, never typed into a shell.
 """
 
 import json
@@ -54,7 +55,26 @@ def cases():
             for tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
                 out.append({'id': f'{len(out):04d}', 'file': name, 'wrapper': 'none', 'spelling': spelling, 'route': tool, 'tool': tool,
                             'path': f'{CASE}/{path}'.replace('$PWD/', '')})
+    for program in PROGRAMS:
+        for form in WRITES + READS:
+            for position in POSITIONS:
+                call = f'{program} {form}'
+                command = position.replace('Q', shlex.quote(call)) if 'Q' in position else position.format(call)
+                out.append({'id': f'{len(out):04d}', 'file': 'cli', 'wrapper': position, 'spelling': program, 'route': form,
+                            'tool': 'Bash', 'command': command, 'write': form in WRITES})
     return out
+
+
+# The CLI class: how a seat names the WUWEI program x the call that writes (or reads) x where the call sits. run.sh puts a
+# stub on PATH (and behind python -m wuwei and .wuwei/executable) that logs whether the call it got would write.
+PROGRAMS = ('wuwei', './tool/wuwei', 'WUWEI', '"wuwei"', "$'wuwei'", "w''uwei", '\\wuwei', 'python3 -m wuwei', 'python3 -mwuwei',
+            '"$(cat .wuwei/executable)"', '$(cat .wuwei/executable)', '`cat .wuwei/executable`')
+WRITES = ('config owner_paths x', 'config tiers', "config models 'builder=haiku low'", '-- config owner_paths x', '"config" owner_paths x',
+          'plan add I-2 x --goal G-1', 'plan done I-1', 'plan --reason x park I-1', 'plan drop I-1', 'plan restore I-1', 'plan run I-1',
+          'plan session I-1 s2', 'plan tier I-1 light', "$'plan' done I-1", "pl''an done I-1")
+READS = ('plan show I-1', 'plan view', 'config', 'status', 'plan show run-evidence')
+POSITIONS = ('{}', 'true; {}', 'true && {}', 'false || {}', 'true | {}', '({})', '{{ {}; }}', 'echo $({})', 'env A=1 {}', 'command {}',
+             'cd x && {}', 'bash -c Q', 'sh -c Q', 'echo Q | sh', 'eval Q')  # Q: the call quoted as one word
 
 
 def verdicts(cli, scratch, out):
@@ -92,10 +112,18 @@ def report(main_file, head_file, tsv):
     print(f'guards and hook disagree at head: {len(split)}; owner verdicts that move main to head: {len(owner)}')
     for c in owner:
         print(f'  owner move {c["id"]} {main[c["id"]]["owner guards"]} -> {head[c["id"]]["owner guards"]}: {c["command"]}')
-    passed = [c for c in every if head[c['id']]['seat guards'] == 'pass']
-    print(f'seat passes at head: {len(passed)} (run.sh shows whether any changed a file)')
-    for c in passed:
-        print(f'  seat pass {c["id"]} {c["tool"]} {c["wrapper"]} {c["spelling"]} {c["route"]}: {c.get("command") or c["path"]}')
+    # a door case runs a writer on the real file (%xx names another file: sh does not decode it) or a wuwei call that writes
+    door = [c for c in every if c.get('write', c['file'] != 'cli' and c['spelling'] != '%xx')]
+    holes = [c for c in door if head[c['id']]['seat guards'] == 'pass' or head[c['id']]['seat hook'] == 'pass']
+    false = [c for c in every if c not in door and c['file'] == 'cli' and head[c['id']]['seat guards'] == 'refuse']
+    print(f'generated {len(every)}; door cases (a write on the real file or a writing wuwei call, per the Python read) {len(door)}; '
+          f'holes (a door case a seat passes at head) {len(holes)}; seat reads refused at head {len(false)}')
+    for c in holes:
+        print(f'  hole {c["id"]} {c["wrapper"]} {c["spelling"]} {c["route"]}: {c.get("command") or c["path"]}')
+    for c in false:
+        print(f'  read refused {c["id"]}: {c["command"]}')
+    passed = [c for c in every if head[c['id']]['seat guards'] == 'pass' and c['file'] != 'cli']
+    print(f'path cases a seat passes at head: {len(passed)} (run.sh shows whether any changed a file)')
     Path(tsv).write_text(''.join(f'{c["id"]}\t{head[c["id"]]["seat guards"]}\t{c["command"]}\n' for c in every if c['tool'] == 'Bash'),
                          encoding='utf-8')
 
