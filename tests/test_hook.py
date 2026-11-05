@@ -288,6 +288,7 @@ def session(root, **payload):
 
 
 def test_after_a_compaction_session_start_names_the_skill_steps_the_session_lost(root, fake):
+    plan_pass(root)
     write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
                        'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries ' + 'x' * 80}
                       for n in range(40)])
