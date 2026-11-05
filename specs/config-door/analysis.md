@@ -18,7 +18,7 @@ acceptance and the constitution.
 | G2 | Coverage | HIGH | FR-007, security 2, quality 1 and 5 | `eval` behind `command`, `builtin` or `time` was unread, so SECURITY.md's eval claims were false | Resolved: `eval` in READ, `builtin` a wrapper; probe and corpus under five prefixes |
 | G3 | Coverage | HIGH | FR-010, security 3 | 500 nested evals overflowed the reader and the hook's error path let a seat write pass | Resolved: nesting bounded at 64 and refused for every session; `door()` reads the seat words |
 | G4 | Coverage | MEDIUM | FR-009, quality 2 | `$'\x77uwei'` and other escapes passed a seat | Resolved: escapes decoded at any depth of quoting; 1,107 probe holes on the first try, 0 after |
-| G5 | Coverage | MEDIUM | quality 3 and 4 | Two mutants survived (seat path word without config; unquote keeps backslashes) | Resolved: tests for each; round 7 below |
+| G5 | Coverage | MEDIUM | quality 3 and 4 | Two mutants survived (seat path word without config; unquote keeps backslashes) | Resolved: tests for each; round 7 killed 52 of 58, and the six survivors are killed by the tests added after it |
 | G6 | Consistency | MEDIUM | arch | design.md section 7 and doors.md did not name the seat door or the eval read | Resolved: both name them |
 | S4 | Scope | MEDIUM | SC-004 | Runtime +20 against a budget of 8 | Recorded: a `Size:` line in the PR; each added line closes a gate finding |
 

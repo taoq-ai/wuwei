@@ -48,4 +48,6 @@
 - [x] T029 `probe.py`: wrappers x eval, nesting 64, 65 and 600, escapes and splices in programs, actions and paths;
   `run.sh` writes `cases.tsv` itself, so the file leaves the repository
 - [x] T030 Docs: design.md section 7, doors.md, SECURITY.md (every claim checked), ADR 0002
-- [x] T031 `mutants.py` round 7, 58 mutants on both copies of guards.py and hook.py, one at a time
+- [x] T031 `mutants.py` round 7, 58 mutants on both copies of guards.py and hook.py, one at a time: 52 killed. The six
+  survivors (seat word `$` and `sync`, the `\u` escape, the depth bound and its two hand-downs) get tests; each is killed
+  when re-run on its own
