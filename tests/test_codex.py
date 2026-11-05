@@ -37,6 +37,16 @@ def test_an_apply_patch_that_writes_the_ledger_is_refused(root):
     assert pre(root, 'apply_patch', {'command': PATCH.replace('.wuwei/ledger/0a1b2c3d.jsonl', 'src/new.py')}) is None
 
 
+@pytest.mark.parametrize('path', ['.wuwei/plan.json', '.wuwei/config.toml'])
+def test_a_seat_apply_patch_of_the_plan_or_config_is_refused_and_the_owner_one_passes(root, path):
+    """Item config-door: apply_patch reads as an edit of each file it names, so a seat meets the owner-only door."""
+    patch = {'command': PATCH.replace('*** Add File: .wuwei/ledger/0a1b2c3d.jsonl\n+{}', f'*** Update File: {path}\n@@\n-a\n+b')}
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'apply_patch', 'tool_input': patch,
+                                           'agent_id': 'c1', 'agent_type': 'wuwei:builder'})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and "only the owner's own session" in out['permissionDecisionReason']
+    assert pre(root, 'apply_patch', patch) is None
+
+
 def test_a_malformed_apply_patch_is_refused_and_recorded_without_crashing_the_hook(root):
     out = pre(root, 'apply_patch', 'not a patch object')['hookSpecificOutput']
     assert out['permissionDecision'] == 'deny' and 'the hook failed' in out['permissionDecisionReason']
