@@ -35,4 +35,17 @@
   their mutants were dropped; the third (eval body first word only) gets an unquoted `eval` test
 - [x] T026 `mutants.py` round 6, 36 mutants on both copies, one at a time: 36 killed
 - [x] T023 `analysis.md`: no open CRITICAL or HIGH finding
-- [x] T017 Full suite green; runtime 3,918 lines
+- [x] T017 Full suite green; runtime 3,918 lines (3,930 after gate round 1)
+
+## Phase 4: Gate round 1 at 256a8a2 (arch, security and quality FIX; goal PASS)
+
+- [x] T027 Tests red first (64 failed): `eval` behind `command`, `command -p`, `time`, `time -p`, `builtin`, `env command`,
+  `nohup command`, `builtin command`; `$'..'` escapes and splices; an unreadable config.toml write; a backslash in the
+  program word; `wuwei sync`; a seat push to `wuwei/state`; 600 nested evals through the guard and the hook; `sed -I`;
+  every `wuwei plan` action but the reads refused to a seat; the hook's error path for a seat (tests/test_hook.py)
+- [x] T028 `eval` in READ, `builtin` a wrapper; nesting deeper than 64 refused for every session; `unquoted()` decodes
+  the escapes at any depth of quoting; `git_push` takes `seat`; `door()` reads the seat words for a seat
+- [x] T029 `probe.py`: wrappers x eval, nesting 64, 65 and 600, escapes and splices in programs, actions and paths;
+  `run.sh` writes `cases.tsv` itself, so the file leaves the repository
+- [x] T030 Docs: design.md section 7, doors.md, SECURITY.md (every claim checked), ADR 0002
+- [x] T031 `mutants.py` round 7, 58 mutants on both copies of guards.py and hook.py, one at a time

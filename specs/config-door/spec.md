@@ -106,12 +106,13 @@ The acceptance scenarios, restated:
   as a seat): no owner verdict moves; 6 seat verdicts move pass to refusal (the acceptance writes), and 29 seat
   refusals move reason only (the owner line is added). Each route run as `eval '<route>'`: at main 220 of 301
   per session read differently from the plain route; at the head 0.
-- SC-003: In-process probe at the head, 4,528 cases (4,464 Bash, 64 edit tools): 3,512 door cases, holes 0.
-  The 38 seat path passes are the `%xx` class, which sh does not decode. 104 seat reads are refused, all
-  unreadable: 60 spelled `$'wuwei'` and 44 fed to `sh` on stdin. They take the one-line hint (FR-003).
-  The owner's 48 moves are all `sed -i.bak` inside `.wuwei` (FR-005). `run.sh` reports the real-bash holes
-  when the owner runs it.
-- SC-004: Runtime within budget: +8 lines (3,910 to 3,918), budget 8.
+- SC-003: In-process probe at the head after gate round 1, 11,736 cases (11,672 Bash, 64 edit tools): 9,410 door
+  cases, holes 0 (1,107 at the first try of round 1, all escapes inside a quoted body, closed by decoding at any
+  depth). The 38 seat path passes are the `%xx` class, which sh does not decode. 698 seat reads are refused: 460
+  unreadable spellings (`$'..'`, a backslash), 68 fed to `sh` on stdin, 170 nested more than 64 deep. The owner's
+  864 moves are 48 `sed -i.bak` inside `.wuwei` (FR-005) and 816 nested more than 64 deep (FR-007). `run.sh`
+  reports the real-bash holes when the owner runs it.
+- SC-004: Runtime: +20 lines (3,910 to 3,930), over the item's budget of 8 by 12; the PR carries a `Size:` line.
 
 ## Assumptions
 

@@ -36,9 +36,9 @@
 - Tests red on main, green at the head; tests/test_guards.py and tests/test_hook.py, then the full suite.
 - `route_diff.py`: every corpus route as owner and as seat through `guards.pre_tool`, main against head.
 - `route_diff.py ... eval`: each corpus route run as `eval '<route>'`, compared with the plain run of the same tree.
-- `probe.py`: 4,528 cases (4,464 Bash, 64 edit tools; 3,600 of them the wuwei program class) through
-  `guards.pre_tool` and `hook.handle`, as seat and owner, main and head; it writes `cases.tsv` for `run.sh`.
-- `mutants.py`: 38 mutants, one at a time, on both copies.
+- `probe.py`: 11,736 cases (11,672 Bash, 64 edit tools; 10,200 of them the wuwei program class) through
+  `guards.pre_tool` and `hook.handle`, as seat and owner, main and head; `run.sh` has it write `cases.tsv`.
+- `mutants.py`: 58 mutants, one at a time, on both copies of guards.py and hook.py.
 
 ## Constitution check
 

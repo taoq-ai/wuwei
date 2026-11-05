@@ -14,7 +14,14 @@ acceptance and the constitution.
 | S1 | Scope | MEDIUM | spec Assumptions, FR-007 | Reading `eval`'s words tightens every door for every session, past the item's two files | Kept and recorded: the root fix is one condition in the shared unwrap; owner corpus verdicts do not move |
 | S2 | Scope | LOW | SC-003 | 104 seat reads are refused, all unreadable (`$'wuwei'` or fed to `sh` on stdin) | Kept: FR-003 by design, as for `wuwei hook` and the ledger words; the plain spelling passes |
 | S3 | Scope | LOW | SC-003 | The owner's `sed -i.bak` inside `.wuwei` is now refused (48 probe cases) | Kept: FR-004 and FR-005; main already refused `sed -i` there |
+| G1 | Coverage | HIGH | FR-008, security 1 | A seat pushes a crafted plan.json or config.toml to `wuwei/state` and runs `wuwei sync` | Resolved (planner's decision): both refused from a seat; recorded under Assumptions with the upstream-config shape left open |
+| G2 | Coverage | HIGH | FR-007, security 2, quality 1 and 5 | `eval` behind `command`, `builtin` or `time` was unread, so SECURITY.md's eval claims were false | Resolved: `eval` in READ, `builtin` a wrapper; probe and corpus under five prefixes |
+| G3 | Coverage | HIGH | FR-010, security 3 | 500 nested evals overflowed the reader and the hook's error path let a seat write pass | Resolved: nesting bounded at 64 and refused for every session; `door()` reads the seat words |
+| G4 | Coverage | MEDIUM | FR-009, quality 2 | `$'\x77uwei'` and other escapes passed a seat | Resolved: escapes decoded at any depth of quoting; 1,107 probe holes on the first try, 0 after |
+| G5 | Coverage | MEDIUM | quality 3 and 4 | Two mutants survived (seat path word without config; unquote keeps backslashes) | Resolved: tests for each; round 7 below |
+| G6 | Consistency | MEDIUM | arch | design.md section 7 and doors.md did not name the seat door or the eval read | Resolved: both name them |
+| S4 | Scope | MEDIUM | SC-004 | Runtime +20 against a budget of 8 | Recorded: a `Size:` line in the PR; each added line closes a gate finding |
 
 No CRITICAL or HIGH finding is open. Constitution: test first (129 red on main, 16 red at 3dffaf94, 17 red at
-c3d77512), stdlib only, no new dependency or config key, runtime 3,910 at main and 3,918 at the head (+8,
-budget 8).
+c3d77512, 64 red for gate round 1), stdlib only, no new dependency or config key, runtime 3,910 at main and 3,930
+at the head (+20, over the item's budget of 8; the 4,000 cap holds).
