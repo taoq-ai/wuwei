@@ -15,8 +15,6 @@ alone what the charters, standards and goals answer.
 
 ## Decisions
 
-Place each choice:
-
 | | Sure | Unsure |
 |---|---|---|
 | Undone cheaply | act | act, and record the assumption |
@@ -49,10 +47,10 @@ The gates: the tier is the ceiling and the diff decides. Docs need none; code ne
 prose, or 10 code files) adds arch; a contract file or a spec contract (a file under a spec's
 `contracts/` folder) takes arch at any tier; `full` takes all four. `smart`, the default, gates as
 `standard`, raised by the item's Cynefin domain and measured signals (`wuwei evidence` names
-them); goal runs on a promise marked in doubt. After review fixes, a delta of docs, or of generated files or
+them); goal runs on complex items, owner or risky paths, or promises in doubt. After review fixes, a delta of docs, or of generated files or
 at most 20 lines off risky paths, carries the passes; the one gate
 `wuwei evidence` names re-reads a larger one. When a repository's 28-day change failure rate is
-over 15 percent (five merges or more), every tier there rises one step and takes its full gate
+over 15 percent (five merges or more), every tier there rises one step to its full gate
 set.
 
 Process fit never blocks and nobody is asked about it: other spec artifacts and the PR
@@ -68,7 +66,7 @@ gap the owner should carry.
    with a named command.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop: read a PR or its checks once and act on it.
-4. Probes and mutants run in a copy of the tree in a new empty folder in your scratch folder.
+4. Probes and mutants run in a tree copy in a new empty scratch folder.
    Never check out, reset or build in the main worktree, or the builder's. A gate copies with
    `git archive <sha>`; a builder uses `git worktree add`.
 
@@ -81,23 +79,24 @@ gap the owner should carry.
 4. Outward text follows `_common-authoring.md`; no outward call carries a secret or workspace
    content.
 5. Andon: when a problem breaks a repository for everyone (its base branch red, a leaked secret, a
-   broken shared dependency), run `wuwei andon <owner/repo> --reason "<what is broken>"` and say so
-   in your report. Builds there wait until it clears.
+   broken shared dependency), run `wuwei andon <owner/repo> --reason "<what is broken>"` and report
+   it. Builds there wait until it clears.
 
 ## Report
 
 Your final message is your report; never end silent. Outside auto mode the harness refuses
-SubagentHandback, as expected; its retry reminder is not WUWEI's: ignore it, end with a plain-text
-report. `wuwei plan show <id>` (the CLI path is in `.wuwei/executable`) gives your item's promise,
-acceptance scenarios, tier and repository.
+SubagentHandback, as expected; its retry reminder is not WUWEI's: ignore it.
+`wuwei plan show <id>` (path in `.wuwei/executable`) gives your item's promise, acceptance, tier
+and repository.
 
-End every handoff with:
+End every handoff with these, one `Feedback:` per seat whose work you used:
 
 ```
 Confidence: low | medium | high (how sure the work holds, and what would change it)
 Blocked: <what stopped you, or none>
-Gap: <what was missing in the brief, charter or tools, or none>
+Gap: <what the brief, charter or tools lacked, or none>
 Change: <the smallest rule change that would have helped, or none>
+Feedback: <role> +|-: <what helped or cost you, with evidence>
 ```
 
 # Common authoring rules
@@ -161,14 +160,15 @@ question for its source, not a build.
    `wuwei plan run`.
 3. At `smart`, classify the item with Cynefin and record the domain with one line of evidence, as
    `domain: "<clear|complicated|complex>: <why>"`. Clear: the cause and the fix are known and one
-   reading settles them; quality, plus security on risky or owner paths. Complicated: experts can
-   work it out by analysis; it adds arch when it changes a trust or contract rule. Complex: the
-   effect shows only once built (a new protocol, a boundary, agent tooling, a change to what a
-   guard waives or refuses); it takes quality, security and arch, a short `How this fails` and the
+   reading settles them; quality, plus security and goal on risky or owner paths. Complicated:
+   experts can work it out by analysis; it adds arch when it changes a trust or contract rule.
+   Complex: the effect shows only once built (a new protocol, a boundary, agent tooling, a change
+   to what a guard waives or refuses); it takes all four gates, a short `How this fails` and the
    spec engine's artifacts. When unsure, go up. Set `in_doubt: true` only when the promise itself
-   may be wrong; only then does the goal gate run. Signals measured at the head only raise the
-   gates. They are owner, risky or contract paths, a function's cyclomatic complexity rising over
-   10, over 200 non-prose lines, and a change to what a guard waives or refuses.
+   may be wrong. The goal gate runs on a complex item, on owner or risky paths, and on a promise
+   in doubt. Signals measured at the head only raise the gates. They are owner, risky or contract
+   paths, a function's cyclomatic complexity rising over 10, over 200 non-prose lines, and a change
+   to what a guard waives or refuses.
 4. In a repository whose own process states a runtime line budget (its constitution or
    `AGENTS.md`), an item that adds runtime lines states its estimate and a budget about one and a
    half times it.

@@ -21,8 +21,10 @@ host's protected refs, required checks and required reviews, and publication cre
 kept out of seat environments.
 
 The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
-brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
-wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
+brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), the words `eval` runs
+(joined, as sh joins them, also behind `command`, `builtin`, `time` and the other wrappers), and the
+command after a wrapper's options. A command whose `eval` or `sh -c` bodies nest more than 64 deep
+is refused for every session. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
 `);`) is split into the operators sh reads, so process substitution and glued separators reach
 their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
 `&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), or with a named fd glued before it
@@ -33,8 +35,8 @@ after it is the command. A redirect whose next token is another operator or noth
 segments still meet the leak, infrastructure and ledger checks. An input redirect (`<`, `<&`,
 `<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write.
 
-The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under
-them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
+The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl`, `.wuwei/canary` and
+anything under them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
 match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a bracket holding a POSIX class,
 `[=x=]` or `[.x.]` reads as `*`, and a path whose braces expand to more than 512 words is refused
 unexpanded), as a writer argument (`of=` too, and each path inside a `python -c` body), a redirect
@@ -49,7 +51,33 @@ option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refu
 `X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
 passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
 pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
-exemption, because a later `--no-dry-run` cancels `-n`.
+exemption, because a later `--no-dry-run` cancels `-n`. `sed` is a writer with `-i` in any
+spelling (`-i`, `-i.bak`, `-Ei`, `--in-place`).
+
+`.wuwei/config.toml` and `.wuwei/plan.json` are changed only in the owner's own session. They set
+which gates a change owes, its tier and who reviews it. A seat is a call whose hook payload names an
+`agent_type`. From a seat the records rule also covers both files, by every route above, removal
+included. So are `wuwei config <key> [<value>]` and the `wuwei plan` actions that write the plan:
+`add`, `park`, `drop`, `done`, `restore`, `run` and `session`; `wuwei sync`; and a push to the
+`wuwei/state` branch, which `wuwei sync` reads both files from (a destination git reads as that
+ref: `wuwei/state`, `heads/wuwei/state`, `refs/heads/wuwei/state`, a deletion, `--all`). These are
+refused when called as `wuwei` on any path, through `python -m wuwei`, or through
+`$(cat .wuwei/executable)`, with any word in ANSI-C quotes (`$'plan'`, `$'\x77uwei'`: the escapes
+`\xHH`, `\NNN`, `\uHHHH` and `\UHHHHHHHH` are decoded) or spliced (`con$'f'ig`). A seat's unreadable
+command naming either file, `wuwei config`, `wuwei plan` or `wuwei sync`, quotes and backslashes
+removed, is refused too. A push to `wuwei/state` through a local branch whose upstream is that
+ref, with `push.default` set to `upstream` in git config, is not read.
+Reads pass: `wuwei plan show`, `wuwei plan view`, `wuwei config` alone, `wuwei status`, `cat` and
+the Read tool. The owner's own session (no `agent_type`) keeps every one of these writes.
+
+The canary is on the records rule because the leak check looks for it: a session that rewrites or
+removes it turns that check off, so `rm` on it is refused too. The rule is a list of known
+writers, and these shapes still pass for the canary and the ledger alike (known open, follow-up
+work): `unlink`, `install`, `rsync`, `perl -pi`, `awk -i inplace`, `git checkout` or `git restore`
+of a path, `touch`, `xargs rm` fed from stdin, and `node -e`. When the canary file cannot be read
+as UTF-8, the leak check raises and the hook shuts only the calls it reads as doors or network
+programs; that network pattern (hook.py `door`) needs whitespace after the program name, so
+`curl>o` and `curl<i` spellings pass then.
 
 git's options before the subcommand are read by allowlist, the options git 2.43 takes (git.c): a
 valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,
@@ -85,9 +113,9 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A `-c` body that is a variable or a substitution (`bash -c "$C"`, `xargs -I{} bash -c {}`).
 - `env -S 'bash -s'` fed on stdin (the quoted string hides the shell), and shells outside the
   guards' list (`ksh`, `busybox sh`).
-- `$(...)` inside double quotes, and quote splicing inside a word.
-- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
-  unquoted backticks.
+- `$(...)` inside double quotes, and quote splicing inside a word (a seat's config and plan
+  door decodes `$'..'` splices; the other doors do not).
+- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, and unquoted backticks.
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
 - A records write through a path the guards do not see: a symlink, a path a program builds at
@@ -129,7 +157,7 @@ through a script file, a writer the guards do not list (`install`, `perl`, `rsyn
 at run time, a symlink or hard link made outside the guards' sight (a hard link from a memory file
 to a transcript included), or a command that sets `HOME` before its `~` expands.
 Bash quoting the guards do not read writes there too: ANSI-C or locale quoting
-(`$'...'`, `$"..."`) of the `.claude` segment, and `eval` around a refused spelling. That is a forged
+(`$'...'`, `$"..."`) of the `.claude` segment. That is a forged
 transcript line, and only the sandbox item closes it. A replayed real answer records nothing more,
 since each answer id is recorded once. A gate's attestation, at its SubagentHandback (PreToolUse) and
 at its SubagentStop, reads the report from the seat's own transcript: the one the payload names, or
