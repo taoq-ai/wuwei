@@ -28,6 +28,7 @@ def order(root):
 
 
 def stop(root, session='s1'):
+    ws.record(root, 'plan.session', {'session': session})  # a planner session (#1276)
     return hook.handle(root, 'Stop', {'session_id': session, 'cwd': str(root)})
 
 

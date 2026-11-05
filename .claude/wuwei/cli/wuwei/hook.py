@@ -128,8 +128,13 @@ def closed(root):
     return bool(marks) and marks[-1] == 'day.closed'
 
 
+def planner(root, session):  # a session that ran a plan pass or launched a seat for an item; open items reach only it (#1276)
+    return bool(session) and any((d := r.get('data') or {}).get('session') == session and (r.get('kind') == 'plan.session' or d.get('item'))
+                                 for r in ws.ledger(root) if r.get('kind') in ('plan.session', 'seat.started'))
+
+
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root) or any(s['session'] == payload.get('session_id') for s in board.running(root)):
+    if payload.get('stop_hook_active') or closed(root) or not planner(root, payload.get('session_id')) or any(s['session'] == payload.get('session_id') for s in board.running(root)):
         return None  # a running seat's completion wakes the planner anyway
     rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'
@@ -416,6 +421,9 @@ def post_tool(root, payload):
             ws.record(root, 'sent', {'tool': tool, 'refs': named})
             ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
+    if tool == 'Bash' and (str((out.get('stdout') if isinstance(out := payload.get('tool_response'), dict) else out) or '').startswith('plan pass recorded')
+                           or any(argv[1:3] == ['plan', 'pass'] and Path(argv[0]).name == 'wuwei' for argv, _ in guards.segments(str(data.get('command', ''))) or ())):
+        ws.record(root, 'plan.session', {'session': payload.get('session_id')})  # the CLI cannot see the session id; its reply covers $W plan pass
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
         if match := re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response'))):
@@ -582,7 +590,8 @@ def session_start(root, payload):
             more = [f'{len(said) - 12} older left out.'] * (len(said) > 12)
             parts.append('Owner answers, last 7 days (act on them; never ask again):\n' + '\n'.join(said[:12] + more))
         found, cut = board.rows(root), 0
-        lines, items = board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)
+        lines, items = (board.text(found, root).split('\n'), tuple(f'- {row["item"]} ' for row in found)) if planner(root, payload.get('session_id')) \
+            else (board.text([], root).rsplit('\n', 1)[:-1] + [f'{len(found)} open item{"s" * (len(found) != 1)}; wuwei status lists them.'], ())
         while len('\n\n'.join(parts + ['\n'.join(lines + left(cut))])) >= SESSION_CAP and (at := [n for n, x in enumerate(lines) if x.startswith(items)]):
             lines, cut = lines[:at[-1]], cut + 1  # the last item goes whole, with the lines its title's newlines make
         parts.append('\n'.join(lines + left(cut)))

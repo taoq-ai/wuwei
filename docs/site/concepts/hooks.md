@@ -15,11 +15,11 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 
 | Hook | Role |
 | --- | --- |
-| SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, your answers of the last 7 days (those not recorded first, with their reason), the board with how many items it left out; at every start, compaction included. After a compaction the planner-charter line becomes a re-orientation: re-read the planner charter and the running skill's SKILL.md, re-arm `/wuwei-watch`, read `wuwei plan` and `wuwei status`, and keep `Item: <id>`, `wuwei plan run` and the ADR rule |
+| SessionStart | orientation within Claude Code's 10,000-character cap on hook context: the CLI path, the way of working, `_common.md` Decisions and Done, the paths of the planner charter, goals and `.wuwei/standards.md`, your answers of the last 7 days (those not recorded first, with their reason), the board with how many items it left out; at every start, compaction included. After a compaction the planner-charter line becomes a re-orientation: re-read the planner charter and the running skill's SKILL.md, re-arm `/wuwei-watch`, read `wuwei plan` and `wuwei status`, and keep `Item: <id>`, `wuwei plan run` and the ADR rule. A session that is not a planner session gets any andon lines and one line instead of the board: how many items are open, and that `wuwei status` lists them. |
 | PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back, and a question you answered in the last 7 days sent back with your answer; a seat launch for an item another live session holds sent back, naming that session |
-| PostToolUse | a trace per call; what a new PR lacks; owner answers kept as `answer.pending`, then recorded as prompts, rulings, exceptions once the session transcript shows them (on the planner's next call, before its doors, since Claude Code writes the answer after the hook) |
+| PostToolUse | a trace per call; a `wuwei plan pass` (its command, or the CLI's `plan pass recorded` reply) marks the session a planner session (`plan.session`); what a new PR lacks; owner answers kept as `answer.pending`, then recorded as prompts, rulings, exceptions once the session transcript shows them (on the planner's next call, before its doors, since Claude Code writes the answer after the hook) |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested; only when the session transcript shows the seat's launch |
-| Stop | a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |
+| Stop | in a planner session only, a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |
 
 **Why the transcript:** a hand-made hook call could otherwise write a ruling or a seat stop the owner never gave.
 An answer or stop the transcript does not show is recorded as `answer.unconfirmed` or
@@ -61,6 +61,12 @@ running it stays silent (the seat's completion wakes the planner anyway; a seat 
 without a stop does not count), the same set of gaps does not block twice,
 waits (CI, the owner, plan approval, an andon) never count, a closed day is quiet, and a turn already
 continued by a Stop hook always passes.
+
+Open items reach only a planner session: one that ran `wuwei plan pass` (the hook records its
+session id as a `plan.session` row, read from the command or from the CLI's `plan pass recorded`
+reply, so `$W plan pass` counts too) or launched a seat for an item. Every other session that
+shares the workspace gets no Stop reminder, and its session start names only the andons and how many
+items are open. `wuwei status`, `/wuwei-run` and `/wuwei-watch` still show everything in any session.
 
 Two more reminders keep the flow from stalling on the owner's nudge, each once per session: when
 only waiting work is left and no watch pass ran in the last hour, it says nothing will wake
