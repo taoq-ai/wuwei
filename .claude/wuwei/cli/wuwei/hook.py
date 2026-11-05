@@ -566,6 +566,11 @@ def session_start(root, payload):
              + ''.join(re.findall(r'^## (?:Decisions|Done)\n.*?(?=^## |\Z)', read('_common.md'), re.S | re.M)).strip(),
              f'Read before the first plan pass: your charter {charters / "planner.md"}, the rest of {charters / "_common.md"}, '
              f'and the goals and standards in {Path(root) / ws.DIR}.']
+    if payload.get('source') == 'compact':  # a compacted session is past its first pass and lost the skill text it followed
+        parts[-1] = (f'The context was just compacted: the WUWEI skill text you followed is cut. Before your next action re-read '
+                     f'{charters / "planner.md"} and the SKILL.md of the WUWEI skill in use under {ws.PLUGIN / "skills"}; check '
+                     '/wuwei-watch is still armed and arm it if not; read `wuwei plan` and `wuwei status`. Each seat brief carries '
+                     '`Item: <id>` from `wuwei plan`, each ops step a `wuwei plan run <id>` record, each owner `one-way:` answer an ADR.')
     left = lambda cut: [f'{cut} more item{"s" if cut > 1 else ""} left out; `wuwei status` lists them all.'] * (cut > 0)  # noqa: E731
     try:  # the owner's answers, the latest 12 (a bounded share: the board's items give way to them); then the board to the cap
         if said := ws.answers(root)[1]:

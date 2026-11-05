@@ -215,6 +215,29 @@ def test_session_start_orients_with_the_board(root, fake):
     assert 'WUWEI' in context and 'I-1' in context
 
 
+def session(root, **payload):
+    return hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root), **payload})['hookSpecificOutput']['additionalContext']
+
+
+def test_after_a_compaction_session_start_names_the_skill_steps_the_session_lost(root, fake):
+    write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
+                       'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries ' + 'x' * 80}
+                      for n in range(40)])
+    text = session(root, source='compact')
+    assert len(text) < hook.SESSION_CAP and re.search(r'^\d+ more items left out', text, re.M)
+    for said in (str(ws.PLUGIN / 'charters' / 'planner.md'), str(ws.PLUGIN / 'skills'), 'compacted', '/wuwei-watch',
+                 '`wuwei plan`', '`wuwei status`', '`Item: <id>`', '`wuwei plan run <id>`', '`one-way:`', 'ADR'):
+        assert said in text, said
+    assert 'Read before the first plan pass' not in text
+
+
+@pytest.mark.parametrize('source', ['startup', 'resume', 'clear', None])
+def test_session_start_outside_a_compaction_keeps_its_text(root, fake, source):
+    plan_one(root)
+    text = session(root, **({'source': source} if source else {}))
+    assert text == session(root) and 'Read before the first plan pass' in text and 'compacted' not in text
+
+
 def test_a_hook_error_fails_open(root, monkeypatch):
     monkeypatch.setattr(board, 'rows', lambda root: 1 / 0)
     assert stop(root) is None
