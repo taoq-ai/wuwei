@@ -729,8 +729,9 @@ def door(payload):
     tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
     command = re.sub(r'[\'"\\]', '', str(data.get('command', ''))) if isinstance(data, dict) else ''
     network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\.exe)?(\s|$)'  # in any case, as macOS and Windows run it
-    return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(
-        all(re.search(w, command, re.I) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command, re.I))
+    return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(all(re.search(
+        w, command, re.I) for w in words) for words in guards.DOOR_WORDS + guards.SEAT_WORDS * bool(payload.get('agent_type'))) or re.search(
+        network, command, re.I))  # a seat's config and plan words too
 
 
 VENDORED = ws.PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
