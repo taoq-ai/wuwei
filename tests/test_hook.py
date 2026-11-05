@@ -46,6 +46,9 @@ def test_a_session_that_is_not_a_planner_gets_a_count_instead_of_the_board(root,
     context = opened(root, 'other')
     assert '5 open items; wuwei status lists them.' in context and 'WUWEI CLI:' in context and '## Done' in context
     assert not re.search(r'^- I-[0-9] ', context, re.M) and 'Board (' not in context
+    compacted = opened(root, 'other', 'compact')
+    assert 'just compacted' in compacted and '5 open items; wuwei status lists them.' in compacted
+    assert not re.search(r'^- I-[0-9] ', compacted, re.M) and 'Board (' not in compacted
     plan_pass(root, 'p1')
     assert re.search(r'^- I-1 ', opened(root, 'p1', 'resume'), re.M)
     ws.record(root, 'seat.started', {'session': 'p2', 'agent': 'a1', 'role': 'builder', 'item': 'I-2'})
@@ -1921,6 +1924,56 @@ def test_a_report_the_harness_already_notified_is_a_pointer_once_and_stays_kept(
     assert planner_call(root, event='Stop') is None  # given: the Stop neither lists nor blocks on it
     [kept] = (root / ws.DIR / 'reports').glob('*.md')
     assert kept.read_text() == REPORT_1198 and str(kept) in note
+
+
+TOKEN, CANARY = 'ghp_' + 'A1b2' * 9, 'wuwei-canary-abcdef'
+LEAKY = f'Done: pushed with {TOKEN}, canary {CANARY}.\nBlocked: none'
+
+
+def test_a_kept_report_is_masked_for_secrets_and_the_canary_before_it_is_written(root, tmp_path):
+    """.wuwei/reports syncs to the public wuwei/state branch: the kept text holds *** for both, so the planner's copy does too."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: pushed with ***, canary ***.\nBlocked: none'
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert 'Done: pushed with ***, canary ***.' in note and TOKEN not in note and CANARY not in note
+
+
+def test_a_kept_report_with_no_secret_or_canary_is_written_unchanged(root, tmp_path):
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=REPORT_1198))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == REPORT_1198
+
+
+def test_a_full_length_token_glued_to_the_canary_leaves_no_canary_fragment(root, tmp_path):
+    """The canary is masked first: a greedy token match would otherwise take its 'wuwei' start and keep '-canary-<hex>'."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    key, pat = 'sk-' + 'a1' * 24, 'github_pat_' + 'x' * 22
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: {key}{CANARY} and {pat}{CANARY}.'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: ****** and ******.'
+
+
+@pytest.mark.parametrize('canary', [None, '', '\n'])
+def test_a_kept_report_with_no_canary_still_has_every_secret_masked_and_keeps_a_nul(root, tmp_path, canary):
+    if canary is not None:
+        (root / ws.DIR / 'canary').write_text(canary)
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: pushed with {TOKEN}.\0'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: pushed with ***.\0'
+
+
+def test_a_masked_report_repeated_is_kept_once_and_its_raw_notification_makes_it_a_pointer(root, tmp_path):
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    assert len(list((root / ws.DIR / 'reports').rglob('*.md'))) == 1
+    notified('lead1', LEAKY)  # the harness shows the planner the seat's raw text
+    assert planner_call(root, event='Stop') is None
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert POINTER in note and TOKEN not in note
 
 
 @pytest.mark.parametrize('event', ['Stop', 'PreToolUse'])
