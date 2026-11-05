@@ -106,7 +106,7 @@ The acceptance scenarios, restated:
   unreadable: 60 spelled `$'wuwei'` and 44 fed to `sh` on stdin. They take the one-line hint (FR-003).
   The owner's 48 moves are all `sed -i.bak` inside `.wuwei` (FR-005). `run.sh` reports the real-bash holes
   when the owner runs it.
-- SC-004: Runtime within budget: +8 lines (3,904 to 3,912), budget 8.
+- SC-004: Runtime within budget: +8 lines (3,910 to 3,918), budget 8.
 
 ## Assumptions
 

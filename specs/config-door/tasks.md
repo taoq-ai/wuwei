@@ -35,4 +35,4 @@
   their mutants were dropped; the third (eval body first word only) gets an unquoted `eval` test
 - [x] T026 `mutants.py` round 6, 36 mutants on both copies, one at a time: 36 killed
 - [x] T023 `analysis.md`: no open CRITICAL or HIGH finding
-- [x] T017 Full suite green; runtime 3,912 lines
+- [x] T017 Full suite green; runtime 3,918 lines

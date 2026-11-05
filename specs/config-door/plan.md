@@ -14,7 +14,7 @@
   no change.
 - `wuwei plan` actions (cli/wuwei/__main__.py): show, add, park, drop, done, restore, run, pass, view, session.
   `wuwei config <key> [<value>]` calls `ws.set_config`, which writes even with no value.
-- Runtime at the base: 3,904 lines (`wc -l cli/wuwei/*.py`); item budget 8.
+- Runtime at the base: 3,910 lines (`wc -l cli/wuwei/*.py`, after 0a72b5e8 added 6 to hook.py); item budget 8.
 
 ## Design
 

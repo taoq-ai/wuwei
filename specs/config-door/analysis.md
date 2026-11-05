@@ -16,5 +16,5 @@ acceptance and the constitution.
 | S3 | Scope | LOW | SC-003 | The owner's `sed -i.bak` inside `.wuwei` is now refused (48 probe cases) | Kept: FR-004 and FR-005; main already refused `sed -i` there |
 
 No CRITICAL or HIGH finding is open. Constitution: test first (129 red on main, 16 red at 3dffaf94, 17 red at
-c3d77512), stdlib only, no new dependency or config key, runtime 3,904 at main and 3,912 at the head (+8,
+c3d77512), stdlib only, no new dependency or config key, runtime 3,910 at main and 3,918 at the head (+8,
 budget 8).
