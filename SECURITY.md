@@ -33,8 +33,8 @@ after it is the command. A redirect whose next token is another operator or noth
 segments still meet the leak, infrastructure and ledger checks. An input redirect (`<`, `<&`,
 `<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write.
 
-The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under
-them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
+The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl`, `.wuwei/canary` and
+anything under them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
 match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a bracket holding a POSIX class,
 `[=x=]` or `[.x.]` reads as `*`, and a path whose braces expand to more than 512 words is refused
 unexpanded), as a writer argument (`of=` too, and each path inside a `python -c` body), a redirect
@@ -50,6 +50,15 @@ option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refu
 passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
 pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
 exemption, because a later `--no-dry-run` cancels `-n`.
+
+The canary is on the records rule because the leak check looks for it: a session that rewrites or
+removes it turns that check off, so `rm` on it is refused too. The rule is a list of known
+writers, and these shapes still pass for the canary and the ledger alike (known open, follow-up
+work): `unlink`, `install`, `rsync`, `perl -pi`, `awk -i inplace`, `git checkout` or `git restore`
+of a path, `touch`, `xargs rm` fed from stdin, and `node -e`. When the canary file cannot be read
+as UTF-8, the leak check raises and the hook shuts only the calls it reads as doors or network
+programs; that network pattern (hook.py `door`) needs whitespace after the program name, so
+`curl>o` and `curl<i` spellings pass then.
 
 git's options before the subcommand are read by allowlist, the options git 2.43 takes (git.c): a
 valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,

@@ -46,8 +46,10 @@ The acceptance scenarios, restated:
    ledger and the canary at main and at the head. #1288 (config-door) changes the sed writer test to
    match `-i<suffix>`, which closes it for both once it merges.
 3. An unreadable canary (mode 000, not UTF-8) now masks no canary where it used to stop the record.
-   A report that holds the canary text would then be kept with it. That text cannot be valid in a
-   non-UTF-8 file, and a mode-000 file needs a session write to the canary, which this item refuses.
+   A report that holds the canary text would then be kept with it. A non-UTF-8 file can still hold
+   a valid canary (`<canary>\n\xff` keeps it as a prefix). The plain session writes that make such a
+   file, or a mode-000 one, are refused at the head; the shapes SECURITY.md lists as known open
+   still reach it.
 
 ## Clarifications
 
