@@ -242,7 +242,7 @@ def _report(root, payload, text):
     path = str(payload.get('agent_transcript_path') or  # a PreToolUse payload names the session's: the seat's lies beside it
                Path(str(payload.get('transcript_path')).removesuffix('.jsonl'), 'subagents', f'agent-{agent}.jsonl'))
     if Path(path).is_relative_to(ws.SESSIONS):
-        canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+        canary = ws.canary(root)
         for _ in range(9):
             if found := _native_report(payload, text):
                 payload.update(agent_id=seat_identity(found[1], canary), **{k: mask(v, canary) for k, v in found[2].items()})
@@ -293,7 +293,7 @@ def subagent_stop(root, payload):
     if out is None and not ended and role in agents.TABLE and payload['last_assistant_message'].strip():  # keep what the harness drops
         agent = hashlib.sha256(payload['agent_id'].encode()).hexdigest() if 'recorded_model' in payload else payload.get('agent_id')
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), agent, role))
-        folder, canary = Path(root) / ws.DIR / 'reports', c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else ''
+        folder, canary = Path(root) / ws.DIR / 'reports', ws.canary(root)
         masked = mask(payload['last_assistant_message'], canary)  # reports sync to wuwei/state
         kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
                    key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
@@ -303,7 +303,7 @@ def subagent_stop(root, payload):
 
 
 def _seat_stop(root, payload, role, tokens, ended):
-    text, canary = last_text(payload), (c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else '')
+    text, canary = last_text(payload), ws.canary(root)
     clean = lambda v: ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', mask(v, canary)).split())[:200]  # masked before the cut
     kept = {k.lower(): [v for v in map(clean, re.findall(rf'^{k}:(.*)', text, re.M)[-(k != 'Feedback'):]) if v and not re.fullmatch(r'none\W*', v, re.I)][:10] for k in ('Feedback', 'Gap', 'Change')}  # the last Gap and Change
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
@@ -389,7 +389,7 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
-        canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
+        canary = ws.canary(root)
         item, effort, reason = asked({**data, 'prompt': (prompt := mask(str(data.get('prompt', '')), canary))})  # before clipping, including partial tokens
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
         measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
@@ -668,7 +668,7 @@ def deliver(root, event, payload, out, said):
                     and re.match(rf'<task-notification>\s*<task-id>{re.escape(agent)}</task-id>', str(r.get('content')))]  # its own frame
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
-            canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
+            canary = ws.canary(root)
             told = any(c not in gone and (mask(html.unescape(b), canary) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)

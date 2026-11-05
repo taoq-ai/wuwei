@@ -1976,6 +1976,22 @@ def test_a_masked_report_repeated_is_kept_once_and_its_raw_notification_makes_it
     assert POINTER in note and TOKEN not in note
 
 
+@pytest.mark.parametrize('broken', ['not utf-8', 'unreadable'])
+def test_a_broken_canary_never_drops_a_seat_row_or_a_kept_report(root, tmp_path, broken):
+    """A canary file that cannot be read as text masks no canary; the seat's rows and its kept report are still written."""
+    canary = root / ws.DIR / 'canary'
+    canary.write_bytes(b'wuwei-canary-\xff\xfe\n')
+    canary.chmod(0o000 if broken == 'unreadable' else 0o644)
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root), 'tool_response': {'agentId': 'lead1'},
+                                      'tool_input': {'subagent_type': 'wuwei:lead', 'description': f'lead {TOKEN}', 'prompt': 'go'}})
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))
+    note = planner_call(root)['hookSpecificOutput']['additionalContext']
+    assert ws.rows(root, 'hook.error') == [] and [r['data']['description'] for r in ws.rows(root, 'seat.started')] == ['lead ***']
+    assert [r['data']['role'] for r in ws.rows(root, 'seat.stopped')] == ['lead']
+    [kept] = (root / ws.DIR / 'reports').rglob('*.md')
+    assert kept.read_text() == f'Done: pushed with ***, canary {CANARY}.\nBlocked: none' and kept.read_text() in note
+
+
 @pytest.mark.parametrize('event', ['Stop', 'PreToolUse'])
 def test_a_notification_the_queue_dropped_is_no_delivery_so_the_report_is_given_in_full_once(root, tmp_path, event):
     """The kill-agents chord or an interrupt clears queued notifications: the row stays, the planner never sees it (#1222)."""

@@ -116,6 +116,12 @@ def _hold(folder):  # Windows: a handle that shares no delete, so the folder is 
     return handle
 
 
+def canary(root):  # the workspace canary, or '' when the file is missing or not readable text: a record never waits on it
+    with contextlib.suppress(OSError, UnicodeError):
+        return path.read_text(encoding='utf-8').strip() if (path := Path(root) / DIR / 'canary').is_file() else ''
+    return ''
+
+
 def raw_config(root):
     path = Path(root) / DIR / 'config.toml'
     return tomllib.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}

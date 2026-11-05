@@ -254,7 +254,8 @@ SECURITY.md reads it); a git
 command naming `push` after an option before the subcommand that git 2.43 does not take, or after a
 `-c` or `--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default`; a git command
 after a `-c` or `--config-env` that sets an alias or an include, whatever the subcommand; a secret
-or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
+or the canary in an MCP call or network command; writes to the ledger, the canary (`.wuwei/canary`, which
+the leak check reads; `rm` included) or the cache in the spellings
 sh expands (`//`, `/./`, `..`, globs, braces; on every OS also in any case, with a backslash read as a
 separator as well as a name character, and as Windows reads a name: no drive-relative `X:`, no `:stream`
 or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program named in any case or with
@@ -267,7 +268,7 @@ same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads
 a literal `-m wuwei hook` through any interpreter; an
 owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
-pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
+pr, api or repo; wuwei followed by hook; `.wuwei/ledger`, `.wuwei/canary` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
 counts, a heredoc body or quoted prose included, and says to write such text to a file with the Write tool (#1117); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
 makes a command unreadable, and so does a shell with no `-c` body (fed by a pipe, a here-string, `-s` or

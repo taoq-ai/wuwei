@@ -30,10 +30,10 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|/canary|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER, CACHE = ('ledger', 'ledger.jsonl'), ('ledger', 'ledger.jsonl', 'cache')  # what lies below .wuwei that a session never writes
+LEDGER, CACHE = ('ledger', 'ledger.jsonl', 'canary'), ('ledger', 'ledger.jsonl', 'canary', 'cache')  # below .wuwei, never a session's to write
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7

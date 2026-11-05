@@ -279,3 +279,15 @@ def test_a_clone_id_that_is_no_plain_token_is_replaced_and_the_ledger_stays_in_i
     (root / ws.DIR / 'cache' / 'clone').write_text('../../escape\n')
     ws.record(root, 'probe', {})
     assert [p.parent for p in root.rglob('*.jsonl')] == [root / ws.DIR / 'ledger'] and ws.clone(root).isalnum()
+
+
+@pytest.mark.skipif(not hasattr(os, 'mkfifo'), reason='no FIFOs on this platform')
+@pytest.mark.parametrize('kind', ['missing', 'folder', 'fifo', 'blank', 'text'])
+def test_the_canary_reader_never_raises_or_blocks(root, kind):
+    path = root / ws.DIR / 'canary'
+    {'missing': lambda: None, 'folder': path.mkdir, 'fifo': lambda: os.mkfifo(path), 'blank': lambda: path.write_text(' \n'),
+     'text': lambda: path.write_text(' wuwei-canary-1\n')}[kind]()
+    read = threading.Thread(target=lambda: setattr(read, 'found', ws.canary(root)), daemon=True)
+    read.start()
+    read.join(2)  # a reader that opens the FIFO waits for a writer that never comes
+    assert getattr(read, 'found', None) == ('wuwei-canary-1' if kind == 'text' else '')
