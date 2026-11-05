@@ -1842,6 +1842,24 @@ def test_a_kept_report_with_no_secret_or_canary_is_written_unchanged(root, tmp_p
     assert kept.read_text() == REPORT_1198
 
 
+def test_a_full_length_token_glued_to_the_canary_leaves_no_canary_fragment(root, tmp_path):
+    """The canary is masked first: a greedy token match would otherwise take its 'wuwei' start and keep '-canary-<hex>'."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    key, pat = 'sk-' + 'a1' * 24, 'github_pat_' + 'x' * 22
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: {key}{CANARY} and {pat}{CANARY}.'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: ****** and ******.'
+
+
+@pytest.mark.parametrize('canary', [None, '', '\n'])
+def test_a_kept_report_with_no_canary_still_has_every_secret_masked_and_keeps_a_nul(root, tmp_path, canary):
+    if canary is not None:
+        (root / ws.DIR / 'canary').write_text(canary)
+    lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=f'Done: pushed with {TOKEN}.\0'))
+    [kept] = (root / ws.DIR / 'reports' / 'pending').glob('*.md')
+    assert kept.read_text() == 'Done: pushed with ***.\0'
+
+
 def test_a_masked_report_repeated_is_kept_once_and_its_raw_notification_makes_it_a_pointer(root, tmp_path):
     (root / ws.DIR / 'canary').write_text(CANARY + '\n')
     lead_stop(root, seat_transcript(tmp_path / 'lead.jsonl', text=LEAKY))

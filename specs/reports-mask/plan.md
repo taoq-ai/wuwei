@@ -10,7 +10,7 @@ wherever the hook checks a kept report against what the planner was shown.
 ## Technical Context
 
 Python 3.11 stdlib. Tests in tests/test_hook.py and tests/test_native_evidence.py. Runtime budget
-4,000 lines; main is at 3,904 and the item's budget is +2.
+4,000 lines; main is at 3,904 and the item's budget is +2, +4 after the fix round's helper.
 
 ## Constitution Check
 
@@ -30,4 +30,5 @@ Python 3.11 stdlib. Tests in tests/test_hook.py and tests/test_native_evidence.p
 
 ## Lines
 
-hook.py 743 to 745: runtime 3,904 to 3,906.
+hook.py 743 to 745: runtime 3,904 to 3,906. Fix round: `mask()` adds 4 lines with its spacing and
+frees 2 (the `redact` lambda and the second line of the `_native_told` compare): runtime 3,908.

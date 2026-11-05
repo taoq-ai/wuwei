@@ -225,6 +225,10 @@ def seat_identity(value, canary=''):
     return 'sha256-' + hashlib.sha256(value.encode()).hexdigest() if guards.SECRETS.search(value) or canary and canary in value else value
 
 
+def mask(text, canary=''):  # the canary first: a token glued to it would take its 'wuwei' start and leave the rest
+    return guards.SECRETS.sub('***', text.replace(canary, '***') if canary else text)
+
+
 def _report(root, payload, text):
     """The seat's report as its own transcript holds it (#962): the text the payload carries, else its last. The transcript is
     read only when the harness shows the launch: the meta file beside it names the seat's type and an Agent tool_use the
@@ -236,7 +240,7 @@ def _report(root, payload, text):
         canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
         for _ in range(9):
             if found := _native_report(payload, text):
-                payload.update(agent_id=seat_identity(found[1], canary), **{k: guards.SECRETS.sub('***', v).replace(canary or '\0', '***') for k, v in found[2].items()})
+                payload.update(agent_id=seat_identity(found[1], canary), **{k: mask(v, canary) for k, v in found[2].items()})
                 return found[0]
             time.sleep(0.25)
         ws.record(root, 'seat.unconfirmed', {'role': role, 'agent': seat_identity(str(agent or ''), canary), 'session': payload.get('session_id'), 'reason': 'native parent, role, identity or latest final report did not match the stop'})
@@ -285,7 +289,7 @@ def subagent_stop(root, payload):
         agent = hashlib.sha256(payload['agent_id'].encode()).hexdigest() if 'recorded_model' in payload else payload.get('agent_id')
         name = '--'.join(re.sub(r'[^\w-]', '', str(v or '')) for v in (payload.get('session_id'), agent, role))
         folder, canary = Path(root) / ws.DIR / 'reports', c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else ''
-        masked = guards.SECRETS.sub('***', payload['last_assistant_message']).replace(canary or '\0', '***')  # reports sync to wuwei/state
+        masked = mask(payload['last_assistant_message'], canary)  # reports sync to wuwei/state
         kept = max((r for d in (folder / 'pending', folder) for p in d.glob(f'{name}--*.md') if (r := _kept_report(p, folder))),
                    key=lambda r: int(r[0].stem.rsplit('--', 1)[-1]), default=None)
         if kept is None or kept[1] != masked:  # only the latest valid version can repeat
@@ -295,7 +299,7 @@ def subagent_stop(root, payload):
 
 def _seat_stop(root, payload, role, tokens, ended):
     text, canary = last_text(payload), (c.read_text(encoding='utf-8').strip() if (c := Path(root) / ws.DIR / 'canary').is_file() else '')
-    clean = lambda v: ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', guards.SECRETS.sub('***', v).replace(canary or '\0', '***')).split())[:200]  # masked before the cut
+    clean = lambda v: ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', mask(v, canary)).split())[:200]  # masked before the cut
     kept = {k.lower(): [v for v in map(clean, re.findall(rf'^{k}:(.*)', text, re.M)[-(k != 'Feedback'):]) if v and not re.fullmatch(r'none\W*', v, re.I)][:10] for k in ('Feedback', 'Gap', 'Change')}  # the last Gap and Change
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', text, re.M | re.I)) and m[1].lower(),
@@ -381,21 +385,20 @@ def post_tool(root, payload):
     response = payload.get('tool_response') if tool in ('Agent', 'Task', 'codex_spawn_unconfirmed') else None
     if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
         canary = path.read_text(encoding='utf-8').strip() if (path := Path(root) / ws.DIR / 'canary').is_file() else ''
-        redact = lambda value: guards.SECRETS.sub('***', value).replace(canary or '\0', '***')  # before clipping, including partial tokens
-        item, effort, reason = asked({**data, 'prompt': (prompt := redact(str(data.get('prompt', ''))))})
+        item, effort, reason = asked({**data, 'prompt': (prompt := mask(str(data.get('prompt', '')), canary))})  # before clipping, including partial tokens
         reason = 'Codex spawn_agent role unmeasured: active schema needs a known agent_type; prompt text cannot supply it.' if tool == 'codex_spawn_unconfirmed' else reason
         measured = lambda value: value if isinstance(value, str) and value.strip() else 'unmeasured'
         try:
             departed = advise(root, data, check=True)
         except Exception:  # a corrupt plan or models row: the seat row is still written, its departure unmeasured
             departed = 'unmeasured'
-        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': redact(str(data.get('description', '')))[:120],
+        seat = {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1], 'description': mask(str(data.get('description', '')), canary)[:120],
                 'session': payload.get('session_id'), 'agent': seat_identity(response['agentId'], canary), 'model': str(response.get('resolvedModel') or 'unmeasured'),
                 'asked': str(requested({**data, 'prompt': prompt}) or 'unrecorded'), 'effort': effort or 'unrecorded', 'reason': reason, 'item': item, 'departed': departed,
                 **({'turn_model': measured(payload.get('model')), 'turn_effort': measured((payload.get('effort') if isinstance(payload.get('effort'), dict) else {}).get('level')),
                     'fork_policy': {'all': 'inherit', 'none': 'fresh'}.get(str(data.get('fork_turns')), 'unmeasured')} if 'agent_type' in data else {})}
         ws.record(root, 'seat.unconfirmed' if tool == 'codex_spawn_unconfirmed' else 'seat.started',
-                  {k: redact(v) if isinstance(v, str) else v for k, v in seat.items()})
+                  {k: mask(v, canary) if isinstance(v, str) else v for k, v in seat.items()})
         return context('PostToolUse', 'WUWEI: ' + reason) if tool == 'codex_spawn_unconfirmed' else None
     if tool == 'AskUserQuestion':  # recorded once the session transcript shows it (_confirm)
         answers = response.get('answers', {}) if isinstance(response := payload.get('tool_response'), dict) else {}
@@ -622,8 +625,7 @@ def _native_told(path, agent, text, at, canary=''):
         return any(r['type'] == 'response_item' and r['payload'].get('type') == 'agent_message' and isinstance(author := r['payload'].get('author'), str)
                    and ((identity := seat_identity(author, canary)) == agent or hashlib.sha256(identity.encode()).hexdigest() == agent)
                    and r['payload'].get('recipient') == meta.get('agent_path', '/root') and datetime.datetime.fromisoformat(r['timestamp']) >= datetime.datetime.fromisoformat(at)
-                   and guards.SECRETS.sub('***', native_text(r)).replace(canary or '\0', '***') == guards.SECRETS.sub(  # both masked, as the kept text is
-                       '***', f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text).replace(canary or '\0', '***') for r in rows)
+                   and mask(native_text(r), canary) == mask(f'Message Type: FINAL_ANSWER\nTask name: {meta.get("agent_path", "/root")}\nSender: {author}\nPayload:\n' + text, canary) for r in rows)
     except (OSError, KeyError, IndexError, TypeError, ValueError, AttributeError):
         return False
 
@@ -652,7 +654,7 @@ def deliver(root, event, payload, out, said):
             gone = [r['content'] for r in rows if r.get('reason') == 'cleared_on_cancel']  # a cleared queue showed the planner nothing
             at = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat(timespec='milliseconds')  # older rows told older stops
             canary = p.read_text(encoding='utf-8').strip() if (p := Path(root) / ws.DIR / 'canary').is_file() else ''
-            told = any(c not in gone and (guards.SECRETS.sub('***', html.unescape(b)).replace(canary or '\0', '***') == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
+            told = any(c not in gone and (mask(html.unescape(b), canary) == text or b.startswith(HANDED.format(agent))) for c in [r['content'] for r in rows
                        if r.get('operation') == 'enqueue' and str(r.get('timestamp') or '') >= at] for b in re.findall(r'<result>(.*?)</result>', c, re.S))
             told = told or _native_told(payload.get('transcript_path'), agent, text, at, canary)
             if told and event == 'Stop' or ws.take(root, path, kept := pending.parent / path.name):  # one hook wins a race

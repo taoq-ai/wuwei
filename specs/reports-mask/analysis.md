@@ -9,7 +9,7 @@ and acceptance and the constitution.
 |----|----------|----------|-------------|---------|----------------|
 | A1 | Coverage | LOW | spec.md How this fails 1 | The promise names only the write; the notified checks in deliver and _native_told read the kept text and would stop matching | Resolved: FR-003 masks the notification side, tests T003 and T004 |
 | A2 | Ambiguity | LOW | spec.md Assumptions | A pre-upgrade pending report holding a secret may be given once more | Recorded as an assumption with its cost |
-| A3 | Inconsistency | LOW | spec.md Clarifications | The brief says reuse the masker; the hook has no shared helper, only one inline expression | Resolved: the same expression is reused inline, no new helper |
+| A3 | Inconsistency | LOW | spec.md Clarifications | The brief says reuse the masker; the hook has no shared helper, only one inline expression | Resolved in the fix round: one `mask()` helper, canary first, at all seven sites (FR-005, T014) |
 | C1 | Coverage | LOW | tasks.md | FR-004 (runtime budget) has no new test | Held by tests/test_setup.py::test_the_runtime_holds_its_size_budget |
 
 No open finding above LOW.

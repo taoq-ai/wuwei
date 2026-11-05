@@ -19,3 +19,11 @@
 
 - [x] T010 docs/design.md SubagentStop row names the masking
 - [x] T011 Mutants of each new mask, on both copies one at a time, each fail a test
+
+## Phase 4: Fix round on c70bbcb
+
+- [x] T012 A full-length sk- key and github_pat_ token glued to the canary leave no canary fragment (tests/test_hook.py), run red
+- [x] T013 A kept report with the canary file absent, empty or blank has every secret masked and keeps a NUL (tests/test_hook.py), run red
+- [x] T014 One `mask()` helper, canary first, at all seven sites; copy to the vendored hook.py
+- [x] T015 docs/site/concepts/hooks.md names the masking; the PR body carries How this fails
+- [x] T016 Mutants of the helper (secrets first, raw without a canary, NUL stand-in) each fail a test

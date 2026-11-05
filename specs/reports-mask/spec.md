@@ -41,13 +41,22 @@ The acceptance scenarios, restated:
 3. A report kept before this change, still pending, holds a secret and was notified: the masked
    notification no longer equals its raw text, so it is given once more in full. Accepted: it needs
    a pending file from before the upgrade that holds a secret; the cost is one repeated report.
+4. A report kept raw before this change, holding a secret and already delivered, whose seat stops
+   again with the same text after the upgrade: the masked text no longer equals the raw file, so a
+   second, masked file is kept and delivered once more. Accepted for the same reason as 3 (goal
+   verdict on c70bbcb: 0 of 160 local reports hold a match).
+5. A full-length token glued to the canary with no separator: masking secrets first lets the token's
+   greedy match take the canary's `wuwei` start and leave `***-canary-<hex>`. Guarded by masking the
+   canary first in one helper, with a test (security verdict on c70bbcb).
 
 ## Clarifications
 
 ### Session 2026-11-04
 
-- Q: Is a new masking helper added? A: No. The brief says reuse; the kept write uses the same
-  inline `guards.SECRETS.sub('***', v).replace(canary or '\0', '***')` the hook uses elsewhere.
+- Q: Is a new masking helper added? A: In the fix round, yes: `hook.mask(text, canary)` masks the
+  canary first, then `guards.SECRETS`, and replaces the inline expression at all seven sites,
+  `seat.started` and `seat.stopped` included, so the order is fixed in one place. With no canary it
+  skips the replace, so a NUL in a report stays a NUL instead of turning into `***`.
 - Q: Where is the canary read? A: From `.wuwei/canary`, the same file the other sites read; no
   canary file means only `guards.SECRETS` applies.
 - Q: Is the whole report masked or cut like `seat.stopped` lines? A: Masked whole and never cut; the
@@ -79,12 +88,15 @@ a Codex final answer that carry the raw text make the masked report a pointer.
 - FR-001: `hook.subagent_stop` writes the kept report with `guards.SECRETS` and the canary masked.
 - FR-002: The repeat check compares the masked text.
 - FR-003: `hook.deliver` and `hook._native_told` mask the notified text before comparing it.
-- FR-004: The runtime stays at 4,000 lines or fewer, at most 2 more than main.
+- FR-004: The runtime stays at 4,000 lines or fewer, at most 4 more than main.
+- FR-005: The canary is masked before `guards.SECRETS` at every site, through one helper; with no
+  canary file every secret is still masked and a NUL is kept.
 
 ## Assumptions
 
-- The masker is the existing inline expression, not a new helper. Overturned if the retro wants
-  one `mask()` for all sites; that is a refactor outside this promise.
+- The gates' low notes asked for one `mask()` with the canary first; the fix round adds it in
+  hook.py, not guards.py, since only the hook masks with the canary. Overturned if another module
+  needs it.
 - A pre-upgrade pending report with a secret may be given once more (How this fails 3). Overturned
   if a live session shows such a file.
 
