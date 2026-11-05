@@ -1314,6 +1314,16 @@ def test_an_mcp_file_write_on_the_default_branch_is_refused_like_a_push(root, fa
     assert tool in guards.DOORS['push']
 
 
+@pytest.mark.parametrize('tool', ['push_files', 'create_or_update_file'])
+@pytest.mark.parametrize('branch', ['wuwei/state', 'refs/heads/wuwei/state'])
+def test_a_seat_mcp_write_to_the_state_branch_is_refused_and_the_owner_one_passes(root, fake, tool, branch):
+    """config-door fix round 2 at d70746d: the MCP push door read only the default branch, so a seat wrote wuwei/state."""
+    decision = guards.pre_tool(root, {**mcp(tool, branch=branch), 'agent_id': 'b1', 'agent_type': 'wuwei:builder'})
+    assert decision['decision'] == 'deny' and OWNER_ONLY in decision['reason']
+    assert guards.pre_tool(root, mcp(tool, branch=branch)) is None
+    assert guards.pre_tool(root, {**mcp(tool, branch='wuwei/statement'), 'agent_type': 'wuwei:builder'}) is None
+
+
 def test_a_rest_pr_create_by_input_alone_posts_and_reads_head_base_and_body(root, cloud, tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(guards, 'create_door', lambda root, repo, branch, base, text: seen.append((repo, branch, base, text)))
@@ -2522,7 +2532,7 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     "rm $'.wuwei/config.toml'", "echo 'echo x > .wuwei/config.toml' | sh", r"echo 'w\uwei plan done I-1' | sh", r"w\uwei $'plan' done I-1",
     'wuwei sync', 'python3 -m wuwei sync', '"$(cat .wuwei/executable)" sync', "eval 'wuwei sync'",
     # mutant round 7: sync and a \u escape in unreadable text
-    "echo 'wuwei sync' | sh", r"$'\u0077uwei' plan done I-1",
+    "echo 'wuwei sync' | sh", r"$'\u0077uwei' plan done I-1", r"$'\U00000077uwei' plan done I-1",
     # the round 1 probe: an escape inside $'..' inside a quoted body (1,107 holes before escapes were decoded at any depth)
     'bash -c ' + shlex.quote(r"wuwei $'\x63onfig' owner_paths x"), 'eval ' + shlex.quote(r"echo x > $'.\x77uwei/plan.json'"),
     'echo ' + shlex.quote(r"wuwei $'pl\x61n' done I-1") + ' | sh']

@@ -37,6 +37,8 @@ MUTANTS = [
     ('eval not a program a wrapper finds', "'find', 'eval'} | SHELLS", "'find'} | SHELLS"),
     ('builtin not a wrapper', "'command', 'builtin', 'exec'", "'command', 'exec'"),
     ('no depth bound', '    if depth > 64:', '    if False:'),
+    ('mcp push without the seat state check', "if seat and branch == 'wuwei/state' else", "if False else"),
+    ('unquote without \\U', '|U[0-9a-fA-F]{1,8}|[0-7]', '|[0-7]'),
     ('depth not passed down', "else argv[body], depth + 1)", "else argv[body], depth)"),
     ('depth not passed to unwrap', '_unwrap(current, depth) if current', '_unwrap(current) if current'),
     ('too deep not refused', 'except RecursionError:  # eval in eval', 'except ZeroDivisionError:  # eval in eval'),

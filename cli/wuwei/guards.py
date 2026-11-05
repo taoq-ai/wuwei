@@ -491,8 +491,8 @@ def pre_tool(root, payload):
     number = int(n) if (n := str(data.get('pullNumber', data.get('pull_number')))).isascii() and n.isdigit() else None
     if tool.startswith('mcp__') and tool.endswith(DOORS['push']):
         branch = str(data.get('branch') or '').removeprefix('refs/heads/')
-        return leak(root, json.dumps(data)) or (deny(f'pushing to the default branch {branch or "(no branch named)"} '
-                                                     + PUSHED) if not branch or branch in _default(root, repo) else None)
+        return leak(root, json.dumps(data)) or (deny(OWNER_ONLY.strip()) if seat and branch == 'wuwei/state' else deny(
+            f'pushing to the default branch {branch or "(no branch named)"} ' + PUSHED) if not branch or branch in _default(root, repo) else None)
     if tool.startswith('mcp__') and tool.endswith(DOORS['merge']):
         return leak(root, json.dumps(data)) or merge_door(root, repo, number, auto=tool.endswith('auto_merge'))
     if tool.startswith('mcp__') and tool.endswith(DOORS['create']) and not (data.get('draft') is True and not data.get('reviewers')):
