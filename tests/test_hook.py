@@ -283,6 +283,39 @@ def test_session_start_orients_with_the_board(root, fake):
     assert 'WUWEI' in context and 'I-1' in context
 
 
+def session(root, **payload):
+    return hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root), **payload})['hookSpecificOutput']['additionalContext']
+
+
+def test_after_a_compaction_session_start_names_the_skill_steps_the_session_lost(root, fake):
+    write_plan(root, [{'id': f'item-{n:02d}', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard', 'status': 'open',
+                       'score': 50 - n, 'title': f'fix(hook): item {n} keeps the long title a real plan item carries ' + 'x' * 80}
+                      for n in range(40)])
+    text = session(root, source='compact')
+    assert len(text) < hook.SESSION_CAP and re.search(r'^\d+ more items left out', text, re.M)
+    for said in (f're-read {ws.PLUGIN / "charters" / "planner.md"} and the SKILL.md of the WUWEI skill in use under '
+                 f'{ws.PLUGIN / "skills"};', 'just compacted', 'check /wuwei-watch is still armed and arm it if not',
+                 'read `wuwei plan` and `wuwei status`', 'carries `Item: <id>` from `wuwei plan`',
+                 'each ops step a `wuwei plan run <id>` record', 'each owner `one-way:` answer an ADR'):
+        assert said in text, said
+    assert 'Read before the first plan pass' not in text
+
+
+def test_after_a_compaction_a_vendored_session_is_pointed_at_the_skills_it_has(root, fake, tmp_path, monkeypatch):
+    from wuwei import setup
+    claude = setup.vendor(tmp_path)
+    monkeypatch.setattr(ws, 'PLUGIN', claude / 'wuwei')
+    text = session(root, source='compact')
+    assert f'in use under {claude / "skills"};' in text and (claude / 'skills' / 'wuwei-run' / 'SKILL.md').is_file()
+
+
+@pytest.mark.parametrize('source', ['startup', 'resume', 'clear', None])
+def test_session_start_outside_a_compaction_keeps_its_text(root, fake, source):
+    plan_one(root)
+    text = session(root, **({'source': source} if source else {}))
+    assert text == session(root) and 'Read before the first plan pass' in text and 'compacted' not in text
+
+
 def test_a_hook_error_fails_open(root, monkeypatch):
     monkeypatch.setattr(board, 'rows', lambda root: 1 / 0)
     assert stop(root) is None

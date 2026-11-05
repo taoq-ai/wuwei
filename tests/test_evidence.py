@@ -1525,14 +1525,24 @@ def test_an_announcement_counts_only_as_one_http_url_alone_on_its_line(root, fak
 
 def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
     head = footer() + '\nAnnouncement: https://'
-    body = head + 'a' * (65536 - len(head) - 2) + ' x'  # a host run that never reaches the end of the line
+    long_run = head + 'a' * (65536 - len(head) - 2) + ' x'  # a host run that never reaches the end of the line
+    short_run = head + 'a. ' + 'a ' * ((65536 - len(head)) // 2)  # the same size, every host run ends at once
     standard(root)
-    fake.prs['42'] = {**make_pr(body=body), 'title': 'feat!: drop the v1 export'}
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
-    started = time.perf_counter()
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ANNOUNCE
-    assert time.perf_counter() - started < 1
+
+    def read(body):
+        fake.prs['42'] = {**make_pr(body=body), 'title': 'feat!: drop the v1 export'}
+        return lambda: texts(evidence.gaps(root, 'acme/app', 42))
+
+    def best(run):  # a loaded machine slows both bodies alike, so compare the fastest of a few runs of each
+        took = []
+        for _ in range(3):
+            started = time.perf_counter()
+            assert run() == ANNOUNCE
+            took.append(time.perf_counter() - started)
+        return min(took)
+    assert best(read(long_run)) < 10 * max(best(read(short_run)), 1e-3)  # linear is about 1x, a backtracking host read far more
 
 
 @pytest.mark.parametrize('said, found', [
