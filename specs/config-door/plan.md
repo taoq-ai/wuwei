@@ -27,6 +27,9 @@
 5. The sed writer test reads `-i` in any spelling (`-[^-]*i|--i`).
 6. Route corpus: eight routes from the acceptance, four with `"seat": true`; the corpus test passes the field.
 7. SECURITY.md paragraph; docs/site/reference.md lines; `.claude/wuwei/cli/wuwei/guards.py` copied.
+8. After the probe's later rounds: `_unwrap` reads `eval`'s words joined, as a `sh -c` body, for every session; a
+   seat's unreadable text is matched as typed and with its quotes removed; the `wuwei` door word takes `--`,
+   `-mwuwei` and `executable)`.
 
 ## Verification
 

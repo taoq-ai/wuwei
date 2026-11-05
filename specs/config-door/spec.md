@@ -46,12 +46,13 @@ The acceptance scenarios, restated:
    `sed -i.bak` was not a writer at all, for the ledger too; the probe's sed class found it and the writer test
    now reads `-i` in any spelling. A second probe class, the wuwei program's spellings x writing calls x
    positions, found 117 holes at the first head: an ANSI-C quoted word (`$'plan'`) reads as `$plan`, so it hid the
-   call after `--`, behind `env` or `command`, in `sh -c`, or after `python3 -mwuwei` and `.wuwei/executable`. The
-   seat check now reads `$word` as `word`, and a wrapper unwraps to it. Two more positions, `eval '<call>'` and
+   call after `--`, behind `env` or `command`, in `sh -c`, or after `python3 -mwuwei` and `.wuwei/executable`.
+   A first fix read `$word` as `word`; the next round made it redundant and it was dropped. Two more positions, `eval '<call>'` and
    `echo '<call>' | sh`, found 282 holes at c3d77512. `eval`'s words were one argument the guard never read, for
    every door and every session (at main, 220 of 301 corpus routes read differently under `eval`); the guard now
    reads them as it reads a `sh -c` body. A seat's unreadable text is also matched with its quotes removed, and
-   the door word takes `--` and `executable)`.
+   the door word takes `--` and `executable)`. Every `$'..'` command is unreadable, so this one rule closes the
+   117 `$'..'` holes as well.
 2. A false refusal stops a seat's normal work. Ways in: `git config user.name` in a checkout named `wuwei`, a
    commit message naming `wuwei plan done`, `cp a .wuwei-plan.json`, a literal `.wuwei/%70lan.json`, and every
    read. Each has a test that expects a pass. A seat's multi-line command that names `wuwei plan` is refused

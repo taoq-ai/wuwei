@@ -31,6 +31,8 @@
 - [x] T022 `mutants.py` round 3, 33 mutants: 31 killed; the two door-word survivors get stdin and eval tests; round 4, 33 of 33 killed
 - [x] T024 Probe positions `echo Q | sh` and `eval Q`: 282 holes at c3d77512; 17 tests red; `eval`'s words read as a `sh -c`
   body, a seat's unreadable text matched with quotes removed; probe holes 0; corpus under `eval` 0 moved at head
-- [x] T025 `mutants.py` round 5, 38 mutants on both copies
+- [x] T025 `mutants.py` round 5, 38 mutants: 35 killed. Two survivors showed the `$word` reads redundant, so they and
+  their mutants were dropped; the third (eval body first word only) gets an unquoted `eval` test
+- [x] T026 `mutants.py` round 6, 36 mutants on both copies, one at a time: 36 killed
 - [x] T023 `analysis.md`: no open CRITICAL or HIGH finding
 - [x] T017 Full suite green; runtime 3,912 lines
