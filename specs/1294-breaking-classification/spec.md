@@ -12,8 +12,9 @@ charter says to ask only once an announcement exists; `hook._answers` records an
 
 There are two `breaking:` questions. The first, asked before any announcement, is a
 classification: "is this change breaking?". The second, asked once an `Announcement:` line exists,
-carries "Announced at <link>" and asks the owner to proceed. The hook tells them apart by the words
-"Announced at". It records a classification answer as the owner's classification at that head,
+carries "Announced at <link>" and asks the owner to proceed. The hook reads each by its own marker,
+"Treat as breaking?" or "Announced at <link> Proceed?", and records nothing for any other
+`breaking:` question. It records a classification answer as the owner's classification at that head,
 never as the approval. A classification yes therefore never clears the confirmation gap; only a
 Proceed yes does. A classification no clears the breaking gap at that head, unless the PR declares
 the break itself (a `!` title or a `BREAKING CHANGE:` line). A new head asks again. The guard hint
@@ -33,14 +34,17 @@ Acceptance, restated:
 
 - An old ledger row from before this fix (a classification yes recorded as `approved: true`) still
   reads as the Proceed at its head. Mitigation: rows bind to one head; such a head is rare.
-- A Proceed question phrased without "Announced at" is read as a classification, so its yes does
-  not approve. Safe direction: the gap stays and names the Proceed shape.
+- An owner option label the hook does not read ("Y", "Sure", "It breaks") records nothing. Safe
+  direction: the gap stays, and the question can be asked again in the explicit shape.
 - An owner no clears a break the author declared. Mitigation: a declared break ignores the no.
 
 ## Requirements
 
-- FR-001: a `breaking:` question without "Announced at" records `{'kind': 'breaking', 'breaking':
-  <yes>, 'approved': False}` at its head.
+- FR-001: a `breaking:` question holding "Treat as breaking?" and no "Announced at <http(s) link>"
+  records `{'kind': 'breaking', 'breaking': <yes>, 'approved': False}` at its head, only on an
+  explicit answer: yes or breaking, no, not breaking or non-breaking. Any other answer records
+  nothing, so the gap stays. A Proceed is only "Announced at <link> Proceed?" without "Treat as
+  breaking?". A `breaking:` question of neither shape records nothing (fix round on fc4364d).
 - FR-002: the confirmation gap clears only on a breaking row with `approved` true and no
   `breaking` field, at the head.
 - FR-003: the latest classification at the head decides whether the change is breaking, unless
@@ -49,8 +53,9 @@ Acceptance, restated:
 
 ## Assumptions
 
-- "Announced at" (any case) marks the Proceed question; its absence marks a classification. Why:
-  the item's promise says so. Overturned if the owner wants a separate keyword.
+- Each shape is read by its own exact marker ("Treat as breaking?"; "Announced at <link>
+  Proceed?"), so a misspelt question records nothing and the gap stays. Why: the gates showed a
+  substring test fails open. Overturned if the owner wants looser matching.
 - A classification yes makes the change breaking even with no arch yes or declaration. Why: the
   owner's word outranks the gate's; it only adds a gap. Overturned if the owner wants the yes
   recorded but not acted on.
