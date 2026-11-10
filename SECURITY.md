@@ -54,9 +54,10 @@ pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry r
 exemption, because a later `--no-dry-run` cancels `-n`. `sed` is a writer with `-i` in any
 spelling (`-i`, `-i.bak`, `-Ei`, `--in-place`).
 
-`.wuwei/config.toml` and `.wuwei/plan.json` are changed only in the owner's own session. They set
-which gates a change owes, its tier and who reviews it. A seat is a call whose hook payload names an
-`agent_type`. From a seat the records rule also covers both files, by every route above, removal
+`.wuwei/config.toml`, `.wuwei/plan.json` and `.wuwei/goals.md` are changed only in the owner's own
+session. They set which gates a change owes, its tier, who reviews it and, with `auto-approve`,
+which items start without a `plan:` question. A seat is a call whose hook payload names an
+`agent_type`. From a seat the records rule also covers the three files, by every route above, removal
 included. So are `wuwei config <key> [<value>]` and the `wuwei plan` actions that write the plan:
 `add`, `park`, `drop`, `done`, `restore`, `run` and `session`; `wuwei sync`; and a push to the
 `wuwei/state` branch, which `wuwei sync` reads both files from (a destination git reads as that

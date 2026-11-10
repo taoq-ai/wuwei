@@ -47,6 +47,10 @@ role's lines of `.wuwei/standards.md`.
 
 - Goals in `.wuwei/goals.md` set the direction. Each plan pass ends with the plan as a view
   (`wuwei plan view`, #990) and one `plan:` question, Approve or Change; new items wait for it.
+  With `allow = ["auto-approve"]` in the owner's config (#1291), `wuwei plan view` and
+  `wuwei plan add` approve each open item on an open goal (a `goals.md` heading not ruled met) instead, record a `plan.approved` row
+  with `auto: true` and the view line (the report lists them), and print no `Ask:` line once
+  nothing waits. Any other goal label still waits for the owner; every other class still asks.
 - A plan pass offers each goal past its date with no ruling as `goal: G-n met? <evidence>`. A yes
   records the goal as met (the report lists it, and it gets no new items); a no waits until its
   date moves. A ruling holds while the goal keeps the Outcome it answered, so a goal rewritten in
@@ -267,7 +271,7 @@ after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, `.codex/sessions`, or their parent configuration folders) in the
 same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
 a literal `-m wuwei hook` through any interpreter; from a seat (a hook payload that names an
-`agent_type`), a write to `.wuwei/config.toml` or `.wuwei/plan.json` by every route the ledger rule
+`agent_type`), a write to `.wuwei/config.toml`, `.wuwei/plan.json` or `.wuwei/goals.md` by every route the ledger rule
 reads, `wuwei config <key> [<value>]`, the `wuwei plan` actions that write the plan, `wuwei sync`,
 and a push to `wuwei/state`, while the owner's own session keeps them all and seats keep the reads
 (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); from a seat, any command with a word
@@ -281,7 +285,7 @@ message naming a record are refused too; a command whose `eval` or `sh -c`
 bodies nest more than 64 deep; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger`, `.wuwei/canary` or `.wuwei` itself; and from a seat,
-`.wuwei/config.toml`, `.wuwei/plan.json`, or wuwei followed by config, plan or sync, also read with
+`.wuwei/config.toml`, `.wuwei/plan.json`, `.wuwei/goals.md`, or wuwei followed by config, plan or sync, also read with
 its quotes and backslashes removed and its `$'..'` escapes decoded), with a hint to run the door command in its own
 one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
 counts, a heredoc body or quoted prose included, and says to write such text to a file with the Write tool (#1117); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
