@@ -88,6 +88,48 @@ def test_a_seat_reads_its_item_promise_from_the_plan(root, monkeypatch, capsys):
     assert (item['promise'], item['acceptance']) == ('one route per client', ['given A, when B, then C'])
 
 
+def test_auto_approve_approves_each_added_item_with_a_goal_but_not_one_without(root, fake, tmp_path, monkeypatch, capsys):
+    """#1291: with allow = ["auto-approve"], plan add and --from approve a new item with a goal in its own auto row."""
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    (root / ws.DIR / 'goals.md').write_text('## G-1\nOutcome: a\n\n## G-2\nOutcome: b\n')
+    ws.record(root, 'ruling', {'kind': 'goal.met', 'goal': 'G-2', 'outcome': 'b', 'approved': True})  # G-2 is met: no new items
+    add = ['--repo', 'acme/app', '--value', '5', '--time', '3', '--risk', '2', '--size', '2']
+    assert cli.main(['plan', 'add', 'I-1', 'before', '--goal', 'G-1', *add]) == 0 and not plan.find(root, 'I-1')['approved']
+    assert board.rows(root)[0]['gaps'][0]['text'] == 'awaiting plan approval'  # the cached board, dropped by the approval
+    ws.set_config(root, 'allow', 'auto-approve')
+    assert cli.main(['plan', 'add', 'I-2', 'mid-day', '--goal', 'G-1', *add]) == 0
+    assert {r['item']: r['gaps'][0]['text'] for r in board.rows(root)}['I-1'] == 'no pull request yet'
+    lead = tmp_path / 'lead.json'
+    lead.write_text(json.dumps([{'id': 'I-3', 'title': 'lead', 'goal': 'G-1', 'repo': 'acme/app', 'scores': scores()},
+                                {'id': 'I-4', 'title': 'no goal', 'repo': 'acme/app', 'scores': scores()}]))
+    assert cli.main(['plan', 'add', '--from', str(lead)]) == 0
+    waits = ['unplanned', 'none', 'n/a', '-', ' ', 'G-99', 'G-2']  # labels the planner types that are no open goal of goals.md
+    for n, goal in enumerate(waits, 5):
+        assert cli.main(['plan', 'add', f'I-{n}', goal, '--goal', goal, *add]) == 0
+    assert cli.main(['plan', 'add', 'I-20', 'any case', '--goal', 'g-1', *add]) == 0
+    rows = [r['data'] for r in ws.rows(root, 'plan.approved')]
+    assert [sorted(r['items']) for r in rows] == [['I-1', 'I-2'], ['I-3'], ['I-20']] and all(r['auto'] and r['line'] for r in rows)
+    assert sorted(i['id'] for i in plan.items(root) if not i['approved']) == sorted(f'I-{n}' for n in range(4, 12))
+    gaps = {r['item']: r['gaps'][0]['text'] for r in board.compute(root)}
+    assert gaps['I-2'] == 'no pull request yet' and gaps['I-4'] == gaps['I-5'] == gaps['I-11'] == 'awaiting plan approval'
+
+
+def test_auto_approve_matches_no_heading_for_a_missing_goal_and_fails_closed_on_an_unreadable_goals_file(root, fake, monkeypatch, capsys):
+    """1291 round 2: a `## None` heading never matches an item with no goal; a goals.md that is not UTF-8 approves nothing, crashing nothing."""
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    ws.set_config(root, 'allow', 'auto-approve')
+    (root / ws.DIR / 'goals.md').write_text('## None\nOutcome: x\n\n## G-1\nOutcome: a\n')
+    plan.add(root, 'I-1', 'no goal', None, 'acme/app', 'light', scores())
+    assert cli.main(['plan', 'view']) == 0 and not plan.find(root, 'I-1')['approved']
+    (root / ws.DIR / 'goals.md').write_bytes(b'## G-1\nOutcome: \xff\n')
+    add = ['--goal', 'G-1', '--repo', 'acme/app', '--value', '5', '--time', '3', '--risk', '2', '--size', '2']
+    for argv in (['plan', 'add', 'I-2', 'x', *add], ['plan', 'show', 'I-2'], ['plan'], ['plan', 'done', 'I-1'], ['plan', 'view']):
+        assert cli.main(argv) == 0, argv
+    assert not plan.find(root, 'I-2')['approved'] and not ws.rows(root, 'plan.approved')
+
+
 def test_an_operations_item_shows_its_run_evidence_not_a_missing_pr(root, fake, monkeypatch):
     from wuwei import __main__ as cli, board
     monkeypatch.chdir(root)

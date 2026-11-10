@@ -503,9 +503,13 @@ def _answers(root, kept):
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
         yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
         found = re.match(r'\s*(?i:owner review|(breaking)):\s*' + REF.pattern, question)
-        if answer and found and found[2]:
+        treat = 'Treat as breaking?' in question and 'Announced at http' not in question  # each breaking: shape by its own marker (#1294)
+        go = re.search(r'Announced at https?://\S+ Proceed\?', question) and 'Treat as breaking?' not in question
+        said = re.fullmatch(r'(?:(yes|breaking)|no|not breaking|non-breaking)(?: \(recommended\))?[.!]?', answer.strip().lower())  # else the gap stays
+        data = ({'breaking': bool(said[1]), 'approved': False} if treat and said else {} if go else None) if found and found[1] else {}
+        if answer and found and found[2] and data is not None:
             ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), 'pr': f'{found[2]}#{found[3]}',
-                                       'head': found[4], 'approved': yes, 'question': question, 'answer': answer})
+                                       'head': found[4], 'approved': yes, **data, 'question': question, 'answer': answer})
         refs, gap_text = exception_refs(question)
         if refs and gap_text and answer:
             for repo, number, head in refs:

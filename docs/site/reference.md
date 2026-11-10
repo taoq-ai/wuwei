@@ -17,7 +17,7 @@
 | `wuwei plan run <id> --job <job file>` | Register a Codex companion job file; the board shows its state (running, completed with the HANDOFF path, failed, asked a question, or `job state unreadable`) |
 | `wuwei plan session <id> <session id>` | Record the builder session of an open `--host session` item; while the item is open the board counts it as a live builder seat and names the session, and with no PR and no event for four hours shows the row stale; refused for an item with host `agent` or a done, parked or dropped item |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
-| `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
+| `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page). Beside the build hours it shows an AI estimate: open size points times this workspace's seat wall-clock per size point (builders and gates of items merged in the last 28 days), unmeasured below 5 items |
 | `wuwei status [--json]` | The board: what each open item lacks; past the WIP limit, an approved item with no PR shows `queued` |
 | `wuwei evidence owner/repo#n [--json] [--record DIR]` | One PR's gaps; exit 1 when there are gaps |
 | `wuwei report [--day YYYY-MM-DD]` | The day report |
@@ -38,6 +38,7 @@
 `.wuwei/config.toml` has seven keys. Everything else is discovered or part of the process. Only your own session changes it and
 `.wuwei/plan.json` (`wuwei config <key> <value>`, the `wuwei plan` actions that write, an edit or a redirect); a seat reads
 them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refused any write, so it cannot change its own gates.
+With `auto-approve` in `allow`, `wuwei plan view` also approves each waiting item on an open goal of `.wuwei/goals.md`, from any session.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -47,7 +48,7 @@ them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refuse
 | `tracker` | `github` | where issues live |
 | `telemetry` | `true` | local tool-call traces |
 | `models` | `{}` | your rows over the [model table](concepts/models.md): `"<role>[ <tier>]" = "<model> <effort>"`; set with `wuwei config models "builder light=opus medium"` |
-| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list |
+| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. `auto-approve` lets `wuwei plan view` and `wuwei plan add` approve each open item on an open goal (a heading of `.wuwei/goals.md` you have not ruled met) without a `plan:` question; each approval is a `plan.approved` ledger row with `auto: true` and the view line, which `wuwei report` lists, and an item on any other goal label still waits for you. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list, so name both to keep both: `wuwei config allow "admin-merge, auto-approve"` writes `allow = ["admin-merge", "auto-approve"]` |
 
 ## Files
 

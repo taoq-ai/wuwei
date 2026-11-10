@@ -34,8 +34,8 @@ DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merg
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\.__main__)?[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|/canary|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl', 'canary'), ('ledger', 'ledger.jsonl', 'canary', 'cache'), ('config.toml', 'plan.json')  # below .wuwei: none, no seat
-SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan|sync)\b',))  # door words for a seat only
+LEDGER, CACHE, OWNED = ('ledger', 'ledger.jsonl', 'canary'), ('ledger', 'ledger.jsonl', 'canary', 'cache'), ('config.toml', 'plan.json', 'goals.md')  # below .wuwei: none, no seat
+SEAT_WORDS = ((r'\.wuwei[/.]*/(config|plan|goals)\b',), (r'(wuwei(\.__main__)?|executable[)`]?)[\'"]?(\s|\\\n)+(--\s+)?[$\'"]*(config|plan|sync)\b',))  # door words for a seat only
 SEAT_CLI = r'(^|(^wuwei|executable[)`]?|\0-[^\0-]*m\0?(runpy\0)?(cli\.)?wuwei(\.__main__)?)\0)(--\0)?(config\0|sync(\0|$)|plan\0([\s\S]*\0)?(add|park|drop|done|restore|run|session|tier|approve)(\0|$))'  # a seat's wuwei calls that set a key or the plan
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
@@ -72,7 +72,7 @@ HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions
            '(<project>/memory/<file>) takes Write, Edit, a redirect, tee, sed -i, truncate or rm on its literal path, from outside memory.')
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
-OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gates a change owes and who reviews it, so only the owner's own session changes "
+OWNER_ONLY = (" From a seat: .wuwei/config.toml, .wuwei/plan.json and .wuwei/goals.md set the gates a change owes, who reviews it and what starts, so only the owner's own session changes "
               'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat, head, grep, jq, diff.')
 READER_ONLY = ('from a seat, a command naming .wuwei, its config, plan, ledger or canary, or run inside .wuwei, passes only for a reading program: '
                f'{", ".join(sorted(READERS))}. A wrapper (sudo, env, timeout) counts as the program. A record path in a title or -m message counts too: '
@@ -493,8 +493,8 @@ def pre_tool(root, payload):
             return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
                         'and plan: take any wording). Use the exact shape: "exception: '
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
-                        '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
-                        '<what breaks>. Announced at <link>. Proceed?".')
+                        '"owner review: owner/repo#n at <sha7>. <question>" or, before an announcement, "breaking: owner/repo#n at <sha7>: '
+                        '<what changes>. Treat as breaking?", then "breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?".')
         known = ws.answers(root)[0]
         shown = all(i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')  # else plan: is asked again
         if again := [known[k] for q in questions if (k := ' '.join(q.casefold().split())) in known and (shown or k[:5] != 'plan:')]:
