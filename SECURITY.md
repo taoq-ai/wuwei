@@ -72,11 +72,16 @@ the Read tool. The owner's own session (no `agent_type`) keeps every one of thes
 
 The canary is on the records rule because the leak check looks for it: a session that rewrites or
 removes it turns that check off, so `rm` on it is refused too. From a seat, a command with a word
-naming `.wuwei` itself, the config, the plan, the ledger or the canary is refused unless its
-program is a reader: `cat`, `head`, `tail`, `grep`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`,
-`test`, `[`, `shasum`, `sha256sum`, `cd` or `pushd`. So `install`, `rsync`, `perl -pi`, `node -e`,
-`touch`, `unlink`, `git checkout` or `git restore` of a path and any other writer are refused, and
-so is a reader behind a wrapper (`sudo cat`, `env A=1 cat`, `timeout 5 cat`). In the owner's own
+naming `.wuwei` itself, the config, the plan, the ledger or the canary, run after `cd` or `pushd`
+into `.wuwei` or the ledger folder, or naming a record from the folder a `cd` reached
+(`cd .wuwei/verdicts && install x ../config.toml`), is refused unless its program is a reader: `cat`, `head`, `tail`, `grep`,
+`rg`, `find`, `du`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`, `test`, `[`, `shasum`, `sha256sum`,
+`cd` or `pushd`. `rg --pre` and `find` with a write action (`-ok`, `-okdir` and `-fprint0` join
+the list above) are writers. So `install`, `rsync`, `perl -pi`, `node -e`, `touch`, `unlink`,
+`git checkout` or `git restore` of a path and any other writer are refused, and so is a reader
+behind a wrapper (`sudo cat`, `env A=1 cat`, `timeout 5 cat`). The words a wrapper's cut drops
+(`env perl -pi -e s/a/b/ .wuwei/config.toml git` reads as `git`) are read as their own segment for
+this rule. A title or `-m` message naming a record is refused too. In the owner's own
 session the rule is still a list of known writers, and those shapes pass for the canary and the
 ledger there. A path built at run time (`python -c` joining the name, a list `xargs rm` reads from
 a file) and a symlink to a record are not read. When the canary file cannot be read
@@ -124,8 +129,8 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
 - A records write through a path the guards do not see: a symlink, a path a program builds at
-  run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
-  (`install`), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
+  run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), in the owner's session a writer
+  not in the guards' list (`install`; a seat's non-reader is refused), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
   globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.

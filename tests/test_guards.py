@@ -2592,9 +2592,33 @@ def test_a_seat_command_naming_the_records_passes_only_for_a_reader(root, repo, 
 
 @pytest.mark.parametrize('path', RECORDS)
 @pytest.mark.parametrize('read', ['cat {}', 'head -5 {}', 'tail -n1 {}', 'grep -c x {}', 'jq . {}', 'wc -l {}', 'diff {} x', 'cmp {} x',
-                                  'ls -l {}', 'stat {}', 'test -f {}', '[ -f {} ]', 'shasum {}', 'sha256sum {}'])
+                                  'ls -l {}', 'stat {}', 'test -f {}', '[ -f {} ]', 'shasum {}', 'sha256sum {}', 'rg -n x {}', 'find {} -name x',
+                                  'du -sh {}'])
 def test_a_seat_reads_the_records_with_a_reader(root, repo, read, path):
     assert guards.pre_tool(root, {**bash(read.format(path)), 'agent_type': 'wuwei:builder'}) is None, read
+
+
+@pytest.mark.parametrize('command', [
+    'env perl -pi -e s/a/b/ .wuwei/config.toml git', 'nice install x .wuwei/plan.json rm', 'timeout 5 node -e 1 .wuwei/plan.json find',
+    'sudo -u x tar -xf x.tar .wuwei/canary sed', "env -S 'rm .wuwei/ledger/a.jsonl' git",  # gate round 1: the wrapper cut dropped the writer
+    'cd .wuwei && install x config.toml', 'pushd .wuwei; perl -pi -e s/a/b/ plan.json', 'cd /repo/.wuwei/ && git checkout -- config.toml',
+    'cd .wuwei && touch canary', 'cd .wuwei && tar -xf /tmp/x.tar', 'cd .wuwei/verdicts && install x ../config.toml',
+    'cd .wuwei/ledger && sort -o a.jsonl a.jsonl', 'cd .wuwei/verdicts && git show --output=../config.toml H', 'sudo cat .wuwei/plan.json', 'git commit -m "edit .wuwei/plan.json"',
+    'rg --pre ./x y .wuwei/plan.json', 'find .wuwei -ok rm {} ;', 'find . -fprint0 .wuwei/config.toml', 'find .wuwei -okdir rm {} ;'])
+def test_a_seat_writer_behind_a_wrapper_or_cd_is_refused(root, repo, command):
+    assert OWNER_ONLY in guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'})['reason'], command
+
+
+@pytest.mark.parametrize('command', ['cd .wuwei && ls', 'pushd .wuwei && cat plan.json', 'cd /repo/.wuwei && grep x config.toml',
+                                     'rm .wuwei/cache/x', 'rm -f .wuwei/cache/ci-1', 'env git status', 'timeout 5 git log',
+                                     "cd .wuwei/verdicts/x && awk '{print $1}' a.md | sort | uniq -c", 'cd .wuwei/reports && sed -n 1p a.md'])
+def test_a_seat_reads_inside_the_records_and_removes_a_cache_file(root, repo, command):
+    assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
+
+
+def test_the_reader_refusal_names_the_cause_and_the_way_out(root, repo):
+    reason = guards.pre_tool(root, {**bash('install x .wuwei/plan.json'), 'agent_type': 'wuwei:builder'})['reason']
+    assert all(w in reason for w in ('passes only for a reading program', 'cat', 'grep', 'rg', 'find', '-F or --body-file', 'ask the owner')), reason
 
 
 @pytest.mark.parametrize('command', ["eval 'echo x >> .wuwei/ledger/a.jsonl'", 'eval -- "rm -rf .wuwei/ledger"',
