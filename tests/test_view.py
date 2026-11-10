@@ -1,5 +1,7 @@
 """The plan as a view to approve (#990): one picture, one short question."""
 
+import datetime
+
 from conftest import answered
 from wuwei import board, hook, plan, view, ws
 
@@ -46,22 +48,31 @@ def test_a_change_answer_is_recorded_and_approves_nothing(root):
     assert ws.rows(root, 'plan.change')[0]['data']['answer'] == 'Change: drop I-3'
 
 
-def ai_history(root, monkeypatch, merged=5, days=3, key='D'):  # each merged item: size 2, a 1 h builder and a 0.5 h gate seat
-    import datetime
-    real, start = ws.now, ws.now() - datetime.timedelta(days=days)
+def record_at(root, monkeypatch, at, kind, data):
+    real = ws.now
+    monkeypatch.setattr(ws, 'now', lambda: at)
+    ws.record(root, kind, data)
+    monkeypatch.setattr(ws, 'now', real)
+
+
+def ai_history(root, monkeypatch, merged=5, days=3, key='D', reason='merged as acme/app#'):  # each item: size 2, a 1 h builder and a 0.5 h gate seat
+    start = ws.now() - datetime.timedelta(days=days)
     for n in range(merged):
         plan.add(root, f'{key}-{n}', 'Done', 'G-1', 'acme/app', 'standard', scores(size=2))
-        plan.mark(root, f'{key}-{n}', 'done', f'merged as acme/app#{n}')
+        plan.mark(root, f'{key}-{n}', 'done', f'{reason}{n}')
         for role, agent, hours in (('builder', f'{key}b{n}', 1), ('sentinel-quality', f'{key}g{n}', 0.5)):
             for kind, at in (('seat.started', start), ('seat.stopped', start + datetime.timedelta(hours=hours))):
-                monkeypatch.setattr(ws, 'now', lambda at=at: at)
-                ws.record(root, kind, {'role': role, 'agent': agent, 'item': f'{key}-{n}'})
-    monkeypatch.setattr(ws, 'now', real)
+                record_at(root, monkeypatch, at, kind, {'role': role, 'agent': agent, 'item': f'{key}-{n}'})
+    return start
 
 
 def test_the_view_adds_an_ai_estimate_from_seat_wall_clock_beside_build_hours(root, monkeypatch):
     setup_plan(root)
-    ai_history(root, monkeypatch)
+    start = ai_history(root, monkeypatch, days=27)  # inside the 28-day window, outside a 26-day one
+    ai_history(root, monkeypatch, merged=1, key='X', reason='dropped, not merged ')  # done but not merged: not counted
+    record_at(root, monkeypatch, start + datetime.timedelta(hours=9), 'seat.stopped', {'role': 'builder', 'agent': 'Db0'})  # a later second stop: the first counts
+    for kind, hours in (('seat.started', 0), ('seat.stopped', 9)):  # a seat without a str agent id is skipped
+        record_at(root, monkeypatch, start + datetime.timedelta(hours=hours), kind, {'role': 'builder', 'agent': None, 'item': 'D-0'})
     page, summary, line = view.render(root)
     assert line == '3 items on 2 goals and 1 unplanned, about 6 build hours (1 size point = 1 h); the plan is shown above.'
     assert 'AI estimate: 4.5 h (0.75 h per size point, n=5 merged items)' in summary.splitlines()

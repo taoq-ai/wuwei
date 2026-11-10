@@ -53,7 +53,7 @@ def _size(item):
 def _ai(root, effort):  # (value, detail): open size points x seat wall-clock per merged size point, builders and gates, 28 days
     done, at = {i['id'].lower(): _size(i) for i in plan.items(root) if i.get('status') == 'done' and str(i.get('reason', '')).startswith('merged as ')}, datetime.datetime.fromisoformat
     stop, since = {r['data'].get('agent'): r['ts'] for r in reversed(ws.rows(root, 'seat.stopped'))}, (ws.now() - datetime.timedelta(days=28)).isoformat(timespec='seconds')  # a seat's first stop
-    spans = [(k, (at(stop[a]) - at(r['ts'])).total_seconds() / 3600) for r in ws.rows(root, 'seat.started') if r['ts'] >= since and (k := str(r['data'].get('item')).lower()) in done and (a := r['data'].get('agent')) in stop]
+    spans = [(k, (at(stop[a]) - at(r['ts'])).total_seconds() / 3600) for r in ws.rows(root, 'seat.started') if r['ts'] >= since and (k := str(r['data'].get('item')).lower()) in done and isinstance(a := r['data'].get('agent'), str) and a in stop]
     n, rate = len(seen := {k for k, _ in spans}), sum(h for _, h in spans) / (sum(done[k] for k in seen) or 1)
     return ('unmeasured', f'{n} merged items') if n < 5 else (f'{effort * rate:.1f} h', f'{rate:.2f} h per size point, n={n} merged items')
 
