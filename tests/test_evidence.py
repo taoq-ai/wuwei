@@ -1559,7 +1559,13 @@ def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'acme/app')], []),  # before the draft PR existed
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'Acme/App#42')], []),
     ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
-    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#7')], ANNOUNCE),  # a yes from another PR of the item holds
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#7')], ANNOUNCE),  # a yes on another PR at this head holds
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#41'), (HEAD, 'no', 'PASS')], ANNOUNCE),  # reopened at one head
+    ([(OLD, 'yes: drops --format', 'PASS', 'acme/app#7')], ANNOUNCE),  # another PR's yes at an ancestor holds
+    ([(OLD, 'yes: drops --format', 'PASS', 'acme/app#7'), (OLD, 'no', 'PASS')], ANNOUNCE),  # a relaunch at its head
+    ([(OLD, 'yes: drops --format', 'FIX', 'acme/app#7'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read clears
+    ([(OTHER, 'yes: drops --format', 'PASS', 'acme/app#7'), (HEAD, 'no', 'PASS')], []),  # off the line: squashed (#1292)
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app')], ANNOUNCE),  # one naming only the repository holds
 ])
 def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
     assert breaking(root, fake, *said) == found

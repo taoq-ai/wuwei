@@ -1,0 +1,12 @@
+# Tasks: a seat's command naming the records passes only for a reader (records-writers)
+
+- [x] T001 Write the failing tests in tests/test_guards.py: 27 writer shapes x 4 records, 14 readers x 4 records
+- [x] T002 Run them red at 8fc0d49b (108 failed, 56 passed)
+- [x] T003 Add READERS and the seat clause to the records check in cli/wuwei/guards.py and the vendored copy
+- [x] T004 Run them green (164 passed); update SECURITY.md's known-open list
+- [x] T005 Route corpus differential and the generated probe, main against the head, Python verdicts
+- [x] T006 Fix round 1: tests for a writer behind a wrapper's cut, after cd or pushd into .wuwei, find -ok/-okdir/-fprint0, rg --pre, the reader refusal text, rg/find/du reads, cd .wuwei && ls and a seat's cache removal; run red at 641e7cd (22 failed)
+- [x] T007 Keep the words a wrapper's cut drops as their own segment; join a seat's words to each cd dir; READER_ONLY reason; find, rg and du join READERS; -ok, -okdir and -fprint0 join FIND; rg --pre is a writer
+- [x] T008 Amend docs/design.md section 7, docs/site/concepts/doors.md and SECURITY.md; re-run the probe, the route differential and the trace replay
+- [x] T009 Fix round 2: tests for a short option's glued value (curl -o.wuwei/..., cp -t.wuwei; 7 failed red) and the 64-folder cap (a mutant dropping the cap fails 2); read the value after each leading letter of a short option; CDPATH on the known-open list; docs name -C, --chdir, -D and the cap
+- [x] T010 Fix round 3: a linear-time test for a 32,000-letter short option (red: ratio 216 against a bound of 64); try only the last 12 letters of the run. Tests: a regex .* or jq .[] passes for a seat (3 failed red), .*/plan.json still refused, the eval and sh -c cut (an in-memory mutant without it passes both). A bare dot glob ending a path no longer counts for the seat rule; a cd to a $ word that names no record adds no folder; the refusal names the Write tool for a fixture's .wuwei
