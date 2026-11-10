@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 
-from wuwei import plan, ws
+from wuwei import guards, plan, ws
 
 BRANCH = 'wuwei/state'
 REF = 'refs/remotes/origin/' + BRANCH
@@ -50,10 +50,10 @@ def _fetch(top):
 
 
 def files(root):
-    """The durable files under .wuwei/, by their path inside it."""
-    base = Path(root) / ws.DIR
-    return {path.relative_to(base).as_posix(): path.read_bytes() for path in sorted(base.rglob('*'))
-            if path.is_file() and path.relative_to(base).parts[0] not in LOCAL and not path.name.endswith('.tmp')}
+    """The durable files under .wuwei/, by their path inside it; a verdict masked for secrets and the canary (wuwei/state may be public)."""
+    base, canary = Path(root) / ws.DIR, ws.canary(root)
+    return {name: guards.mask(path.read_bytes(), canary) if name.startswith('verdicts/') else path.read_bytes() for path in sorted(base.rglob('*'))
+            if path.is_file() and (name := path.relative_to(base).as_posix()).split('/')[0] not in LOCAL and not path.name.endswith('.tmp')}
 
 
 def _digests(found):

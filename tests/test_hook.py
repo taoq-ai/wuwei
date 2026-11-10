@@ -2061,6 +2061,25 @@ def test_verdict_missing_masks_before_its_cut_at_every_path_length(root):
     assert not any('ghp_' in p or 'canary' in p for p in problems)
 
 
+def test_a_hand_back_refused_for_its_verdict_records_no_secret_or_canary_at_every_path_length(root):
+    """The refused row is cut at 500 characters: masked first, as verdict.missing is at 300."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    for n in range(0, 480, 8):
+        assert handback(root, f'Verdict file: /nowhere/{"a" * n}{TOKEN}{CANARY}.md')['hookSpecificOutput']['permissionDecision'] == 'deny'
+    reasons = [r['data']['reason'] for r in ws.rows(root, 'refused')]
+    assert len(reasons) == 60 and all('readable file' in r for r in reasons) and any(r.endswith('*') for r in reasons)
+    assert not any('ghp_' in r or 'canary' in r for r in reasons)
+
+
+def test_a_verdicts_folder_linked_outside_the_workspace_is_never_written_through(root, tmp_path_factory):
+    """The hook runs outside the seat's sandbox: a seat's link must not get it to mask a file elsewhere (CWE-59)."""
+    outside = tmp_path_factory.mktemp('outside')
+    (outside / 'hosts.yml').write_text(f'oauth_token: {TOKEN}\n')
+    (root / ws.DIR / 'verdicts').symlink_to(outside)
+    assert 'must be a readable file' in reviewer_stop(root, 'Verdict file: .wuwei/verdicts/hosts.yml')['reason']
+    assert (outside / 'hosts.yml').read_text() == f'oauth_token: {TOKEN}\n'
+
+
 @pytest.mark.parametrize('event', ['Stop', 'PreToolUse'])
 def test_a_notification_the_queue_dropped_is_no_delivery_so_the_report_is_given_in_full_once(root, tmp_path, event):
     """The kill-agents chord or an interrupt clears queued notifications: the row stays, the planner never sees it (#1222)."""

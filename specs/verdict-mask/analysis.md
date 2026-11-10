@@ -11,6 +11,8 @@ and acceptance and the constitution.
 | A2 | Coverage | LOW | spec.md How this fails 1 | Masking the copy breaks the repeat-stop compare against the raw worktree bytes | Resolved: FR-001 masks before the compare, T001 stops twice |
 | A3 | Ambiguity | LOW | spec.md Assumptions | A secret or canary in a verdict's file name is left as written | Recorded as an assumption with what overturns it |
 | C1 | Coverage | LOW | tasks.md | FR-005 (runtime budget) has no new test | Held by tests/test_setup.py::test_the_runtime_holds_its_size_budget |
+| A4 | Coverage | LOW | gates on ed7f415 | A linked verdicts folder, the refused row and verdicts no stop reads were open | Resolved: FR-006 to FR-008, tests T014 to T016 |
+| A5 | Inconsistency | LOW | spec.md How this fails 5 | A verdict attested raw before this change stops counting once masked | Accepted: fails closed |
 
 No open finding above LOW.
 
@@ -22,7 +24,10 @@ No open finding above LOW.
 | FR-002 masked direct write | yes | T002, T007 | |
 | FR-003 masked verdict.missing | yes | T004, T005, T008 | |
 | FR-004 exact bytes when clean | yes | T003 | |
-| FR-005 runtime budget | yes | T010 | |
+| FR-005 runtime budget | yes | T010, T018 | |
+| FR-006 masked refused row | yes | T015, T017 | |
+| FR-007 masked push | yes | T016, T017 | |
+| FR-008 no write out of the workspace | yes | T014, T017 | |
 
 ## Constitution alignment
 

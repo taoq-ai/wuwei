@@ -31,6 +31,15 @@ Python 3.11 stdlib. Tests in tests/test_hook.py. Runtime budget 4,000 lines; mai
 - `_seat_stop` masks `problem` with the canary it already read, before the 300-character cut.
 - `docs/design.md` and `docs/site/concepts/hooks.md`: the SubagentStop rows name the masking.
 
+Fix round on ed7f415 (security, arch, goal FIX):
+
+- `hook.mask` moves to `guards.mask`, which also takes bytes; the `scrub` lambda goes.
+- The in-place rewrite is rooted at `Path(root).resolve()`, not the resolved verdicts folder.
+- The PreToolUse `refused` row masks its reason before the 500-character cut.
+- `sync.files` masks each `verdicts/` file, so push sends it masked and pull compares masked bytes.
+- `docs/design.md`: the PreToolUse row and the state paragraph name the masking.
+
 ## Lines
 
-hook.py 763 to 765: runtime 3,970 to 3,972.
+hook.py 763 to 765: runtime 3,970 to 3,972. Fix round: guards.py +6, hook.py -5, sync.py 0:
+3,973, +3 over main.

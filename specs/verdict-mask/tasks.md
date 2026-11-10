@@ -21,3 +21,12 @@
 - [x] T011 docs/design.md and docs/site/concepts/hooks.md SubagentStop rows name the masking
 - [x] T012 Mutants of each new mask, on both copies one at a time, each fail a test
 - [x] T013 Route corpus differential, main against the head, in the PR body
+
+## Phase 4: Fix round on ed7f415
+
+- [x] T014 [US5] A verdicts folder linked outside the workspace is never written through (tests/test_hook.py), run red
+- [x] T015 [US3] A hand-back refused for its verdict records no secret or canary (tests/test_hook.py), run red
+- [x] T016 [US4] A verdict no stop masked is pushed masked and pulls back clean (tests/test_sync.py), run red
+- [x] T017 `guards.mask` takes bytes; hook.py and sync.py use it; rewrite rooted at the workspace; refused row masked
+- [x] T018 Copy guards.py, hook.py and sync.py to the vendored tree; full suite green; runtime 3,973
+- [x] T019 docs/design.md PreToolUse row and state paragraph; mutants of each fix on both copies

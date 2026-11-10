@@ -1,7 +1,7 @@
 # Requirements checklist: verdict-mask
 
 - [x] The item's acceptance scenario maps to tests (T001, T002)
-- [x] One masking helper: the existing `hook.mask`, canary first, no new inline copy
+- [x] One masking helper: `hook.mask` moved to `guards.mask`, canary first, no new inline copy
 - [x] The file is masked before its sha256, so attest and evidence read the same bytes
 - [x] A verdict with no match keeps its exact bytes
 - [x] Verdicts already on disk or on wuwei/state are not rewritten outside a stop

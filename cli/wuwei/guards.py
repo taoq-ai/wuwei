@@ -391,6 +391,12 @@ def once(root, session, topic):
     return True
 
 
+def mask(text, canary=''):  # the canary first: a token glued to it would take its 'wuwei' start and leave the rest
+    if isinstance(text, bytes):  # a verdict file: every byte that is no match is kept as it is
+        return mask(text.decode('utf-8', 'surrogateescape'), canary).encode('utf-8', 'surrogateescape')
+    return SECRETS.sub('***', text.replace(canary, '***') if canary else text)
+
+
 def leak(root, text):
     canary_file = Path(root) / ws.DIR / 'canary'
     canary = canary_file.read_text(encoding='utf-8').strip() if canary_file.is_file() else ''
