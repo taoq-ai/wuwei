@@ -259,8 +259,8 @@ the leak check reads; `rm` included) or the cache in the spellings
 sh expands (`//`, `/./`, `..`, globs, braces; on every OS also in any case, with a backslash read as a
 separator as well as a name character, and as Windows reads a name: no drive-relative `X:`, no `:stream`
 or trailing dots and spaces, an 8.3 short name such as `WUWEI~1`; a program named in any case or with
-`.exe`; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
-`-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
+`.exe`; `find` with `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`,
+`-fprintf` or `-fls` on them, and `rg --pre`; a path in a `python -c` body; a writer or redirect after `cd .wuwei` or with a `-C`, `--chdir` or `-D` value naming it;
 `git clean -x` or an exclude unless every pathspec is a plain word outside `.wuwei`, and git clean
 after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, `.codex/sessions`, or their parent configuration folders) in the
@@ -269,7 +269,14 @@ a literal `-m wuwei hook` through any interpreter; from a seat (a hook payload t
 `agent_type`), a write to `.wuwei/config.toml` or `.wuwei/plan.json` by every route the ledger rule
 reads, `wuwei config <key> [<value>]`, the `wuwei plan` actions that write the plan, `wuwei sync`,
 and a push to `wuwei/state`, while the owner's own session keeps them all and seats keep the reads
-(`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); a command whose `eval` or `sh -c`
+(`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); from a seat, any command with a word
+naming `.wuwei` itself, the config, the plan, the ledger or the canary (read from each folder a
+`cd`, `pushd`, `-C`, `--chdir` or `-D` reached, past 64 such folders any non-reader, and in a
+short option's glued value such as `-o.wuwei/plan.json`), or run in `.wuwei` or the ledger folder, unless its program is a reader (`cat`, `head`, `tail`, `grep`, `rg` without `--pre`,
+`find` without its write actions, `du`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`, `test`, `[`,
+`shasum`, `sha256sum`, `cd`, `pushd`), the words a wrapper's cut drops included, so a seat's
+`sed -n`, `git log`, `git ls-files`, a reader behind a wrapper (`sudo cat`) and a title or `-m`
+message naming a record are refused too; a command whose `eval` or `sh -c`
 bodies nest more than 64 deep; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger`, `.wuwei/canary` or `.wuwei` itself; and from a seat,

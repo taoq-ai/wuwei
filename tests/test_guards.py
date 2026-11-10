@@ -2576,6 +2576,76 @@ def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
     assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
 
 
+RECORDS = ['.wuwei/config.toml', '.wuwei/plan.json', '.wuwei/ledger/a.jsonl', '.wuwei/canary']
+OTHER_WRITERS = ['install x {}', 'rsync x {}', 'perl -pi -e s/a/b/ {}', 'ruby -i -pe 1 {}', 'node -e 1 {}', 'awk -i inplace 1 {}',
+                 'patch {} p.diff', 'ditto x {}', 'ex -sc wq {}', 'vim -c wq {}', 'sort -o {} x', 'shuf -o {} x', 'curl -o {} u',
+                 'wget -O {} u', 'tar -xf x.tar {}', 'unzip x.zip {}', 'git checkout -- {}', 'git restore {}', 'git show --output={} H',
+                 'openssl enc -in x -out {}', 'xxd -r x {}', 'split x {}', 'scp h:x {}', 'uniq x {}', 'touch {}', 'unlink {}',
+                 'echo {} | xargs rm']  # the 24 writer shapes of the records-writers probe, and SECURITY.md's known open
+
+
+@pytest.mark.parametrize('path', RECORDS)
+@pytest.mark.parametrize('shape', OTHER_WRITERS)
+def test_a_seat_command_naming_the_records_passes_only_for_a_reader(root, repo, shape, path):
+    """records-writers: the rule listed writers, so 96 of 104 seat writer x target shapes passed at 8fc0d49b."""
+    assert OWNER_ONLY in guards.pre_tool(root, {**bash(shape.format(path)), 'agent_type': 'wuwei:builder'})['reason'], shape
+    if 'ledger' not in path and 'canary' not in path:
+        assert guards.pre_tool(root, bash(shape.format(path))) is None, shape  # the owner keeps every config and plan write
+
+
+@pytest.mark.parametrize('path', RECORDS)
+@pytest.mark.parametrize('read', ['cat {}', 'head -5 {}', 'tail -n1 {}', 'grep -c x {}', 'jq . {}', 'wc -l {}', 'diff {} x', 'cmp {} x',
+                                  'ls -l {}', 'stat {}', 'test -f {}', '[ -f {} ]', 'shasum {}', 'sha256sum {}', 'rg -n x {}', 'find {} -name x',
+                                  'du -sh {}'])
+def test_a_seat_reads_the_records_with_a_reader(root, repo, read, path):
+    assert guards.pre_tool(root, {**bash(read.format(path)), 'agent_type': 'wuwei:builder'}) is None, read
+
+
+@pytest.mark.parametrize('command', [
+    'env perl -pi -e s/a/b/ .wuwei/config.toml git', 'nice install x .wuwei/plan.json rm', 'timeout 5 node -e 1 .wuwei/plan.json find',
+    'sudo -u x tar -xf x.tar .wuwei/canary sed', "env -S 'rm .wuwei/ledger/a.jsonl' git",  # gate round 1: the wrapper cut dropped the writer
+    'cd .wuwei && install x config.toml', 'pushd .wuwei; perl -pi -e s/a/b/ plan.json', 'cd /repo/.wuwei/ && git checkout -- config.toml',
+    'cd .wuwei && touch canary', 'cd .wuwei && tar -xf /tmp/x.tar', 'cd .wuwei/verdicts && install x ../config.toml',
+    'cd .wuwei/ledger && sort -o a.jsonl a.jsonl', 'cd .wuwei/verdicts && git show --output=../config.toml H', 'sudo cat .wuwei/plan.json', 'git commit -m "edit .wuwei/plan.json"',
+    'rg --pre ./x y .wuwei/plan.json', 'find .wuwei -ok rm {} ;', 'find . -fprint0 .wuwei/config.toml', 'find .wuwei -okdir rm {} ;',
+    # gate round 2: a short option's glued value, and the 64-folder cap
+    'curl -o.wuwei/config.toml file:///tmp/x', 'wget -O.wuwei/plan.json u', 'sort -o.wuwei/plan.json x', 'shuf -ro.wuwei/canary x',
+    'openssl enc -in x -out.wuwei/config.toml', 'cp -t.wuwei config.toml', 'install -t.wuwei plan.json', 'cd .wuwei && sort -oconfig.toml x',
+    'cd d0 && cd d1 && cd d2 && cd d3 && cd d4 && cd d5 && cd d6 && cd /repo/.wuwei/verdicts && install x ../config.toml',
+    'cd a; cd b; cd c; cd d; cd e; cd f; cd g; cd .wuwei; perl -pi -e s/a/b/ config.toml',
+    # gate round 3: the cut before an eval or sh -c body, and a glob that names a record after .*
+    'env perl -pi -e s/a/b/ .wuwei/config.toml bash -c true', 'nice install x .wuwei/plan.json eval true',
+    "perl -pi -e s/a/b/ .*/plan.json", 'install x .w*', 'rsync -a x/ .wuwei', 'cd $HOME/x/.wuwei && install y config.toml'])
+def test_a_seat_writer_behind_a_wrapper_or_cd_is_refused(root, repo, command):
+    assert OWNER_ONLY in guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'})['reason'], command
+
+
+@pytest.mark.parametrize('prefix', ['', 'cd a && cd b && '])
+def test_a_long_short_option_is_read_in_linear_time(root, repo, prefix):
+    """Gate round 3 at 88c622e: the glued-value read tried every suffix of a 32,000-letter option, 9.9 s for one touch."""
+    seat = lambda tail: lambda n: guards.pre_tool(root, {**bash(f'{prefix}touch -{"x" * n}{tail}'), 'agent_type': 'wuwei:builder'})
+    assert_scales(seat(''), 2000, 32000, prefix)
+    assert seat('')(32000) is None
+    assert OWNER_ONLY in seat('.wuwei/plan.json')(32000)['reason']  # the glued value is still read at the end of a long run
+
+
+@pytest.mark.parametrize('command', ['cd .wuwei && ls', 'pushd .wuwei && cat plan.json', 'cd /repo/.wuwei && grep x config.toml',
+                                     'rm .wuwei/cache/x', 'rm -f .wuwei/cache/ci-1', 'env git status', 'timeout 5 git log',
+                                     "cd .wuwei/verdicts/x && awk '{print $1}' a.md | sort | uniq -c", 'cd .wuwei/reports && sed -n 1p a.md',
+                                     # gate round 3: a regex .* or a jq .[] names no record
+                                     "pytest -q | grep FAILED | sed 's/ - .*//'", "env | sed 's/=.*/=.../'",
+                                     "gh run list --json name -q '.[]|.name+\" \"+.headSha[:7]'", "awk '/x/ {print}' .*.md",
+                                     'cd $S/ws && ' * 9 + 'make test'])  # a cd to a variable is unread, so it adds no folder to the cap
+def test_a_seat_reads_inside_the_records_and_removes_a_cache_file(root, repo, command):
+    assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
+
+
+def test_the_reader_refusal_names_the_cause_and_the_way_out(root, repo):
+    reason = guards.pre_tool(root, {**bash('install x .wuwei/plan.json'), 'agent_type': 'wuwei:builder'})['reason']
+    assert all(w in reason for w in ('passes only for a reading program', 'cat', 'grep', 'rg', 'find', '-F or --body-file', 'ask the owner',
+                                     'Write tool')), reason
+
+
 @pytest.mark.parametrize('command', ["eval 'echo x >> .wuwei/ledger/a.jsonl'", 'eval -- "rm -rf .wuwei/ledger"',
                                      "eval 'bash -c \"echo x > .wuwei/ledger.jsonl\"'", 'eval rm -rf .wuwei/ledger',
                                      "eval echo x '>>' .wuwei/ledger/a.jsonl"])

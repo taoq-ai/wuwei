@@ -24,7 +24,8 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
-WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
+WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprint', '-fprint0', '-fprintf', '-fls'}
+READERS = {'cat', 'head', 'tail', 'grep', 'rg', 'find', 'du', 'jq', 'wc', 'diff', 'cmp', 'ls', 'stat', 'test', '[', 'shasum', 'sha256sum', 'cd', 'pushd'}  # a seat's only programs on records
 READ = {'git', 'gh', 'wuwei', 'sed', 'find', 'eval'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
@@ -72,13 +73,17 @@ HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gates a change owes and who reviews it, so only the owner's own session changes "
-              'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat.')
+              'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat, head, grep, jq, diff.')
+READER_ONLY = ('from a seat, a command naming .wuwei, its config, plan, ledger or canary, or run inside .wuwei, passes only for a reading program: '
+               f'{", ".join(sorted(READERS))}. A wrapper (sudo, env, timeout) counts as the program. A record path in a title or -m message counts too: '
+               "drop it, or pass the text with -F or --body-file. A test fixture's .wuwei: write its files with the Write tool, or make them in the test's "
+               "own code. The config and the plan change in only the owner's own session: ask the owner.")
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
-def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
+def records(path, below=LEDGER, cap=512, name=ws.DIR, bare=True):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
     win = windows(path)  # a backslash is / on Windows and a name character elsewhere: either reading that names it counts
-    return win != path and _records(win, below, cap, name) or _records(path, below, cap, name)
+    return win != path and _records(win, below, cap, name, bare) or _records(path, below, cap, name, bare)
 
 
 def windows(path):  # as Windows reads a path: \ is /, a drive-relative X: goes, and a name drops its :stream, trailing dots and spaces
@@ -91,13 +96,13 @@ def named(n, p):  # p names n as sh globs it, in any case (macOS and Windows), o
     return fnmatchcase(n, p) or fnmatchcase(n, p.lower()) or bool(short) and n.replace('.', '').upper().startswith(short[1].upper())
 
 
-def _records(path, below, cap, name):
+def _records(path, below, cap, name, bare):  # bare False: .wuwei itself only in a spelling with more than . * ? (a regex .* is no path)
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
-        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name, bare) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or (bare or bool(re.search(r'[^.*?]', p))) if i + 1 == len(parts) else below is None or any(  # * ? [..] skip a leading dot
         named(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
@@ -167,14 +172,15 @@ def _unwrap(tokens, depth=0):
         i += 1
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
-    if argv and progname(argv[0]) in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
+    if full := argv and progname(argv[0]) in WRAPPERS and argv:  # a wrapper's options hide nothing: the command is the first program read
         argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
                      and (progname(a) in READ or progname(a).startswith('python'))), argv)
+    cut = [(full[:len(full) - len(argv)], [])] if full and full != argv else []  # the words before the cut, for a seat's records check
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and (progname(argv[0]) == 'eval' or progname(argv[0]) in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body])):
-        return (n if (n := segments(' '.join(argv[body:]) if progname(argv[0]) == 'eval' else argv[body], depth + 1)) is not None else [UNREAD]) + (
+        return cut + (n if (n := segments(' '.join(argv[body:]) if progname(argv[0]) == 'eval' else argv[body], depth + 1)) is not None else [UNREAD]) + (
             [([], targets)] if targets else [])  # eval runs its words joined, as sh -c runs its body
-    return [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
+    return cut + [(argv, targets)] + ([UNREAD] if argv and progname(argv[0]) in SHELLS else [])  # its commands come from stdin or a file
 
 
 def _default(root, repo):
@@ -414,12 +420,18 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
                         re.search(w, text, re.I) for (w,) in SEAT_WORDS * seat))  # #1117
     wd = {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)}  # env -C, sudo -D
     inside, held = records(cwd, None) or any(records(w, None, 64) for w in wd), harness(cwd) or any(harness(w, 64) for w in wd)
+    lands = {cwd, *(join(cwd, w) for w in wd)}  # where a seat's bare words land: a record dir, or a word joined to it, needs a reader
     for argv, targets in parts or ():
         program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
-        writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*[iI]|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv}
+        writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*[iI]|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv} or (
+            program == 'rg' and any(a.startswith('--pre') for a in argv))  # rg --pre runs a program on each file
         if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED + OWNER_ONLY * seat)
+        if seat and program not in READERS and (len(lands) > 64 or any(records(d, LEDGER + own) or any(records(join(d, b), LEDGER + own, bare=False) for a in words for b in (
+                a, a.rpartition('=')[2], *(a[i:] for i in range(2, len(re.match(r'-?\w*', a)[0]) + 1)[-13:] if a[:1] == '-'))) for d in lands)):  # -ov, -xov: a name starts in the last 12
+            return deny(READER_ONLY)
+        lands |= {join(d, a) for d in lands for a in argv[1:] if '$' not in a or records(a, None)} if program in ('cd', 'pushd') and len(lands) <= 64 else set()  # cd $X: unread
         if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
                 held and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):  # ln, mv, cp, find, python can stage a link
             return deny(HARNESS)
