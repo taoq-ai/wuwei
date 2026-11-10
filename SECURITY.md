@@ -239,8 +239,8 @@ The doors and what they leave to the code host are in section 6 of the
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
   `.wuwei/` workspace; elsewhere they return at once. From a linked git worktree they act in the
   workspace of its main checkout, never in a `.wuwei/` inside the worktree; when that checkout
-  has none, in the workspace above the worktree. A `.git` file above the nearest repository or
-  set-up workspace (one with `config.toml`) is never read. A door that cannot
+  has none, in the workspace above the worktree. Only a `.git` file redirects, never one above
+  the nearest repository or at or above a set-up workspace (one with `config.toml`). A door that cannot
   read its evidence stays shut; every other hook fails open and records why.
 - Runtime: Python 3.11+ standard library only, at most 3,800 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.

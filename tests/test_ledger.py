@@ -353,10 +353,13 @@ def test_the_nearest_worktree_names_the_workspace(root, tmp_path_factory):
     assert ws.find(outer) == far and ws.find(_worktree(root, outer / 'inner') / 'src') == root
 
 
+PLANTED = ['.git', 'commondir', 'root-commondir', 'root-.git', 'undecodable-root-commondir', 'nul-root-commondir', 'undecodable-root-.git']
+
+
 @pytest.mark.parametrize('target', ['empty', 'seat-made'])
-@pytest.mark.parametrize('git', [True, False], ids=['git-workspace', 'plain-workspace'])
-@pytest.mark.parametrize('planted', ['.git', 'commondir'])
-def test_a_redirect_planted_above_a_workspace_never_moves_it(tmp_path_factory, target, git, planted):
+@pytest.mark.parametrize('git, planted', [(g, p) for g in (True, False) for p in PLANTED if not (g and p.endswith('root-.git'))])
+def test_a_redirect_planted_above_or_at_a_workspace_never_moves_it(tmp_path_factory, target, git, planted):
+    # the gates' layouts: T, T2, T3 (above), E (a commondir at the root), F (a .git file at a plain root), Z1, Z2
     top, aim = tmp_path_factory.mktemp('top'), tmp_path_factory.mktemp('aim')
     (aim / '.git').mkdir()
     if target == 'seat-made':
@@ -368,11 +371,29 @@ def test_a_redirect_planted_above_a_workspace_never_moves_it(tmp_path_factory, t
         subprocess.run(['git', 'init', '-q', str(work)], check=True, capture_output=True)
     else:  # a set-up workspace alone ends it
         ws.write_config(work, ws.DEFAULTS)
-    if planted == '.git':
+    if planted in ('.git', 'undecodable-root-commondir', 'nul-root-commondir', 'undecodable-root-.git'):
         _forge(top, top / 'g', aim / '.git')
-    else:  # a lone commondir: a missing .git reads as empty, so the folder is its own gitdir
-        (top / 'commondir').write_text(f'{aim / ".git"}\n')
+    if planted == 'undecodable-root-.git':  # the read raises at the workspace, and the boundary still holds
+        (work / '.git').write_bytes(b'gitdir: \xff\n')
+    if planted == 'root-.git':
+        _forge(work, work / 'g', aim / '.git')
+    if planted in ('commondir', 'root-commondir'):  # a lone commondir: no .git file names it
+        ((top if planted == 'commondir' else work) / 'commondir').write_text(f'{aim / ".git"}\n')
+    if planted == 'undecodable-root-commondir':
+        (work / 'commondir').write_bytes(b'\xff\xfe\n')
+    if planted == 'nul-root-commondir':
+        (work / 'commondir').write_text('a\0b\n')
     assert ws.find(work) == ws.find(work / 'sub') == work
+
+
+def test_a_worktree_whose_common_dir_is_not_named_git_keeps_the_old_search(tmp_path_factory):
+    bare = tmp_path_factory.mktemp('bare')
+    (bare / ws.DIR).mkdir()
+    (bare / 'repo.git').mkdir()
+    linked = tmp_path_factory.mktemp('bwt') / 'linked'
+    _forge(linked, linked / 'g', bare / 'repo.git')  # a bare repository's worktree
+    (linked / ws.DIR).mkdir()
+    assert ws.find(linked) == linked
 
 
 def test_a_git_workspace_cloned_inside_another_repositorys_worktree_is_its_own(tmp_path_factory):

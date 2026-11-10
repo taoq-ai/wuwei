@@ -41,6 +41,10 @@ Phase 4).
    `commondir` planted above the workspace then sent its own sessions to None or to a seat-made workspace. A git
    workspace cloned inside another repository's worktree also resolved to None. Held now (round 3): the
    look-ahead ends at the nearest folder holding a `.git` entry of any kind or a `.wuwei/config.toml`.
+7. Round 3 put that boundary inside the `suppress` block, so an undecodable or NUL file at the workspace skipped
+   it. A lone `commondir` at a git workspace root, or a forged `.git` file at a set-up workspace root, also
+   redirected before the boundary. Held now (round 4): the boundary sits outside the `suppress` block. Only a
+   `.git` read as a file redirects, and never at a folder holding `.wuwei/config.toml`.
 
 Residual, as on main: a forged `.git` can still point at a workspace the seat made, or at another real
 workspace. The name-based ledger and config guards still deny writes in both. A bare-repository worktree or a
@@ -52,6 +56,7 @@ separate-git-dir checkout keeps the old search, because its common dir is not na
   no git process.
 - FR-2: the nearest candidate whose resolved common dir is named `.git` decides. The answer is the nearest
   `.wuwei/` at or above that main checkout. With none, the search goes on above the worktree. The look-ahead
-  ends at the nearest folder holding a `.git` entry or a `.wuwei/config.toml`; nothing above it redirects.
+  ends at the nearest folder holding a `.git` entry or a `.wuwei/config.toml`, even when a read there raises;
+  nothing above it redirects. Only a `.git` regular file redirects, and never at a set-up workspace.
 - FR-3: with no worktree on the path, today's upward search for `.wuwei/` applies.
 - FR-4: the runtime stays within +6 lines; the vendored copy matches.

@@ -46,3 +46,19 @@
 - [x] T016 The security gate's 29-layout probe (probe2fix2) at main and head: T, T2, T3 resolve to W; V (a stray
   without config in another repository's worktree) is None. Quality's probe2: A and B give the workspace; C keeps
   the folder; D (a `.wuwei/` with no `config.toml` below a forged `.git`) is None
+
+## Phase 6: Gate round 3 at 37cf2af (security and quality FIX)
+
+- [x] T017 Tests red first at 37cf2af (14 failed). `test_a_redirect_planted_above_or_at_a_workspace_never_moves_it`
+  now takes the gates' layouts as parameters: T, T2, T3, E (a lone `commondir` at the root), F (a forged `.git`
+  file at a set-up root), Z1 (a non-UTF-8 root `commondir`) and Z2 (a NUL one). Each runs for a git and a set-up
+  workspace, aimed at an empty `.git` or a seat-made workspace
+- [x] T018 The boundary moved out of the `suppress` block. A redirect needs `.git` read as a file and no
+  `config.toml` at that folder. Runtime 3,955 lines (+6)
+- [x] T019 Mutants on both copies, one at a time: 10 of 11 killed. The new ones were drop `text and`, drop the
+  config check before the redirect, and the boundary back inside `suppress`. That last one is killed by an
+  undecodable root `.git`. The name-check mutant is killed by
+  `test_a_worktree_whose_common_dir_is_not_named_git_keeps_the_old_search`. Scan from `common` itself survives,
+  as equivalent
+- [x] T020 Probes rerun at the head. Security probe3b: Z0 to Z3 give W, and R keeps `rsib/src`. Quality probe3 E
+  and probe4 F give the workspace. The 29-layout probe2fix2 moves the same 10 rows as round 3
