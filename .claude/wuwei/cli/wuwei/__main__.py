@@ -22,7 +22,7 @@ def _ref(text):
 
 def cmd_plan(args):
     root = _root()
-    auto = 'auto-approve' in ws.config(root)['allow'] and {g.upper() for g in view.goals(root)} - set(view.goal_status(root)[1])  # open goals (#1291)
+    auto = args.action in ('add', 'view') and 'auto-approve' in ws.config(root)['allow'] and {g.upper() for g in view.goals(root) if g} - set(view.goal_status(root)[1])  # open goals (#1291)
     if args.action == 'add' and args.source:
         for item in plan.add_from(root, args.source):
             print(f'{item["id"]} added with score {item["score"]}')

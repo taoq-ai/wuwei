@@ -270,7 +270,7 @@ after any git option but `-C` or with `GIT_` in the command), while
 removing a cache file passes; writes under the harness's transcripts (`.claude/projects`, `.codex/sessions`, or their parent configuration folders) in the
 same spellings and after the same `cd`, `pushd`, `-C`, `--chdir` and `-D` (reads pass); a hand-made `wuwei hook` call, or
 a literal `-m wuwei hook` through any interpreter; from a seat (a hook payload that names an
-`agent_type`), a write to `.wuwei/config.toml` or `.wuwei/plan.json` by every route the ledger rule
+`agent_type`), a write to `.wuwei/config.toml`, `.wuwei/plan.json` or `.wuwei/goals.md` by every route the ledger rule
 reads, `wuwei config <key> [<value>]`, the `wuwei plan` actions that write the plan, `wuwei sync`,
 and a push to `wuwei/state`, while the owner's own session keeps them all and seats keep the reads
 (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); from a seat, any command with a word
@@ -284,7 +284,7 @@ message naming a record are refused too; a command whose `eval` or `sh -c`
 bodies nest more than 64 deep; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger`, `.wuwei/canary` or `.wuwei` itself; and from a seat,
-`.wuwei/config.toml`, `.wuwei/plan.json`, or wuwei followed by config, plan or sync, also read with
+`.wuwei/config.toml`, `.wuwei/plan.json`, `.wuwei/goals.md`, or wuwei followed by config, plan or sync, also read with
 its quotes and backslashes removed and its `$'..'` escapes decoded), with a hint to run the door command in its own
 one-line call (#1068). The refusal names the door words it found (`found: gh pr`), says a door name anywhere in the text
 counts, a heredoc body or quoted prose included, and says to write such text to a file with the Write tool (#1117); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting

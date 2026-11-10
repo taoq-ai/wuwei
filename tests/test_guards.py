@@ -2519,6 +2519,10 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     'mv x /w/.wuwei/plan.json', 'rm .wuwei/plan.json', 'rm -f .wuwei/config.toml', 'sed -i s/a/b/ .wuwei/config.toml',
     'truncate -s0 .wuwei/plan.json', 'dd if=x of=.wuwei/plan.json', 'python3 -c "open(\'.wuwei/config.toml\', \'w\')"',
     'ln -sf x .wuwei/plan.json', 'find .wuwei/plan.json -delete', 'echo x > .wuwei//plan.json', 'echo x > .wuwei/./config.toml',
+    "echo '## G-9' >> .wuwei/goals.md", "printf '## None\\n' >> .wuwei/goals.md", 'sed -i s/a/b/ .wuwei/goals.md',
+    'tee -a .wuwei/goals.md', 'echo x > .wuwei//goals.md',  # 1291 round 2: auto-approve reads goals.md, so a seat may not write it
+    "echo x > $'.wuwei/goals.md'", r"echo x > $'.\x77uwei/goals.md'", "rm $'.wuwei/goals.md'",  # the probe's 4 holes before SEAT_WORDS named goals
+    'eval ' + shlex.quote(r"echo x > $'.\x77uwei/goals.md'"),
     'echo x > src/../.wuwei/plan.json', 'echo x > .wuwei/pl*.json', 'tee .wuwei/{config.toml,x}', 'echo x > .WUWEI/Plan.JSON',
     'bash -c "echo x > .wuwei/plan.json"', "echo x > $'.wuwei/plan.json'", 'echo x >$PWD/.wuwei/config.toml',
     'wuwei config owner_paths x', 'wuwei config allow admin-merge', 'wuwei config allow auto-approve', "wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
@@ -2572,7 +2576,7 @@ def test_the_owner_session_keeps_every_config_and_plan_write(root, repo, command
 
 @pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 @pytest.mark.parametrize('path', ['/w/.wuwei/config.toml', '.wuwei/plan.json', '/w/.wuwei//plan.json', '/w/x/../.wuwei/config.toml',
-                                  '/w/.WUWEI/PLAN.JSON', '/w/.wuwei/./plan.json'])
+                                  '/w/.WUWEI/PLAN.JSON', '/w/.wuwei/./plan.json', '/w/.wuwei/goals.md'])
 def test_a_seat_edit_of_the_config_or_the_plan_is_refused_and_the_owner_edit_passes(root, tool, path):
     data = {'notebook_path' if tool == 'NotebookEdit' else 'file_path': path}
     decision = guards.pre_tool(root, {'tool_name': tool, 'tool_input': data, 'agent_type': 'wuwei:builder'})
@@ -2591,7 +2595,7 @@ def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
     assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
 
 
-RECORDS = ['.wuwei/config.toml', '.wuwei/plan.json', '.wuwei/ledger/a.jsonl', '.wuwei/canary']
+RECORDS = ['.wuwei/config.toml', '.wuwei/plan.json', '.wuwei/goals.md', '.wuwei/ledger/a.jsonl', '.wuwei/canary']
 OTHER_WRITERS = ['install x {}', 'rsync x {}', 'perl -pi -e s/a/b/ {}', 'ruby -i -pe 1 {}', 'node -e 1 {}', 'awk -i inplace 1 {}',
                  'patch {} p.diff', 'ditto x {}', 'ex -sc wq {}', 'vim -c wq {}', 'sort -o {} x', 'shuf -o {} x', 'curl -o {} u',
                  'wget -O {} u', 'tar -xf x.tar {}', 'unzip x.zip {}', 'git checkout -- {}', 'git restore {}', 'git show --output={} H',

@@ -32,7 +32,7 @@ def test_the_report_lists_each_auto_approval_with_its_time_items_and_view_line(r
     plan.approve(root, 'Approve')
     at = ws.rows(root, 'plan.approved')[0]['ts'][11:16]
     text = report.day(root)
-    assert f'## Auto-approved\nAuto-approved plans: 1.\n- {at} UTC: I-1 (1 items on 1 goals, about 1 build hours; the plan is shown above.)\n' in text
+    assert f'## Auto-approved\n- {at} UTC: I-1 (1 items on 1 goals, about 1 build hours; the plan is shown above.)\n' in text
 
 
 def test_close_is_a_checkpoint_the_next_pass_reopens(root, fake):

@@ -115,6 +115,21 @@ def test_auto_approve_approves_each_added_item_with_a_goal_but_not_one_without(r
     assert gaps['I-2'] == 'no pull request yet' and gaps['I-4'] == gaps['I-5'] == gaps['I-11'] == 'awaiting plan approval'
 
 
+def test_auto_approve_matches_no_heading_for_a_missing_goal_and_fails_closed_on_an_unreadable_goals_file(root, fake, monkeypatch, capsys):
+    """1291 round 2: a `## None` heading never matches an item with no goal; a goals.md that is not UTF-8 approves nothing, crashing nothing."""
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    ws.set_config(root, 'allow', 'auto-approve')
+    (root / ws.DIR / 'goals.md').write_text('## None\nOutcome: x\n\n## G-1\nOutcome: a\n')
+    plan.add(root, 'I-1', 'no goal', None, 'acme/app', 'light', scores())
+    assert cli.main(['plan', 'view']) == 0 and not plan.find(root, 'I-1')['approved']
+    (root / ws.DIR / 'goals.md').write_bytes(b'## G-1\nOutcome: \xff\n')
+    add = ['--goal', 'G-1', '--repo', 'acme/app', '--value', '5', '--time', '3', '--risk', '2', '--size', '2']
+    for argv in (['plan', 'add', 'I-2', 'x', *add], ['plan', 'show', 'I-2'], ['plan'], ['plan', 'done', 'I-1'], ['plan', 'view']):
+        assert cli.main(argv) == 0, argv
+    assert not plan.find(root, 'I-2')['approved'] and not ws.rows(root, 'plan.approved')
+
+
 def test_an_operations_item_shows_its_run_evidence_not_a_missing_pr(root, fake, monkeypatch):
     from wuwei import __main__ as cli, board
     monkeypatch.chdir(root)

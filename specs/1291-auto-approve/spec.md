@@ -41,13 +41,17 @@ the file: the config door already refuses `wuwei config allow ...` and writes to
   `G-99`, a blank and a met goal waiting (fix round 1, arch at a2eb3a6).
 - Every `plan view` writes an empty ledger row, flooding the report. A row is written only when
   an item was approved.
+- A seat plants a goal: it appends `## G-9` or `## None` to goals.md, or rewords a met goal, then
+  runs `wuwei plan view`. goals.md is now owner-only like config.toml and plan.json (fix round 2,
+  security at 97fe6be): every seat writer route, Edit and Write, and the seat door words. A missing
+  goal reads as an empty label, never as `None`, and an empty heading is no goal.
+- A goals.md that is not UTF-8 makes every plan action exit 2. It now reads as no goals: nothing is
+  auto-approved and nothing crashes. Only `plan add` and `plan view` read goals for auto-approve.
 
 ## Assumptions
 
-- Depends on #1298 (item 1290) for the `allow` key; this branch starts from it and rebases onto
-  main once it merges. Overturn: #1298 is dropped or renames the key.
-- Auto-approval trusts goals.md as the owner's. A seat can still write it today (no guard holds
-  it); that gap predates this item and is a follow-up candidate. Overturn: a guard lands for it.
+- Builds on #1298 (item 1290, merged as 3a1dc3c) for the `allow` key; origin/main is merged into
+  this branch. Overturn: #1298 is reverted.
 - With auto-approve on, `plan add` approves every open item with a goal that waits, not only the
   one just added (an item whose promise changed waits too). One row lists them all.
 - The ledger row keeps `answer` (set to `auto-approve`, the value that approved it) beside `auto`

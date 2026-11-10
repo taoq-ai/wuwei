@@ -10,6 +10,9 @@
   calls it after adding. `plan.py` takes the set as an argument, since `view` imports `plan`.
 - `cli/wuwei/report.py`: an `## Auto-approved` section lists each auto row with its time, items
   and line, after the owner prompts.
+- `cli/wuwei/guards.py` (fix round 2): `goals.md` joins `OWNED` and `goals` the seat door words,
+  so a seat may not write the file auto-approve reads. `view.goals` reads a file that is not UTF-8
+  as no goals, and `__main__` reads goals for auto-approve only in `plan add` and `plan view`.
 - `cli/wuwei/hook.py` is not changed: its own board cache drop after a `plan:` answer stays.
 - Charters and skill: `planner.md` and `skills/wuwei-run/SKILL.md` ask `plan:` only when the view
   prints the Ask line; `_way.md` names the setting next to admin-merge, within the SessionStart cap.
