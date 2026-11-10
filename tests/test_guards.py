@@ -2518,7 +2518,7 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     'ln -sf x .wuwei/plan.json', 'find .wuwei/plan.json -delete', 'echo x > .wuwei//plan.json', 'echo x > .wuwei/./config.toml',
     'echo x > src/../.wuwei/plan.json', 'echo x > .wuwei/pl*.json', 'tee .wuwei/{config.toml,x}', 'echo x > .WUWEI/Plan.JSON',
     'bash -c "echo x > .wuwei/plan.json"', "echo x > $'.wuwei/plan.json'", 'echo x >$PWD/.wuwei/config.toml',
-    'wuwei config owner_paths x', 'wuwei config allow admin-merge', "wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
+    'wuwei config owner_paths x', 'wuwei config allow admin-merge', 'wuwei config allow auto-approve',"wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
     'wuwei plan add I-2 x --goal G-1', 'wuwei plan add --from c.json', 'wuwei plan done I-1 --reason x', 'wuwei plan --reason x park I-1',
     'wuwei plan drop I-1', 'wuwei plan restore I-1', 'wuwei plan run I-1 --reason x', 'wuwei plan session I-1 s2', 'wuwei plan approve',
     'python3 -m wuwei config owner_paths x', 'python3 -mwuwei plan done I-1', '/opt/wuwei/bin/wuwei plan restore I-1', 'WUWEI plan done I-1',

@@ -24,6 +24,17 @@ def test_the_report_lists_the_day_and_what_slipped(root, fake):
     assert 'Ledger: intact' in text
 
 
+def test_the_report_lists_each_auto_approval_with_its_time_items_and_view_line(root, fake):
+    """#1291: the owner reads what auto-approve approved without asking."""
+    from wuwei import plan
+    plan.add(root, 'I-1', 'a', 'G-1', 'acme/app', 'light', {'value': 1, 'time': 1, 'risk': 1, 'size': 1})
+    plan.approve(root, 'auto-approve', '1 items on 1 goals, about 1 build hours; the plan is shown above.')
+    plan.approve(root, 'Approve')
+    at = ws.rows(root, 'plan.approved')[0]['ts'][11:16]
+    lines = [line for line in report.day(root).splitlines() if 'auto-approved' in line]
+    assert lines == [f'- auto-approved at {at} UTC: I-1 (1 items on 1 goals, about 1 build hours; the plan is shown above.)']
+
+
 def test_close_is_a_checkpoint_the_next_pass_reopens(root, fake):
     path = report.close(root)
     assert path.is_file() and ws.rows(root, 'day.closed')

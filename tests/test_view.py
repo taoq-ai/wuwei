@@ -44,3 +44,20 @@ def test_a_change_answer_is_recorded_and_approves_nothing(root):
     hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'Change: drop I-3'}))
     assert not any(item['approved'] for item in plan.items(root))
     assert ws.rows(root, 'plan.change')[0]['data']['answer'] == 'Change: drop I-3'
+
+
+def test_auto_approve_approves_items_with_a_goal_and_asks_nothing_until_one_without_waits(root, fake, monkeypatch, capsys):
+    """#1291: allow = ["auto-approve"] approves each open item with a goal at plan view, recorded with the view line."""
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    setup_plan(root)
+    assert cli.main(['plan', 'view']) == 0 and 'Ask: plan: approve this plan?' in capsys.readouterr().out
+    assert not ws.rows(root, 'plan.approved')  # without the value, as today
+    ws.set_config(root, 'allow', 'admin-merge, auto-approve')
+    assert cli.main(['plan', 'view']) == 0 and 'Ask: plan:' in capsys.readouterr().out  # I-3 has no goal: the owner's
+    row = ws.rows(root, 'plan.approved')[-1]['data']
+    assert (sorted(row['items']), row['auto'], row['line']) == (['I-1', 'I-2'], True, view.render(root)[2])
+    assert [i['id'] for i in plan.items(root) if not i['approved']] == ['I-3']
+    plan.mark(root, 'I-3', 'dropped', 'out of scope')
+    assert cli.main(['plan', 'view']) == 0 and 'Ask: plan:' not in capsys.readouterr().out
+    assert len(ws.rows(root, 'plan.approved')) == 1  # nothing new approved, no row

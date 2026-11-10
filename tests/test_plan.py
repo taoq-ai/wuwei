@@ -88,6 +88,26 @@ def test_a_seat_reads_its_item_promise_from_the_plan(root, monkeypatch, capsys):
     assert (item['promise'], item['acceptance']) == ('one route per client', ['given A, when B, then C'])
 
 
+def test_auto_approve_approves_each_added_item_with_a_goal_but_not_one_without(root, fake, tmp_path, monkeypatch, capsys):
+    """#1291: with allow = ["auto-approve"], plan add and --from approve a new item with a goal in its own auto row."""
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    add = ['--repo', 'acme/app', '--value', '5', '--time', '3', '--risk', '2', '--size', '2']
+    assert cli.main(['plan', 'add', 'I-1', 'before', '--goal', 'G-1', *add]) == 0 and not plan.find(root, 'I-1')['approved']
+    ws.set_config(root, 'allow', 'auto-approve')
+    assert cli.main(['plan', 'add', 'I-2', 'mid-day', '--goal', 'G-1', *add]) == 0
+    lead = tmp_path / 'lead.json'
+    lead.write_text(json.dumps([{'id': 'I-3', 'title': 'lead', 'goal': 'G-1', 'repo': 'acme/app', 'scores': scores()},
+                                {'id': 'I-4', 'title': 'no goal', 'repo': 'acme/app', 'scores': scores()}]))
+    assert cli.main(['plan', 'add', '--from', str(lead)]) == 0
+    assert cli.main(['plan', 'add', 'I-5', 'unplanned', '--goal', 'unplanned', *add]) == 0
+    rows = [r['data'] for r in ws.rows(root, 'plan.approved')]
+    assert [sorted(r['items']) for r in rows] == [['I-1', 'I-2'], ['I-3']] and all(r['auto'] and r['line'] for r in rows)
+    assert [i['id'] for i in plan.items(root) if not i['approved']] == ['I-4', 'I-5']
+    gaps = {r['item']: r['gaps'][0]['text'] for r in board.compute(root)}
+    assert gaps['I-2'] == 'no pull request yet' and gaps['I-4'] == gaps['I-5'] == 'awaiting plan approval'
+
+
 def test_an_operations_item_shows_its_run_evidence_not_a_missing_pr(root, fake, monkeypatch):
     from wuwei import __main__ as cli, board
     monkeypatch.chdir(root)
