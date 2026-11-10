@@ -1559,7 +1559,8 @@ def test_a_body_at_the_github_limit_is_read_in_linear_time(root, fake):
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'acme/app')], []),  # before the draft PR existed
     ([(OLD, 'yes: drops --format', 'FIX'), (HEAD, 'no', 'PASS', 'Acme/App#42')], []),
     ([(OLD, 'no', 'PASS'), (OLD, 'yes: x', 'FIX'), (HEAD, 'no', 'PASS')], []),  # a descendant re-read still clears
-    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#7')], ANNOUNCE),  # a yes from another PR of the item holds
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app#7')], []),  # a yes on another PR of the item is that PR's (#1292)
+    ([(HEAD, 'yes: drops --format', 'PASS', 'acme/app')], ANNOUNCE),  # one naming only the repository holds
 ])
 def test_breaking_is_read_from_the_latest_arch_verdict(root, fake, said, found):
     assert breaking(root, fake, *said) == found
