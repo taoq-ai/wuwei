@@ -15,9 +15,13 @@ what you produced and says what is still missing (`wuwei status`, `wuwei evidenc
   before starting: start approved items that have no pull request, highest score first, only
   under the WIP limit and the seat ceiling (`planner.md`, Running the work 1). When the queue runs dry, plan
   from the goals. Arm `/wuwei-watch` on a schedule at the start of the session.
-- WUWEI refuses only: a merge with safety gaps; force or default-branch pushes; admin and
-  protection writes; secrets in outward calls; ledger edits; forged hook calls; questions the
-  process answers; a PR opened ready, marked ready or given reviewers before its gates pass.
+- WUWEI refuses only: a merge with safety gaps; force or default-branch pushes; admin merges
+  (unless the owner sets `allow = ["admin-merge"]`) and protection writes; secrets in outward
+  calls; ledger edits; forged hook calls; questions the process answers; a PR opened ready, marked
+  ready or given reviewers before its gates pass.
+- With `auto-approve` in the owner's `allow`, the plan view and plan add approve items on an
+  open goal of `goals.md`; when the view prints no `Ask:` line, ask no `plan:` question. Every
+  other class still asks.
 - A problem that breaks a repository for everyone: `wuwei andon owner/repo --reason "..."`.
 - Someone waiting on a reply: `wuwei owe <thread link> "<what>" --who <name>`; a send into the
   thread closes it.

@@ -17,6 +17,7 @@ DENY = ['Bash(git push --force:*)', 'Bash(git push -f:*)', 'Bash(git push --mirr
 ASK = [f'Bash({tool} {verb}:*)' for tool, verbs in (('terraform', ('apply', 'destroy')), ('tofu', ('apply', 'destroy')),
                                                      ('pulumi', ('up', 'destroy')), ('kubectl', ('apply', 'delete')),
                                                      ('helm', ('install', 'upgrade', 'uninstall'))) for verb in verbs]
+denied = lambda root: [r for r in DENY if '--admin' not in r or 'admin-merge' not in ws.config(root)['allow']]  # noqa: E731 (#1290)
 GOALS = '''# Goals
 
 One block per goal. The plan's items each name the goal they serve.
@@ -35,7 +36,7 @@ def merge_settings(directory, cloud=False):
     path = Path(directory) / '.claude' / 'settings.json'
     data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
     permissions = data.setdefault('permissions', {})
-    for key, rules in (('allow', ALLOW), ('deny', DENY), ('ask', ASK)):
+    for key, rules in (('allow', ALLOW), ('deny', denied(directory)), ('ask', ASK)):
         current = permissions.setdefault(key, [])
         current.extend(rule for rule in rules if rule not in current)
     for event in EVENTS if cloud else ():
@@ -77,7 +78,7 @@ def codex_files(directory):
     for role in agents.DESCRIPTIONS:
         ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(ws.PLUGIN, role, ws.config(directory)['models']))
     pattern = lambda rule: json.dumps(rule[len('Bash('):-len(':*)')].split())  # noqa: E731
-    rules = [f'prefix_rule(pattern = {pattern(r)}, decision = "forbidden")' for r in DENY if r.startswith('Bash(')]
+    rules = [f'prefix_rule(pattern = {pattern(r)}, decision = "forbidden")' for r in denied(directory) if r.startswith('Bash(')]
     rules += [f'prefix_rule(pattern = {pattern(r)}, decision = "prompt")' for r in ASK]
     ws.atomic_write(base / 'rules' / 'wuwei.rules',
                     '# WUWEI doors for Codex, written by wuwei init --codex.\n' + '\n'.join(rules) + '\n')
@@ -143,7 +144,7 @@ def doctor(root):
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
     have = json.loads(settings.read_text(encoding='utf-8')).get('permissions', {}) if settings.is_file() else {}
-    missing = [r for r in DENY if r not in have.get('deny', [])]
+    missing = [r for r in denied(root) if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
     seen = ws.cache_get(root, 'hook-seen', 120)  # PreToolUse writes it, and the doctor's own Bash call fires PreToolUse
     under = f' under {python}' if (python := ws.cache_get(root, 'hook-python', 120)) else ''

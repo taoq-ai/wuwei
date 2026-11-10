@@ -19,7 +19,7 @@ else:
     import pwd
 
 DIR = '.wuwei'
-DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}}
+DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}, 'allow': []}
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -35,9 +35,15 @@ SESSIONS = PROJECTS.parent.parent / '.codex' / 'sessions'
 
 
 def find(start=None):
-    """The directory holding .wuwei/, searching upward from start, or None."""
-    path = Path(start or os.getcwd()).resolve()
-    return next((candidate for candidate in (path, *path.parents) if (candidate / DIR).is_dir()), None)
+    """The directory holding .wuwei/, searching upward from start, or None; a linked git worktree defers to its main checkout."""
+    path, read = Path(start or os.getcwd()).resolve(), lambda f: f.read_text(encoding='utf-8') if f.is_file() else ''  # never a FIFO
+    for candidate in (path, *path.parents):  # one pass, no recursion; with no workspace above the main checkout, the search goes on above the worktree
+        with contextlib.suppress(OSError, ValueError):  # only a .git file names a worktree's gitdir; its commondir is the main .git
+            gitdir = candidate / (text := read(candidate / '.git')).removeprefix('gitdir:').strip()
+            path = next((c for c in common.parents if os.path.isdir(c / DIR)), candidate.parent) if text and not os.path.isfile(candidate / DIR / 'config.toml') and (common := (gitdir / read(gitdir / 'commondir').strip()).resolve()).name == '.git' else path
+        if os.path.lexists(candidate / '.git') or os.path.isfile(candidate / DIR / 'config.toml'):
+            break  # the nearest worktree, repository or set-up workspace ends the look-ahead, even after a raise: nothing above it redirects it
+    return next((c for c in (path, *path.parents) if os.path.isdir(c / DIR)), None)
 
 
 def version():
@@ -128,7 +134,7 @@ def raw_config(root):
 
 
 def config(root):
-    """The six keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
+    """The seven keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
     table, [merge] owner paths, a [telemetry] table)."""
     data = raw_config(root)
     out = {**DEFAULTS, **{key: value for key, value in data.items() if key in DEFAULTS}}
@@ -141,6 +147,7 @@ def config(root):
     if isinstance(out['telemetry'], dict):
         out['telemetry'] = out['telemetry'].get('mode', 'on') not in ('off', 'false')
     out['models'] = {k: v for k, v in out['models'].items() if isinstance(v, str) and len(v.split()) > 1} if isinstance(out['models'], dict) else {}
+    out['allow'] = [name for name in out['allow'] if isinstance(name, str)] if isinstance(out['allow'], list) else []
     merge = data.get('merge') if isinstance(data.get('merge'), dict) else {}
     if not data.get('owner_paths'):
         out['owner_paths'] = [p for key in ('owner_paths', 'never_auto_paths') for p in merge.get(key, [])
@@ -169,7 +176,7 @@ def _toml(value):
 def write_config(root, data):
     atomic_write(Path(root) / DIR / 'config.toml',
                  ''.join(f'{key} = {_toml(data.get(key, DEFAULTS[key]))}\n'
-                         for key in DEFAULTS if key != 'models' or data.get(key)))
+                         for key in DEFAULTS if key not in ('models', 'allow') or data.get(key)))
 
 
 def set_config(root, key, value):

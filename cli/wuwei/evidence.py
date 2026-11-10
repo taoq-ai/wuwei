@@ -412,20 +412,23 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
 
 
 def breaking_gaps(root, ref, pr, item_id):
-    """A breaking change (declared with ! or BREAKING CHANGE:, or an arch yes no later no cleared from a strict
-    descendant of its head on the PR head's line) needs an announcement, then the owner's confirmation at this head."""
+    """A breaking change (declared with ! or BREAKING CHANGE:, or an arch yes on this PR, its repository or a head on its line, no later
+    no cleared from a strict descendant of its head on the PR head's line) needs an announcement, then the owner's confirmation at this head."""
     body, head, repo, said = pr.get('body') or '', pr['headRefOid'], ref.split('#')[0], None
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
     for v in (v for v in verdicts(root, item_id, repo, ref) if v['gate'] == 'arch' and 'breaking' in v):  # oldest first
-        if v['breaking'] or v['ref'].lower() in (ref.lower(), repo.lower()) and newer(root, repo, v, said, head):
+        ours = v['ref'].lower() in (ref.lower(), repo.lower())  # another PR's yes holds only on this line: a squash leaves it (#1292)
+        if ours and newer(root, repo, v, said, head) or v['breaking'] and (ours or ancestor(root, repo, v['head'], head)):
             said = v
-    if not (declared or said and said['breaking']):
+    rulings = [r['data'] for r in ws.rows(root, 'ruling') if r['data'].get('kind') == 'breaking' and r['data'].get('pr') == ref
+               and head.startswith(r['data'].get('head') or '-')]
+    owner = [r['breaking'] for r in rulings if 'breaking' in r][-1:]  # the owner's latest classification at this head
+    if not (declared or (owner[0] if owner else said and said['breaking'])):
         return []
     if not re.search(r'^Announcement:[ \t]*https?://[^\s/?#]\S*[ \t\r]*$', body, re.M):  # one host char: linear
         return [gap('breaking change without an announcement: add "Announcement: <http(s) URL of the published client '
                     'communication, release note or migration guide>", the URL alone on its line, without brackets')]
-    if any(r['data'].get('kind') == 'breaking' and r['data'].get('approved') and r['data'].get('pr') == ref
-           and head.startswith(r['data'].get('head') or '-') for r in ws.rows(root, 'ruling')):
+    if any(r.get('approved') and 'breaking' not in r for r in rulings):
         return []
     return [gap(f'breaking change needs the owner\'s confirmation: ask "breaking: {ref} at {head[:7]}: <what breaks>. '
                 'Announced at <link>. Proceed?"', owner=True)]
@@ -535,7 +538,7 @@ def gaps(root, repo, number, listed=None):
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
-        if pr.get('mergeableState') == 'blocked' and not blocking(found):  # GitHub holds it for a reason no gap names
+        if pr.get('mergeableState') == 'blocked' and not blocking(found) and 'admin-merge' not in ws.config(root)['allow']:  # a hold no gap names, or the owner's bypass
             found.append(gap('GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR', False))
         if pr.get('state') == 'MERGED':  # what it lacked when it merged is an escape for the retro (#1050)
             return [dict(g, text='post-merge: ' + g['text']) for g in blocking(found)]
