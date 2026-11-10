@@ -45,6 +45,10 @@ Phase 4).
    it. A lone `commondir` at a git workspace root, or a forged `.git` file at a set-up workspace root, also
    redirected before the boundary. Held now (round 4): the boundary sits outside the `suppress` block. Only a
    `.git` read as a file redirects, and never at a folder holding `.wuwei/config.toml`.
+8. Outside `suppress`, `Path.is_file()` on Python 3.11 to 3.13 raised for ENAMETOOLONG (a cwd past PATH_MAX) and
+   for PermissionError (a `.wuwei/` at mode 000). PreToolUse then exited 2 on every call. On 3.11 the final
+   `.wuwei/` scan raised for the deep cwd too, at main as well. Held now (round 5): every stat outside
+   `suppress` is `os.path.isfile`, `os.path.isdir` or `os.path.lexists`, none of which raise.
 
 Residual, as on main: a forged `.git` can still point at a workspace the seat made, or at another real
 workspace. The name-based ledger and config guards still deny writes in both. A bare-repository worktree or a

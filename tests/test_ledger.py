@@ -386,6 +386,17 @@ def test_a_redirect_planted_above_or_at_a_workspace_never_moves_it(tmp_path_fact
     assert ws.find(work) == ws.find(work / 'sub') == work
 
 
+@pytest.mark.skipif(os.name == 'nt' or os.geteuid() == 0, reason='POSIX modes; root reads past them')
+def test_a_cwd_past_path_max_or_below_an_unreadable_workspace_folder_never_raises(root):
+    assert ws.find(root / '/'.join(['d' * 200] * 30)) == root  # a stat there fails with ENAMETOOLONG
+    (root / 'sub' / ws.DIR).mkdir(parents=True)
+    (root / 'sub' / ws.DIR).chmod(0)
+    try:
+        assert ws.find(root / 'sub' / 'deeper') == root / 'sub'
+    finally:
+        (root / 'sub' / ws.DIR).chmod(0o755)
+
+
 def test_a_worktree_whose_common_dir_is_not_named_git_keeps_the_old_search(tmp_path_factory):
     bare = tmp_path_factory.mktemp('bare')
     (bare / ws.DIR).mkdir()

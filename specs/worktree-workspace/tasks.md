@@ -62,3 +62,13 @@
   as equivalent
 - [x] T020 Probes rerun at the head. Security probe3b: Z0 to Z3 give W, and R keeps `rsib/src`. Quality probe3 E
   and probe4 F give the workspace. The 29-layout probe2fix2 moves the same 10 rows as round 3
+
+## Phase 7: Gate round 4 at 69a1ea4 (quality PASS; security FIX, low)
+
+- [x] T021 Test red first under Python 3.11 at 69a1ea4:
+  `test_a_cwd_past_path_max_or_below_an_unreadable_workspace_folder_never_raises` (ENAMETOOLONG)
+- [x] T022 The `config.toml` checks are `os.path.isfile`, and the `.wuwei/` scans are `os.path.isdir`. On 3.11 the
+  final scan raised for the deep cwd as well, at main too. Runtime 3,955 lines (+6)
+- [x] T023 Mutants under 3.11, one at a time on both copies: restoring `Path.is_file` on the boundary or
+  `Path.is_dir` on the final scan is killed. The earlier mutants stay killed. 3.11: test_ledger, test_setup,
+  test_charters 311 passed, 1 skipped. The 29-layout probe moves the same 10 rows
