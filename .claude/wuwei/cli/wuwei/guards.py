@@ -487,8 +487,8 @@ def pre_tool(root, payload):
             return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
                         'and plan: take any wording). Use the exact shape: "exception: '
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
-                        '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
-                        '<what breaks>. Announced at <link>. Proceed?".')
+                        '"owner review: owner/repo#n at <sha7>. <question>" or, before an announcement, "breaking: owner/repo#n at <sha7>: '
+                        '<what changes>. Treat as breaking?", then "breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?".')
         known = ws.answers(root)[0]
         shown = all(i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')  # else plan: is asked again
         if again := [known[k] for q in questions if (k := ' '.join(q.casefold().split())) in known and (shown or k[:5] != 'plan:')]:
