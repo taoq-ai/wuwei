@@ -22,7 +22,7 @@ def _ref(text):
 
 def cmd_plan(args):
     root = _root()
-    auto = 'auto-approve' in ws.config(root)['allow']  # the owner's setting: items with a goal start without a plan: question (#1291)
+    auto = 'auto-approve' in ws.config(root)['allow'] and {g.upper() for g in view.goals(root)} - set(view.goal_status(root)[1])  # open goals (#1291)
     if args.action == 'add' and args.source:
         for item in plan.add_from(root, args.source):
             print(f'{item["id"]} added with score {item["score"]}')
@@ -43,7 +43,7 @@ def cmd_plan(args):
         plan.mark(root, args.id, status, args.reason or '')
         print(f'{args.id} {status}')
     elif args.action == 'view':
-        ids = auto and plan.approve(root, 'auto-approve', view.render(root)[2])
+        ids = auto and plan.approve(root, 'auto-approve', view.render(root)[2], auto)
         path, summary, line = view.write(root)
         if args.html:
             print(view.render(root)[0])
@@ -76,7 +76,7 @@ def cmd_plan(args):
                   f'{item.get("goal") or "":<5} {item.get("repo") or ""}  {item["title"]}')  # a null field prints blank (#1209)
         if not rows:
             print('the plan is empty: run /wuwei-run')
-    if args.action == 'add' and auto and (ids := plan.approve(root, 'auto-approve', view.render(root)[2])):
+    if args.action == 'add' and auto and (ids := plan.approve(root, 'auto-approve', view.render(root)[2], auto)):
         print(f'Auto-approved (allow holds auto-approve): {", ".join(ids)}')
 
 

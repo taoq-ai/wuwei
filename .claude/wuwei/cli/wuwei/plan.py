@@ -165,11 +165,11 @@ def followup(root, title, repo, goal, why):
     return item
 
 
-def approve(root, answer, line=''):
+def approve(root, answer, line='', goals=()):
     """The owner approved the plan as shown: every open item is approved. With the view line, allow = ["auto-approve"]
-    approved it: each waiting item with a goal, since scope is the owner's, and no row when none waits (#1291)."""
+    approved each waiting item on one of goals (goals.md's open goals, upper case): any other label is the owner's (#1291)."""
     rows = items(root)
-    ids = [row['id'] for row in rows if row.get('status', 'open') == 'open' and not (line and (row.get('approved') or str(row.get('goal') or 'unplanned').lower() == 'unplanned'))]
+    ids = [row['id'] for row in rows if row.get('status', 'open') == 'open' and not (line and (row.get('approved') or str(row.get('goal')).upper() not in goals))]
     for row in rows:
         if row['id'] in ids:
             row['approved'] = True

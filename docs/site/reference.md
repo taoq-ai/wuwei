@@ -38,6 +38,7 @@
 `.wuwei/config.toml` has seven keys. Everything else is discovered or part of the process. Only your own session changes it and
 `.wuwei/plan.json` (`wuwei config <key> <value>`, the `wuwei plan` actions that write, an edit or a redirect); a seat reads
 them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refused any write, so it cannot change its own gates.
+With `auto-approve` in `allow`, `wuwei plan view` also approves each waiting item on an open goal of `.wuwei/goals.md`, from any session.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -47,7 +48,7 @@ them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refuse
 | `tracker` | `github` | where issues live |
 | `telemetry` | `true` | local tool-call traces |
 | `models` | `{}` | your rows over the [model table](concepts/models.md): `"<role>[ <tier>]" = "<model> <effort>"`; set with `wuwei config models "builder light=opus medium"` |
-| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. `auto-approve` lets `wuwei plan view` and `wuwei plan add` approve each open item that has a goal without a `plan:` question; each approval is a `plan.approved` ledger row with `auto: true` and the view line, which `wuwei report` lists, and an item with no goal still waits for you. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list, so name both to keep both: `wuwei config allow "admin-merge, auto-approve"` writes `allow = ["admin-merge", "auto-approve"]` |
+| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. `auto-approve` lets `wuwei plan view` and `wuwei plan add` approve each open item on an open goal (a heading of `.wuwei/goals.md` you have not ruled met) without a `plan:` question; each approval is a `plan.approved` ledger row with `auto: true` and the view line, which `wuwei report` lists, and an item on any other goal label still waits for you. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list, so name both to keep both: `wuwei config allow "admin-merge, auto-approve"` writes `allow = ["admin-merge", "auto-approve"]` |
 
 ## Files
 

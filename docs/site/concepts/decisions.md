@@ -36,7 +36,7 @@ A question reaches you only when it starts with its class:
 | `infra:` | an infrastructure change |
 | `owner review: owner/repo#n at <sha7>` | a change under your `owner_paths` |
 | `exception: owner/repo#n at <sha7>: <gap>` | accepting one safety gap (tests, gates, CI, threads) at one head |
-| `plan:` | approving the plan view at the end of a plan pass (not asked for items with a goal when `allow` holds `auto-approve`) |
+| `plan:` | approving the plan view at the end of a plan pass (not asked for items on an open goal when `allow` holds `auto-approve`) |
 | `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?` | shipping a [breaking change](evidence.md#breaking-changes) (a major), after its announcement |
 
 Any other question is sent back to the model: decide it, record the assumption, go on. The model

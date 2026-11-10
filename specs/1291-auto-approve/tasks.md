@@ -5,3 +5,4 @@
 - [x] T003 plan.approve takes the view line; __main__ plan view and plan add call it when `auto-approve` is in allow; report lists the rows; mirror to .claude/wuwei/
 - [x] T004 Charters (planner.md, _way.md), skills/wuwei-run/SKILL.md and its vendored copy, docs (reference, design, decisions); agents build
 - [x] T005 Run the touched tests, tests/test_charters.py, tests/test_setup.py and the full suite green; count the runtime lines
+- [x] T006 Fix round 1 (arch at a2eb3a6): add `none`, `n/a`, `-`, a blank, `G-99`, a met goal and a lowercase `g-1` to the plan add test, and a cached-board read before and after the auto approval; run red (2 failed: the typed labels were approved, approve took no goals); approve only items on an open goal of goals.md, passed in from __main__; the report's own Auto-approved section; plan.md, spec, charters, skill and docs say open goal

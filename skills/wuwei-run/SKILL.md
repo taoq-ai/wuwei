@@ -53,4 +53,4 @@ queue; this pass adds, drops or re-ranks.
    line (the owner put `auto-approve` in `allow`), every open item is approved: ask nothing.
 10. Start the approved work as the planner charter says: highest score first, under the WIP limit
    and the seat ceiling, none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
-   until the next view is approved; with `auto-approve`, `wuwei plan add` approves an item with a goal at once.
+   until the next view is approved; with `auto-approve`, `wuwei plan add` approves an item on an open goal of goals.md at once.

@@ -19,8 +19,8 @@ what you produced and says what is still missing (`wuwei status`, `wuwei evidenc
   (unless the owner sets `allow = ["admin-merge"]`) and protection writes; secrets in outward
   calls; ledger edits; forged hook calls; questions the process answers; a PR opened ready, marked
   ready or given reviewers before its gates pass.
-- With `auto-approve` in the owner's `allow`, the plan view and plan add approve items with a
-  goal and print no `Ask:` line: ask no `plan:` question then. Every other class still asks.
+- With `auto-approve` in the owner's `allow`, the plan view and plan add approve items on an
+  open goal of `goals.md`; when the view prints no `Ask:` line, ask no `plan:` question. Every other class still asks.
 - A problem that breaks a repository for everyone: `wuwei andon owner/repo --reason "..."`.
 - Someone waiting on a reply: `wuwei owe <thread link> "<what>" --who <name>`; a send into the
   thread closes it.
