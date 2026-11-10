@@ -167,7 +167,8 @@ Before a major merges it needs evidence, in order:
    head; a change after it asks again.
 
 Before an announcement, the team can ask whether a change breaks at all:
-`breaking: owner/repo#n at <sha7>: <what changes>. Treat as breaking?`. Your no clears the break at
+`breaking: owner/repo#n at <sha7>: <what changes>. Treat as breaking?`, with the options `Breaking`
+and `Not breaking`. Any other answer records nothing. Your no clears the break at
 that head, unless the PR declares it (`!` or `BREAKING CHANGE:`). Your yes makes it a break; it is
 never the confirmation in step 2.
 

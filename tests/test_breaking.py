@@ -133,9 +133,9 @@ def test_a_classification_yes_never_stands_in_for_the_proceed(root, fake):
     pr = make_pr(body='WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/v1-retired')
     fake.prs['42'] = pr
     gates(root)
-    hook.handle(root, 'PostToolUse', answered(root, [CLASSIFY], {CLASSIFY: 'Yes, it is breaking'}))
+    hook.handle(root, 'PostToolUse', answered(root, [CLASSIFY], {CLASSIFY: 'Breaking (Recommended)'}))
     assert ws.rows(root, 'ruling')[-1]['data'] == {'kind': 'breaking', 'breaking': True, 'pr': 'acme/app#42', 'head': 'aaaaaaa',
-                                                   'approved': False, 'question': CLASSIFY, 'answer': 'Yes, it is breaking'}
+                                                   'approved': False, 'question': CLASSIFY, 'answer': 'Breaking (Recommended)'}
     assert texts(root)[0].startswith('breaking change needs the owner\'s confirmation')  # the yes made it breaking
     hook.handle(root, 'PostToolUse', answered(root, [PROCEED], {PROCEED: 'Proceed'}))
     assert texts(root) == []
@@ -175,7 +175,9 @@ def ask(root, question, answer):
     ('No', False), ('no.', False), ('Not breaking', False), ('Non-breaking (Recommended)', False),
     ('Yes', True), ('Breaking (Recommended)', True), ('breaking', True),
     ('It breaks', None), ('Y', None), ('Sure', None), ('Cancel', None), ('Skip', None), ('Hold', None),
-    ('Other: not sure', None), ('Not sure', None), ('None of these', None), ('Treat as breaking', None)])
+    ('Other: not sure', None), ('Not sure', None), ('None of these', None), ('Treat as breaking', None),
+    ('No idea', None), ('No opinion, ask arch', None), ('No, but it breaks', None), ('Yes, but ask arch', None),
+    ('Not breaking (Recommended)', False), ('Breaking (recommended).', True), ('NO!', False)])
 def test_only_an_explicit_answer_classifies(root, fake, answer, breaking):
     arch_yes(root, fake)
     rows = ask(root, CLASSIFY, answer)
@@ -195,6 +197,7 @@ def test_only_an_explicit_answer_classifies(root, fake, answer, breaking):
     'breaking: acme/app#42 at aaaaaaa: drops v1 export. Proceed?',
     'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at <link>. Proceed?',
     'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Treat as breaking? Proceed?',
+    'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed? Treat as breaking?',
 ])
 @pytest.mark.parametrize('answer', ['No', 'Yes', 'Proceed'])
 def test_a_breaking_question_of_neither_shape_records_nothing(root, fake, question, answer):
@@ -225,3 +228,10 @@ def test_a_proceed_no_keeps_the_confirmation_gap(root, fake, answer, found):
     arch_yes(root, fake, 'WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/v1-retired')
     assert ask(root, PROCEED, answer)[-1]['approved'] is (answer == 'Proceed')
     assert [t[:46] for t in texts(root) if t.startswith('breaking')] == found
+
+
+def test_an_owner_review_naming_treat_as_breaking_is_an_owner_review(root):
+    question = 'owner review: acme/app#42 at aaaaaaa. Treat as breaking?'
+    hook.handle(root, 'PostToolUse', answered(root, [question], {question: 'No'}))
+    assert ws.rows(root, 'ruling')[-1]['data'] == {'pr': 'acme/app#42', 'head': 'aaaaaaa', 'approved': False,
+                                                   'question': question, 'answer': 'No'}
