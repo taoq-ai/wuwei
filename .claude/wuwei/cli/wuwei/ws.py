@@ -36,14 +36,14 @@ SESSIONS = PROJECTS.parent.parent / '.codex' / 'sessions'
 
 def find(start=None):
     """The directory holding .wuwei/, searching upward from start, or None; a linked git worktree defers to its main checkout."""
-    path = Path(start or os.getcwd()).resolve()
-    for candidate in (path, *path.parents):
+    path, read = Path(start or os.getcwd()).resolve(), lambda f: f.read_text(encoding='utf-8') if f.is_file() else ''  # never a FIFO
+    for candidate in (path, *path.parents):  # one pass, no recursion: the nearest worktree .git file names its main checkout
         with contextlib.suppress(OSError, ValueError):  # the .git file names the worktree's gitdir; its commondir is the main .git
-            gitdir = candidate / (candidate / '.git').read_text(encoding='utf-8').removeprefix('gitdir:').strip()
-            if (common := (gitdir / (gitdir / 'commondir').read_text(encoding='utf-8').strip()).resolve()).name == '.git' and common.is_dir():
-                return find(common.parent)  # a main .git is a folder, so this recurses once
-        if (candidate / DIR).is_dir():
-            return candidate
+            gitdir = candidate / read(candidate / '.git').removeprefix('gitdir:').strip()
+            if (common := (gitdir / read(gitdir / 'commondir').strip()).resolve()).name == '.git':
+                path = next((c for c in common.parents if (c / DIR).is_dir()), candidate.parent)  # else the search goes on above the worktree
+                break
+    return next((c for c in (path, *path.parents) if (c / DIR).is_dir()), None)
 
 
 def version():

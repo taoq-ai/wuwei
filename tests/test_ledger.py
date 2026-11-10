@@ -309,7 +309,8 @@ def test_a_linked_worktree_resolves_to_its_main_checkouts_workspace(root, tmp_pa
     from wuwei import __main__, hook
     linked = _worktree(root, tmp_path_factory.mktemp('wt') / 'linked')
     write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}])
-    assert ws.find(linked) == ws.find(linked / 'src') == root
+    (linked / 'src' / ws.DIR / 'verdicts').mkdir(parents=True)  # a stray in a worktree subfolder loses too
+    assert ws.find(linked) == ws.find(linked / 'src') == ws.find(root) == root
     monkeypatch.chdir(linked / 'src')
     __main__.main(['plan', 'show', 'I-1'])
     assert '"id": "I-1"' in capsys.readouterr().out
@@ -325,3 +326,47 @@ def test_a_worktree_with_no_workspace_above_its_main_checkout_and_a_plain_folder
     linked = _worktree(main, tmp_path_factory.mktemp('wt') / 'linked')
     assert ws.find(linked) is None and ws.find(linked / 'src') is None
     assert ws.find(tmp_path_factory.mktemp('outside')) is None
+
+
+def _forge(folder, gitdir, commondir):  # a .git file and gitdir a seat could write by hand
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / '.git').write_text(f'gitdir: {gitdir}\n')
+    gitdir.mkdir(parents=True, exist_ok=True)
+    (gitdir / 'commondir').write_text(f'{commondir}\n')
+
+
+def test_a_redirect_to_a_main_checkout_with_no_workspace_keeps_the_enclosing_workspace(root, tmp_path_factory):
+    empty = tmp_path_factory.mktemp('empty')
+    (empty / '.git').mkdir()
+    _forge(root / 'cli', root / 'cli' / 'g', empty / '.git')  # a planted .git file in a workspace subfolder
+    (root / 'cli' / ws.DIR / 'verdicts').mkdir(parents=True)
+    other = _worktree(tmp_path_factory.mktemp('other'), root / 'wt')  # another repository's worktree inside the workspace
+    assert ws.find(root / 'cli') == ws.find(other) == ws.find(other / 'src') == root
+
+
+def test_the_nearest_worktree_names_the_workspace(root, tmp_path_factory):
+    far = tmp_path_factory.mktemp('far')
+    (far / ws.DIR).mkdir()
+    (far / '.git').mkdir()
+    outer = tmp_path_factory.mktemp('outer')
+    _forge(outer, outer / 'g', far / '.git')  # an outer worktree of another workspace
+    assert ws.find(outer) == far and ws.find(_worktree(root, outer / 'inner') / 'src') == root
+
+
+def test_a_forged_commondir_loop_ends_at_the_enclosing_workspace(root):
+    _forge(root / 'p', root / 'p' / 'g', root / 'p' / 'sub' / '.git')
+    (root / 'p' / 'sub' / '.git').mkdir(parents=True)  # the commondir names a .git folder below the forged file
+    assert ws.find(root / 'p' / 'sub') == ws.find(root / 'p') == root
+
+
+@pytest.mark.skipif(not hasattr(os, 'mkfifo'), reason='no FIFOs on this platform')
+@pytest.mark.parametrize('where', ['.git', 'commondir'])
+def test_a_fifo_git_file_or_commondir_never_blocks_find(root, where):
+    _forge(root / 'sub', root / 'sub' / 'g', root / '.git')
+    target = root / 'sub' / ('.git' if where == '.git' else 'g/commondir')
+    target.unlink()
+    os.mkfifo(target)
+    read = threading.Thread(target=lambda: setattr(read, 'found', ws.find(root / 'sub')), daemon=True)
+    read.start()
+    read.join(2)
+    assert getattr(read, 'found', None) == root

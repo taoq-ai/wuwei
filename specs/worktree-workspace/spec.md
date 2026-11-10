@@ -23,17 +23,30 @@ Outside: a `WUWEI_ROOT` variable, importing rows from a worktree's stray ledger,
 
 ## How this fails
 
-1. A forged `.git` file sends the search to a folder that redirects back, and the hook recurses until it crashes.
-   Held: only a common dir that is a folder named `.git` redirects, and a main `.git` is a folder, so one step.
-2. A worktree whose main checkout has no workspace silently picks an enclosing, unrelated `.wuwei/`. Held: it
-   resolves to None.
-3. A submodule's `.git` file (no `commondir`) or an unreadable `.git` raises out of `find`. Held: OSError and
-   ValueError fall through to the normal search.
+Round 1 called 1 and 2 held. The gates proved both wrong and found 3 and 4. Round 2 closes each one (tasks.md
+Phase 4).
+
+1. A forged `.git` file whose commondir names a `.git` folder below it made the old recursive `find` loop until
+   RecursionError, so PreToolUse exited 2 on every call. Held now: one pass, no recursion. The pass finds the
+   nearest worktree `.git` file, then scans upward once from that main checkout.
+2. A redirect to a main checkout with no workspace returned None, so every hook skipped its doors. The cases were
+   a forged nested worktree, a `.git` file planted in a workspace subfolder, and another repository's worktree
+   inside the workspace. Held now: the search goes on above the worktree and reaches the enclosing workspace.
+3. A FIFO at `.git` or `commondir` hung `read_text`. Held now: each is read only when `is_file()`.
+4. A `.wuwei/` in a worktree subfolder won over the redirect. Held now: the worktree `.git` file is found before
+   any `.wuwei/` is checked.
+5. A submodule's `.git` file (no `commondir`) or an unreadable `.git` raises out of `find`. Held: a missing file
+   reads as empty, and OSError and ValueError fall through to the normal search.
+
+Residual, as on main: a forged `.git` can still point at a workspace the seat made, or at another real
+workspace. The name-based ledger and config guards still deny writes in both. A bare-repository worktree or a
+separate-git-dir checkout keeps the old search, because its common dir is not named `.git`.
 
 ## Requirements
 
-- FR-1: `find` reads `<candidate>/.git` as a file, its `gitdir:` path, and that gitdir's `commondir`, with no git
-  process.
-- FR-2: a resolved common dir named `.git` that is a folder restarts the search at its parent.
-- FR-3: every other case keeps today's upward search for `.wuwei/`.
+- FR-1: `find` reads `<candidate>/.git` and the gitdir's `commondir` only when each is a regular file, and spawns
+  no git process.
+- FR-2: the nearest candidate whose resolved common dir is named `.git` decides. The answer is the nearest
+  `.wuwei/` at or above that main checkout. With none, the search goes on above the worktree.
+- FR-3: with no worktree on the path, today's upward search for `.wuwei/` applies.
 - FR-4: the runtime stays within +6 lines; the vendored copy matches.

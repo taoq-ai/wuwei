@@ -13,14 +13,18 @@
 
 ## Design
 
-1. In the upward loop, before the `.wuwei/` check, read the `.git` file and the gitdir's `commondir` under
-   `contextlib.suppress(OSError, ValueError)`.
-2. When the resolved common dir is named `.git` and is a folder, return `find(common.parent)`.
-3. Copy to `.claude/wuwei/cli/wuwei/ws.py`. One sentence in SECURITY.md under Hooks.
+1. One pass up from start. At each candidate, read `.git` and the gitdir's `commondir` only when each is a
+   regular file, under `contextlib.suppress(OSError, ValueError)`.
+2. At the first candidate whose resolved common dir is named `.git`, the scan starts at the nearest `.wuwei/` at
+   or above the main checkout. With none, it starts at the worktree's parent. The pass stops there.
+3. Return the nearest `.wuwei/` from that point upward, or None. No recursion.
+4. Copy to `.claude/wuwei/cli/wuwei/ws.py`. One sentence in SECURITY.md under Hooks.
 
 ## Tests
 
 `tests/test_ledger.py`, real git worktrees made under the pytest base temp:
 - the worktree and a subfolder resolve to the workspace; `plan show` via `__main__.main`; `hook.main` with the
   worktree as payload cwd hands `handle` the workspace root and its `owner_paths`;
-- a worktree whose main checkout has no workspace, and a plain folder, resolve to None.
+- a worktree whose main checkout has no workspace and nothing above, and a plain folder, resolve to None;
+- round 2: a planted `.git` in a workspace subfolder, another repository's worktree inside the workspace, a
+  forged commondir loop, FIFO `.git` and `commondir`, and the nearest of two worktrees.
