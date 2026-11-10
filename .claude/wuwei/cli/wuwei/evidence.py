@@ -420,13 +420,15 @@ def breaking_gaps(root, ref, pr, item_id):
         ours = v['ref'].lower() in (ref.lower(), repo.lower())  # another PR's yes holds only on this line: a squash leaves it (#1292)
         if ours and newer(root, repo, v, said, head) or v['breaking'] and (ours or ancestor(root, repo, v['head'], head)):
             said = v
-    if not (declared or said and said['breaking']):
+    rulings = [r['data'] for r in ws.rows(root, 'ruling') if r['data'].get('kind') == 'breaking' and r['data'].get('pr') == ref
+               and head.startswith(r['data'].get('head') or '-')]
+    owner = [r['breaking'] for r in rulings if 'breaking' in r][-1:]  # the owner's latest classification at this head
+    if not (declared or (owner[0] if owner else said and said['breaking'])):
         return []
     if not re.search(r'^Announcement:[ \t]*https?://[^\s/?#]\S*[ \t\r]*$', body, re.M):  # one host char: linear
         return [gap('breaking change without an announcement: add "Announcement: <http(s) URL of the published client '
                     'communication, release note or migration guide>", the URL alone on its line, without brackets')]
-    if any(r['data'].get('kind') == 'breaking' and r['data'].get('approved') and r['data'].get('pr') == ref
-           and head.startswith(r['data'].get('head') or '-') for r in ws.rows(root, 'ruling')):
+    if any(r.get('approved') and 'breaking' not in r for r in rulings):
         return []
     return [gap(f'breaking change needs the owner\'s confirmation: ask "breaking: {ref} at {head[:7]}: <what breaks>. '
                 'Announced at <link>. Proceed?"', owner=True)]

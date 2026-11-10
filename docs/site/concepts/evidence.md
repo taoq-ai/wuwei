@@ -166,6 +166,11 @@ Before a major merges it needs evidence, in order:
    `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. It binds to that
    head; a change after it asks again.
 
+Before an announcement, the team can ask whether a change breaks at all:
+`breaking: owner/repo#n at <sha7>: <what changes>. Treat as breaking?`. Your no clears the break at
+that head, unless the PR declares it (`!` or `BREAKING CHANGE:`). Your yes makes it a break; it is
+never the confirmation in step 2.
+
 **Why:** a break nobody announced is an outage for someone else. The team does the work of finding
 and announcing it; you decide whether it ships. A major that is not one costs clients an upgrade
 review for nothing, so a fix of a documented rule ships as a patch, with release notes.

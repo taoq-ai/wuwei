@@ -114,3 +114,45 @@ def test_a_breaking_question_without_its_pr_is_refused(root):
     payload = {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
                'tool_input': {'questions': [{'question': 'breaking: we drop v1. Proceed?'}]}}
     assert 'owner/repo#n at <sha7>' in guards.pre_tool(root, payload)['reason']
+
+
+CLASSIFY = 'breaking: acme/app#42 at aaaaaaa: drops v1 export. Treat as breaking?'
+PROCEED = 'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed?'
+
+
+def test_the_classification_question_passes_and_the_hint_names_it(root):
+    ask = lambda q: guards.pre_tool(root, {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
+                                           'tool_input': {'questions': [{'question': q}]}})
+    assert ask(CLASSIFY) is None
+    reason = ask('breaking: is v1 export breaking?')['reason']
+    assert '"breaking: owner/repo#n at <sha7>: <what changes>. Treat as breaking?"' in reason and 'Proceed?' in reason
+
+
+def test_a_classification_yes_never_stands_in_for_the_proceed(root, fake):
+    standard(root)
+    pr = make_pr(body='WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/v1-retired')
+    fake.prs['42'] = pr
+    gates(root)
+    hook.handle(root, 'PostToolUse', answered(root, [CLASSIFY], {CLASSIFY: 'Yes, it is breaking'}))
+    assert ws.rows(root, 'ruling')[-1]['data'] == {'kind': 'breaking', 'breaking': True, 'pr': 'acme/app#42', 'head': 'aaaaaaa',
+                                                   'approved': False, 'question': CLASSIFY, 'answer': 'Yes, it is breaking'}
+    assert texts(root)[0].startswith('breaking change needs the owner\'s confirmation')  # the yes made it breaking
+    hook.handle(root, 'PostToolUse', answered(root, [PROCEED], {PROCEED: 'Proceed'}))
+    assert texts(root) == []
+
+
+@pytest.mark.parametrize('title, head, found', [
+    ('feat: change 42', HEAD, []),  # the owner's no clears the arch yes at this head
+    ('feat: change 42', 'c' * 40, ['breaking change without an announcement']),  # a new head: the arch yes holds again
+    ('feat!: change 42', HEAD, ['breaking change without an announcement']),  # the PR declares its own break
+])
+def test_a_classification_no_clears_the_breaking_gap_at_its_head(root, fake, title, head, found):
+    standard(root)
+    pr = make_pr(head=head)
+    pr['title'] = title
+    fake.prs['42'] = pr
+    attest(root, 'arch', 'yes: removes the --format flag', head=head)
+    attest(root, 'quality', head=head)
+    attest(root, 'security', head=head)
+    hook.handle(root, 'PostToolUse', answered(root, [CLASSIFY], {CLASSIFY: 'No'}))
+    assert [t[:39] for t in texts(root) if t.startswith('breaking')] == found

@@ -506,9 +506,10 @@ def _answers(root, kept):
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
         yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
         found = re.match(r'\s*(?i:owner review|(breaking)):\s*' + REF.pattern, question)
-        if answer and found and found[2]:
-            ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), 'pr': f'{found[2]}#{found[3]}',
-                                       'head': found[4], 'approved': yes, 'question': question, 'answer': answer})
+        if answer and found and found[2]:  # a breaking: question without "Announced at" classifies, never approves (#1294)
+            asks = found[1] and not re.search(r'(?i)announced at', question)
+            ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), **({'breaking': yes} if asks else {}), 'pr': f'{found[2]}#{found[3]}',
+                                       'head': found[4], 'approved': yes and not asks, 'question': question, 'answer': answer})
         refs, gap_text = exception_refs(question)
         if refs and gap_text and answer:
             for repo, number, head in refs:
