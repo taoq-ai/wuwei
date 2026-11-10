@@ -76,13 +76,14 @@ OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gat
               'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat, head, grep, jq, diff.')
 READER_ONLY = ('from a seat, a command naming .wuwei, its config, plan, ledger or canary, or run inside .wuwei, passes only for a reading program: '
                f'{", ".join(sorted(READERS))}. A wrapper (sudo, env, timeout) counts as the program. A record path in a title or -m message counts too: '
-               "drop it, or pass the text with -F or --body-file. The config and the plan change in only the owner's own session: ask the owner.")
+               "drop it, or pass the text with -F or --body-file. A test fixture's .wuwei: write its files with the Write tool, or make them in the test's "
+               "own code. The config and the plan change in only the owner's own session: ask the owner.")
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
-def records(path, below=LEDGER, cap=512, name=ws.DIR):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
+def records(path, below=LEDGER, cap=512, name=ws.DIR, bare=True):  # .wuwei (or name), or what lies below it (None: anything), as sh expands it
     win = windows(path)  # a backslash is / on Windows and a name character elsewhere: either reading that names it counts
-    return win != path and _records(win, below, cap, name) or _records(path, below, cap, name)
+    return win != path and _records(win, below, cap, name, bare) or _records(path, below, cap, name, bare)
 
 
 def windows(path):  # as Windows reads a path: \ is /, a drive-relative X: goes, and a name drops its :stream, trailing dots and spaces
@@ -95,13 +96,13 @@ def named(n, p):  # p names n as sh globs it, in any case (macOS and Windows), o
     return fnmatchcase(n, p) or fnmatchcase(n, p.lower()) or bool(short) and n.replace('.', '').upper().startswith(short[1].upper())
 
 
-def _records(path, below, cap, name):
+def _records(path, below, cap, name, bare):  # bare False: .wuwei itself only in a spelling with more than . * ? (a regex .* is no path)
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
-        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name) for a in alts)
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2), name, bare) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
-    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
+    return any((p[:1] == '.' or '~' in p) and named(name, p) and (below is None or (bare or bool(re.search(r'[^.*?]', p))) if i + 1 == len(parts) else below is None or any(  # * ? [..] skip a leading dot
         named(n, parts[i + 1]) for n in below)) for i, p in enumerate(parts))
 
 
@@ -427,10 +428,10 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
         if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED + OWNER_ONLY * seat)
-        if seat and program not in READERS and (len(lands) > 64 or any(records(d, LEDGER + own) or any(records(join(d, b), LEDGER + own) for a in words for b in (
-                a, a.rpartition('=')[2], *(a[i:] for i in range(2, len(re.match(r'-?\w*', a)[0]) + 1) if a[:1] == '-'))) for d in lands)):  # --o=v, -ov, -xov
+        if seat and program not in READERS and (len(lands) > 64 or any(records(d, LEDGER + own) or any(records(join(d, b), LEDGER + own, bare=False) for a in words for b in (
+                a, a.rpartition('=')[2], *(a[i:] for i in range(2, len(re.match(r'-?\w*', a)[0]) + 1)[-13:] if a[:1] == '-'))) for d in lands)):  # -ov, -xov: a name starts in the last 12
             return deny(READER_ONLY)
-        lands |= {join(d, a) for d in lands for a in argv[1:]} if program in ('cd', 'pushd') and len(lands) <= 64 else set()
+        lands |= {join(d, a) for d in lands for a in argv[1:] if '$' not in a or records(a, None)} if program in ('cd', 'pushd') and len(lands) <= 64 else set()  # cd $X: unread
         if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
                 held and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):  # ln, mv, cp, find, python can stage a link
             return deny(HARNESS)

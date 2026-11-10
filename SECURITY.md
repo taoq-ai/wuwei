@@ -132,7 +132,10 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - A records write through a path the guards do not see: a symlink, a path a program builds at
   run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), in the owner's session a writer
   not in the guards' list (`install`; a seat's non-reader is refused), `cd` to a variable, `cd -`, or a `cd` that `CDPATH` sends elsewhere, paths fed by a pipe (`find .wuwei | xargs rm`), and
-  globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
+  globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`). For a
+  seat's reader rule, a glob made only of `.`, `*` and `?` that ends the path (`rsync -a x/ .*`,
+  `install x .??????`) does not count as `.wuwei`, so a regex `.*` in a sed or jq string passes;
+  the writer list still reads it (`rm -rf .*`, `cp x .*`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
 - Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
