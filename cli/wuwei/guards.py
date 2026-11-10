@@ -292,7 +292,7 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'merge']:
         valued = (VALUED | PR_VALUED) - {'m', 'r'}  # merge's -m and -r are bools; the last --admin or --auto pflag reads wins
         on = lambda name: ([v in (None, *TRUE) for n, v in _flags(args[2:], valued) if n == name] or [False])[-1]  # noqa: E731
-        if on('admin'):
+        if on('admin') and 'admin-merge' not in ws.config(root)['allow']:  # the owner's allow key opens --admin to the door
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
         return merge_door(root, *_repo_number(args[2:], cwd, valued), auto=on('auto'))
     if args[:2] == ['repo', 'delete']:

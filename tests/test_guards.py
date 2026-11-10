@@ -1782,6 +1782,21 @@ def test_merge_reads_a_false_or_swallowed_admin_as_off(root, fake):
     assert guards.bash(root, 'gh pr merge 5 -R o/r --auto -t --admin', '/repo', 's1') is None  # -t's subject
 
 
+def test_admin_merge_meets_the_merge_door_only_when_the_owner_allows_it(root, fake, monkeypatch):
+    """#1290: allow = ["admin-merge"] in .wuwei/config.toml turns the --admin deny into the merge door; without it, as today."""
+    from test_evidence import attest
+    monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    fake.prs['5'] = {**make_pr(number=5), 'mergeableState': 'blocked'}
+    attest(root, 'quality', pr='o/r#5')
+    assert '--admin' in guards.bash(root, 'gh pr merge 5 --admin', '/repo', 's1')['reason']
+    ws.set_config(root, 'allow', 'admin-merge')
+    assert guards.bash(root, 'gh pr merge 5 --admin', '/repo', 's1') is None
+    assert ws.rows(root, 'merge.checked')[-1]['data']['pr'] == 'o/r#5'
+    fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': 'FAILURE', 'status': 'COMPLETED'}]
+    assert '- CI failing: test' in guards.bash(root, 'gh pr merge 5 --admin', '/repo', 's1')['reason']
+
+
 MARK = {'query': 'mutation{markPullRequestReadyForReview(input:{pullRequestId:"X"}){clientMutationId}}'}
 
 
@@ -2503,7 +2518,7 @@ OWNED_WRITES = [  # item config-door: a seat's write to .wuwei/config.toml or .w
     'ln -sf x .wuwei/plan.json', 'find .wuwei/plan.json -delete', 'echo x > .wuwei//plan.json', 'echo x > .wuwei/./config.toml',
     'echo x > src/../.wuwei/plan.json', 'echo x > .wuwei/pl*.json', 'tee .wuwei/{config.toml,x}', 'echo x > .WUWEI/Plan.JSON',
     'bash -c "echo x > .wuwei/plan.json"', "echo x > $'.wuwei/plan.json'", 'echo x >$PWD/.wuwei/config.toml',
-    'wuwei config owner_paths x', "wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
+    'wuwei config owner_paths x', 'wuwei config allow admin-merge', "wuwei config models 'builder=haiku low'", 'wuwei config tiers', 'wuwei plan tier I-1 light',
     'wuwei plan add I-2 x --goal G-1', 'wuwei plan add --from c.json', 'wuwei plan done I-1 --reason x', 'wuwei plan --reason x park I-1',
     'wuwei plan drop I-1', 'wuwei plan restore I-1', 'wuwei plan run I-1 --reason x', 'wuwei plan session I-1 s2', 'wuwei plan approve',
     'python3 -m wuwei config owner_paths x', 'python3 -mwuwei plan done I-1', '/opt/wuwei/bin/wuwei plan restore I-1', 'WUWEI plan done I-1',
