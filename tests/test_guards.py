@@ -2604,7 +2604,12 @@ def test_a_seat_reads_the_records_with_a_reader(root, repo, read, path):
     'cd .wuwei && install x config.toml', 'pushd .wuwei; perl -pi -e s/a/b/ plan.json', 'cd /repo/.wuwei/ && git checkout -- config.toml',
     'cd .wuwei && touch canary', 'cd .wuwei && tar -xf /tmp/x.tar', 'cd .wuwei/verdicts && install x ../config.toml',
     'cd .wuwei/ledger && sort -o a.jsonl a.jsonl', 'cd .wuwei/verdicts && git show --output=../config.toml H', 'sudo cat .wuwei/plan.json', 'git commit -m "edit .wuwei/plan.json"',
-    'rg --pre ./x y .wuwei/plan.json', 'find .wuwei -ok rm {} ;', 'find . -fprint0 .wuwei/config.toml', 'find .wuwei -okdir rm {} ;'])
+    'rg --pre ./x y .wuwei/plan.json', 'find .wuwei -ok rm {} ;', 'find . -fprint0 .wuwei/config.toml', 'find .wuwei -okdir rm {} ;',
+    # gate round 2: a short option's glued value, and the 64-folder cap
+    'curl -o.wuwei/config.toml file:///tmp/x', 'wget -O.wuwei/plan.json u', 'sort -o.wuwei/plan.json x', 'shuf -ro.wuwei/canary x',
+    'openssl enc -in x -out.wuwei/config.toml', 'cp -t.wuwei config.toml', 'install -t.wuwei plan.json', 'cd .wuwei && sort -oconfig.toml x',
+    'cd d0 && cd d1 && cd d2 && cd d3 && cd d4 && cd d5 && cd d6 && cd /repo/.wuwei/verdicts && install x ../config.toml',
+    'cd a; cd b; cd c; cd d; cd e; cd f; cd g; cd .wuwei; perl -pi -e s/a/b/ config.toml'])
 def test_a_seat_writer_behind_a_wrapper_or_cd_is_refused(root, repo, command):
     assert OWNER_ONLY in guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'})['reason'], command
 

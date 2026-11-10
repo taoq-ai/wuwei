@@ -73,8 +73,9 @@ the Read tool. The owner's own session (no `agent_type`) keeps every one of thes
 The canary is on the records rule because the leak check looks for it: a session that rewrites or
 removes it turns that check off, so `rm` on it is refused too. From a seat, a command with a word
 naming `.wuwei` itself, the config, the plan, the ledger or the canary, run after `cd` or `pushd`
-into `.wuwei` or the ledger folder, or naming a record from the folder a `cd` reached
-(`cd .wuwei/verdicts && install x ../config.toml`), is refused unless its program is a reader: `cat`, `head`, `tail`, `grep`,
+into `.wuwei` or the ledger folder, or naming a record from a folder a `cd`, `pushd`, `-C`,
+`--chdir` or `-D` reached (`cd .wuwei/verdicts && install x ../config.toml`; past 64 such folders,
+any program), or in a short option's glued value (`-o.wuwei/plan.json`, `-t.wuwei`), is refused unless its program is a reader: `cat`, `head`, `tail`, `grep`,
 `rg`, `find`, `du`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`, `test`, `[`, `shasum`, `sha256sum`,
 `cd` or `pushd`. `rg --pre` and `find` with a write action (`-ok`, `-okdir` and `-fprint0` join
 the list above) are writers. So `install`, `rsync`, `perl -pi`, `node -e`, `touch`, `unlink`,
@@ -130,7 +131,7 @@ Known shapes they do not read on one line, reported and not yet fixed:
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
 - A records write through a path the guards do not see: a symlink, a path a program builds at
   run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), in the owner's session a writer
-  not in the guards' list (`install`; a seat's non-reader is refused), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
+  not in the guards' list (`install`; a seat's non-reader is refused), `cd` to a variable, `cd -`, or a `cd` that `CDPATH` sends elsewhere, paths fed by a pipe (`find .wuwei | xargs rm`), and
   globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.

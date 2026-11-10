@@ -271,7 +271,8 @@ reads, `wuwei config <key> [<value>]`, the `wuwei plan` actions that write the p
 and a push to `wuwei/state`, while the owner's own session keeps them all and seats keep the reads
 (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`); from a seat, any command with a word
 naming `.wuwei` itself, the config, the plan, the ledger or the canary (read from each folder a
-`cd` or `pushd` reached), or run in `.wuwei` or the ledger folder, unless its program is a reader (`cat`, `head`, `tail`, `grep`, `rg` without `--pre`,
+`cd`, `pushd`, `-C`, `--chdir` or `-D` reached, past 64 such folders any non-reader, and in a
+short option's glued value such as `-o.wuwei/plan.json`), or run in `.wuwei` or the ledger folder, unless its program is a reader (`cat`, `head`, `tail`, `grep`, `rg` without `--pre`,
 `find` without its write actions, `du`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`, `test`, `[`,
 `shasum`, `sha256sum`, `cd`, `pushd`), the words a wrapper's cut drops included, so a seat's
 `sed -n`, `git log`, `git ls-files`, a reader behind a wrapper (`sudo cat`) and a title or `-m`

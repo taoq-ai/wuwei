@@ -8,3 +8,4 @@
 - [x] T006 Fix round 1: tests for a writer behind a wrapper's cut, after cd or pushd into .wuwei, find -ok/-okdir/-fprint0, rg --pre, the reader refusal text, rg/find/du reads, cd .wuwei && ls and a seat's cache removal; run red at 641e7cd (22 failed)
 - [x] T007 Keep the words a wrapper's cut drops as their own segment; join a seat's words to each cd dir; READER_ONLY reason; find, rg and du join READERS; -ok, -okdir and -fprint0 join FIND; rg --pre is a writer
 - [x] T008 Amend docs/design.md section 7, docs/site/concepts/doors.md and SECURITY.md; re-run the probe, the route differential and the trace replay
+- [x] T009 Fix round 2: tests for a short option's glued value (curl -o.wuwei/..., cp -t.wuwei; 7 failed red) and the 64-folder cap (a mutant dropping the cap fails 2); read the value after each leading letter of a short option; CDPATH on the known-open list; docs name -C, --chdir, -D and the cap

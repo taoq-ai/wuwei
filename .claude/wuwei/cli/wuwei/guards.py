@@ -427,7 +427,8 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
         if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED + OWNER_ONLY * seat)
-        if seat and program not in READERS and (len(lands) > 64 or any(records(d, LEDGER + own) or any(records(join(d, b), LEDGER + own) for a in words for b in (a, a.rpartition('=')[2])) for d in lands)):
+        if seat and program not in READERS and (len(lands) > 64 or any(records(d, LEDGER + own) or any(records(join(d, b), LEDGER + own) for a in words for b in (
+                a, a.rpartition('=')[2], *(a[i:] for i in range(2, len(re.match(r'-?\w*', a)[0]) + 1) if a[:1] == '-'))) for d in lands)):  # --o=v, -ov, -xov
             return deny(READER_ONLY)
         lands |= {join(d, a) for d in lands for a in argv[1:]} if program in ('cd', 'pushd') and len(lands) <= 64 else set()
         if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
