@@ -1,5 +1,28 @@
 # Changelog
 
+## [5.5.0](https://github.com/taoq-ai/wuwei/compare/v5.4.0...v5.5.0) (2026-11-10)
+
+
+### Features
+
+* **ask:** ask the owner to classify a breaking change before its announcement ([#1302](https://github.com/taoq-ai/wuwei/issues/1302)) ([4e0411d](https://github.com/taoq-ai/wuwei/commit/4e0411d951f9149c19b4e6492296eeeabe7a2392))
+* **config:** an owner allow key lets admin-bypass merges meet the merge door ([#1298](https://github.com/taoq-ai/wuwei/issues/1298)) ([3a1dc3c](https://github.com/taoq-ai/wuwei/commit/3a1dc3ca06767abc50ad2af057edd2fc5e23d9c1))
+* **plan:** auto-approve plan items with a goal when the owner allows it ([#1301](https://github.com/taoq-ai/wuwei/issues/1301)) ([6208b2d](https://github.com/taoq-ai/wuwei/commit/6208b2d84c94266f1804914141123ceca8fae967))
+* **view:** add an AI build estimate beside the size-point build hours ([#1303](https://github.com/taoq-ai/wuwei/issues/1303)) ([7694048](https://github.com/taoq-ai/wuwei/commit/7694048794f90f42618a6308693de2a5c9a85523))
+
+
+### Bug Fixes
+
+* **evidence:** scope a Breaking: verdict to the PR it names ([#1295](https://github.com/taoq-ai/wuwei/issues/1295)) ([78ef930](https://github.com/taoq-ai/wuwei/commit/78ef930781f1323bab6ea7f045dd1799e5133666))
+* **guards:** a seat's command naming the records passes only for a reader ([#1297](https://github.com/taoq-ai/wuwei/issues/1297)) ([eabb556](https://github.com/taoq-ai/wuwei/commit/eabb556a873749bdb72c22b886b591ddb0ca14e4))
+* **hook:** mask verdict files and the verdict.missing row before they sync ([#1304](https://github.com/taoq-ai/wuwei/issues/1304)) ([56c9e43](https://github.com/taoq-ai/wuwei/commit/56c9e4397c180d2ac98600c05ffa5cea440928cc))
+* **ws:** resolve a linked git worktree to its main checkout's workspace ([#1296](https://github.com/taoq-ai/wuwei/issues/1296)) ([59f84bf](https://github.com/taoq-ai/wuwei/commit/59f84bf347256ef5adf80e403de9d6d49b9d3f38))
+
+
+### Tests
+
+* **guards:** give git time in the 15000-refspec push test ([#1300](https://github.com/taoq-ai/wuwei/issues/1300)) ([34e040a](https://github.com/taoq-ai/wuwei/commit/34e040a5ccd09660ff38f21b84ba5aa0e797aab3))
+
 ## [5.4.0](https://github.com/taoq-ai/wuwei/compare/v5.3.1...v5.4.0) (2026-11-05)
 
 
