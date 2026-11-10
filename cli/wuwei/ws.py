@@ -35,9 +35,15 @@ SESSIONS = PROJECTS.parent.parent / '.codex' / 'sessions'
 
 
 def find(start=None):
-    """The directory holding .wuwei/, searching upward from start, or None."""
+    """The directory holding .wuwei/, searching upward from start, or None; a linked git worktree defers to its main checkout."""
     path = Path(start or os.getcwd()).resolve()
-    return next((candidate for candidate in (path, *path.parents) if (candidate / DIR).is_dir()), None)
+    for candidate in (path, *path.parents):
+        with contextlib.suppress(OSError, ValueError):  # the .git file names the worktree's gitdir; its commondir is the main .git
+            gitdir = candidate / (candidate / '.git').read_text(encoding='utf-8').removeprefix('gitdir:').strip()
+            if (common := (gitdir / (gitdir / 'commondir').read_text(encoding='utf-8').strip()).resolve()).name == '.git' and common.is_dir():
+                return find(common.parent)  # a main .git is a folder, so this recurses once
+        if (candidate / DIR).is_dir():
+            return candidate
 
 
 def version():

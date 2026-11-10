@@ -1,7 +1,9 @@
 import contextlib
+import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import threading
 
 import pytest
@@ -291,3 +293,35 @@ def test_the_canary_reader_never_raises_or_blocks(root, kind):
     read.start()
     read.join(2)  # a reader that opens the FIFO waits for a writer that never comes
     assert getattr(read, 'found', None) == ('wuwei-canary-1' if kind == 'text' else '')
+
+
+def _worktree(main, linked):  # a real git checkout at main and a linked worktree of it at linked
+    git = ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-C', str(main)]
+    for args in (['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'x'], ['worktree', 'add', '-q', str(linked)]):
+        subprocess.run(git + args, check=True, capture_output=True)
+    (linked / ws.DIR / 'verdicts').mkdir(parents=True)  # a stray folder a gate left with only verdicts
+    (linked / 'src').mkdir()
+    return linked
+
+
+def test_a_linked_worktree_resolves_to_its_main_checkouts_workspace(root, tmp_path_factory, monkeypatch, capsys):
+    from conftest import write_plan
+    from wuwei import __main__, hook
+    linked = _worktree(root, tmp_path_factory.mktemp('wt') / 'linked')
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open'}])
+    assert ws.find(linked) == ws.find(linked / 'src') == root
+    monkeypatch.chdir(linked / 'src')
+    __main__.main(['plan', 'show', 'I-1'])
+    assert '"id": "I-1"' in capsys.readouterr().out
+    seen = []
+    monkeypatch.setattr(hook, 'handle', lambda found, event, payload: seen.append(found))
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps({'cwd': str(linked)})))
+    hook.main('PreToolUse')
+    assert seen == [root] and ws.config(seen[0])['owner_paths'] == ['infra/**']
+
+
+def test_a_worktree_with_no_workspace_above_its_main_checkout_and_a_plain_folder_are_no_workspace(tmp_path_factory):
+    main = tmp_path_factory.mktemp('bare-main')
+    linked = _worktree(main, tmp_path_factory.mktemp('wt') / 'linked')
+    assert ws.find(linked) is None and ws.find(linked / 'src') is None
+    assert ws.find(tmp_path_factory.mktemp('outside')) is None
