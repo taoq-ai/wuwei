@@ -71,10 +71,15 @@ Reads pass: `wuwei plan show`, `wuwei plan view`, `wuwei config` alone, `wuwei s
 the Read tool. The owner's own session (no `agent_type`) keeps every one of these writes.
 
 The canary is on the records rule because the leak check looks for it: a session that rewrites or
-removes it turns that check off, so `rm` on it is refused too. The rule is a list of known
-writers, and these shapes still pass for the canary and the ledger alike (known open, follow-up
-work): `unlink`, `install`, `rsync`, `perl -pi`, `awk -i inplace`, `git checkout` or `git restore`
-of a path, `touch`, `xargs rm` fed from stdin, and `node -e`. When the canary file cannot be read
+removes it turns that check off, so `rm` on it is refused too. From a seat, a command with a word
+naming `.wuwei` itself, the config, the plan, the ledger or the canary is refused unless its
+program is a reader: `cat`, `head`, `tail`, `grep`, `jq`, `wc`, `diff`, `cmp`, `ls`, `stat`,
+`test`, `[`, `shasum`, `sha256sum`, `cd` or `pushd`. So `install`, `rsync`, `perl -pi`, `node -e`,
+`touch`, `unlink`, `git checkout` or `git restore` of a path and any other writer are refused, and
+so is a reader behind a wrapper (`sudo cat`, `env A=1 cat`, `timeout 5 cat`). In the owner's own
+session the rule is still a list of known writers, and those shapes pass for the canary and the
+ledger there. A path built at run time (`python -c` joining the name, a list `xargs rm` reads from
+a file) and a symlink to a record are not read. When the canary file cannot be read
 as UTF-8, the leak check raises and the hook shuts only the calls it reads as doors or network
 programs; that network pattern (hook.py `door`) needs whitespace after the program name, so
 `curl>o` and `curl<i` spellings pass then.

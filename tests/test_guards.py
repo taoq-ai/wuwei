@@ -2573,6 +2573,30 @@ def test_a_seat_reads_the_config_and_the_plan(root, repo, command):
     assert guards.pre_tool(root, {**bash(command), 'agent_type': 'wuwei:builder'}) is None, command
 
 
+RECORDS = ['.wuwei/config.toml', '.wuwei/plan.json', '.wuwei/ledger/a.jsonl', '.wuwei/canary']
+OTHER_WRITERS = ['install x {}', 'rsync x {}', 'perl -pi -e s/a/b/ {}', 'ruby -i -pe 1 {}', 'node -e 1 {}', 'awk -i inplace 1 {}',
+                 'patch {} p.diff', 'ditto x {}', 'ex -sc wq {}', 'vim -c wq {}', 'sort -o {} x', 'shuf -o {} x', 'curl -o {} u',
+                 'wget -O {} u', 'tar -xf x.tar {}', 'unzip x.zip {}', 'git checkout -- {}', 'git restore {}', 'git show --output={} H',
+                 'openssl enc -in x -out {}', 'xxd -r x {}', 'split x {}', 'scp h:x {}', 'uniq x {}', 'touch {}', 'unlink {}',
+                 'echo {} | xargs rm']  # the 24 writer shapes of the records-writers probe, and SECURITY.md's known open
+
+
+@pytest.mark.parametrize('path', RECORDS)
+@pytest.mark.parametrize('shape', OTHER_WRITERS)
+def test_a_seat_command_naming_the_records_passes_only_for_a_reader(root, repo, shape, path):
+    """records-writers: the rule listed writers, so 96 of 104 seat writer x target shapes passed at 8fc0d49b."""
+    assert OWNER_ONLY in guards.pre_tool(root, {**bash(shape.format(path)), 'agent_type': 'wuwei:builder'})['reason'], shape
+    if 'ledger' not in path and 'canary' not in path:
+        assert guards.pre_tool(root, bash(shape.format(path))) is None, shape  # the owner keeps every config and plan write
+
+
+@pytest.mark.parametrize('path', RECORDS)
+@pytest.mark.parametrize('read', ['cat {}', 'head -5 {}', 'tail -n1 {}', 'grep -c x {}', 'jq . {}', 'wc -l {}', 'diff {} x', 'cmp {} x',
+                                  'ls -l {}', 'stat {}', 'test -f {}', '[ -f {} ]', 'shasum {}', 'sha256sum {}'])
+def test_a_seat_reads_the_records_with_a_reader(root, repo, read, path):
+    assert guards.pre_tool(root, {**bash(read.format(path)), 'agent_type': 'wuwei:builder'}) is None, read
+
+
 @pytest.mark.parametrize('command', ["eval 'echo x >> .wuwei/ledger/a.jsonl'", 'eval -- "rm -rf .wuwei/ledger"',
                                      "eval 'bash -c \"echo x > .wuwei/ledger.jsonl\"'", 'eval rm -rf .wuwei/ledger',
                                      "eval echo x '>>' .wuwei/ledger/a.jsonl"])

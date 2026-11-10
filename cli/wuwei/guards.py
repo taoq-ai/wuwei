@@ -25,6 +25,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS, FIND = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}, {'-delete', '-exec', '-execdir', '-fprint', '-fprintf', '-fls'}
+READERS = {'cat', 'head', 'tail', 'grep', 'jq', 'wc', 'diff', 'cmp', 'ls', 'stat', 'test', '[', 'shasum', 'sha256sum', 'cd', 'pushd'}  # a seat's only programs on records
 READ = {'git', 'gh', 'wuwei', 'sed', 'find', 'eval'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
@@ -72,7 +73,7 @@ HARNESS = ("the harness's session transcripts (.claude/projects, .codex/sessions
 LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit record. The cache (.wuwei/cache) is written only by WUWEI: "
                  'its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file passes; the next read fetches it.')
 OWNER_ONLY = (" From a seat: .wuwei/config.toml and .wuwei/plan.json set the gates a change owes and who reviews it, so only the owner's own session changes "
-              'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat.')
+              'them (wuwei config <key> <value>, wuwei plan add, done, park, ..., wuwei sync, a push to wuwei/state): ask the owner. Reads pass: wuwei plan show, wuwei plan view, wuwei config, cat, head, grep, jq, diff.')
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
@@ -418,6 +419,7 @@ def bash(root, command, cwd, session, seat=False):  # seat: the payload names an
         program, words = progname(argv[0]) if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and any(re.match('-[^-]*[iI]|--i', a) for a in argv) or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE + own) for t in targets) or writer and any(records(a, (LEDGER if program == 'rm' else CACHE) + own) for a in words) or (
+                seat and program not in READERS and any(records(a, LEDGER + own) for a in words)) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED + OWNER_ONLY * seat)
         if any(harness(t, keep=True) for t in targets) or writer and any(harness(w, keep=program in ('tee', 'sed', 'truncate', 'rm')) for w in words) or (
