@@ -412,12 +412,13 @@ def uncounted(root, item_id, gates=REQUIRED['full']):
 
 
 def breaking_gaps(root, ref, pr, item_id):
-    """A breaking change (declared with ! or BREAKING CHANGE:, or an arch yes naming this PR or only its repository, no later
+    """A breaking change (declared with ! or BREAKING CHANGE:, or an arch yes on this PR, its repository or a head on its line, no later
     no cleared from a strict descendant of its head on the PR head's line) needs an announcement, then the owner's confirmation at this head."""
     body, head, repo, said = pr.get('body') or '', pr['headRefOid'], ref.split('#')[0], None
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
     for v in (v for v in verdicts(root, item_id, repo, ref) if v['gate'] == 'arch' and 'breaking' in v):  # oldest first
-        if v['ref'].lower() in (ref.lower(), repo.lower()) and (v['breaking'] or newer(root, repo, v, said, head)):  # #1292
+        ours = v['ref'].lower() in (ref.lower(), repo.lower())  # another PR's yes holds only on this line: a squash leaves it (#1292)
+        if ours and newer(root, repo, v, said, head) or v['breaking'] and (ours or ancestor(root, repo, v['head'], head)):
             said = v
     if not (declared or said and said['breaking']):
         return []
