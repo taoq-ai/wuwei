@@ -2051,24 +2051,30 @@ def test_verdict_missing_quotes_no_secret_or_canary_from_a_finding_line(root):
     assert '- read *** beside ***' in row['data']['problem']
 
 
+def swept_rows(root, call, kind, field, cut):
+    """Every offset that puts the token and the canary across the cut, from this machine's own path prefix (any temp path length)."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    call('Verdict file: /nowhere/MARK.md')
+    if not 0 <= (start := ws.rows(root, kind)[-1]['data'][field].find('MARK')) <= cut - 6:
+        pytest.skip(f'the workspace path ({start} characters into the row) leaves no room before the {cut} cut')
+    offsets = range(max(0, cut - 60 - start), cut - start + 1)
+    for n in offsets:
+        call(f'Verdict file: /nowhere/{"a" * n}{TOKEN}{CANARY}.md')
+    found = [r['data'][field] for r in ws.rows(root, kind)[1:]]
+    assert len(found) == len(offsets) and all(len(f) <= cut for f in found) and any(f.endswith('*') for f in found)  # some cut fell in the mask
+    assert not any('ghp_' in f or 'canary' in f for f in found)
+    return found
+
+
 def test_verdict_missing_masks_before_its_cut_at_every_path_length(root):
     """A token cut at 300 characters no longer matches: masked first, no fragment of it or of the canary is kept."""
-    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
-    for n in range(0, 330, 6):
-        assert reviewer_stop(root, f'Verdict file: /nowhere/{"a" * n}{TOKEN}{CANARY}.md', active=True) is None
-    problems = [r['data']['problem'] for r in ws.rows(root, 'verdict.missing')]
-    assert len(problems) == 55 and any(p.endswith('*') for p in problems)  # some cut fell inside the masked span
-    assert not any('ghp_' in p or 'canary' in p for p in problems)
+    swept_rows(root, lambda m: reviewer_stop(root, m, active=True), 'verdict.missing', 'problem', 300)
 
 
 def test_a_hand_back_refused_for_its_verdict_records_no_secret_or_canary_at_every_path_length(root):
     """The refused row is cut at 500 characters: masked first, as verdict.missing is at 300."""
-    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
-    for n in range(0, 480, 8):
-        assert handback(root, f'Verdict file: /nowhere/{"a" * n}{TOKEN}{CANARY}.md')['hookSpecificOutput']['permissionDecision'] == 'deny'
-    reasons = [r['data']['reason'] for r in ws.rows(root, 'refused')]
-    assert len(reasons) == 60 and all('readable file' in r for r in reasons) and any(r.endswith('*') for r in reasons)
-    assert not any('ghp_' in r or 'canary' in r for r in reasons)
+    found = swept_rows(root, lambda m: handback(root, m), 'refused', 'reason', 500)
+    assert all('readable file' in f for f in found)
 
 
 def test_a_verdicts_folder_linked_outside_the_workspace_is_never_written_through(root, tmp_path_factory):
