@@ -28,8 +28,8 @@ set the key (`wuwei config allow ...`) nor edit the file: the config door alread
 
 - A non-list `allow` (a bare string) read by `in` would match by substring: the config reader keeps
   only a list of strings.
-- The harness deny rule `Bash(gh pr merge --admin:*)` that `wuwei init` writes still refuses the
-  spelling `gh pr merge --admin <n>` (flag first); `gh pr merge <n> --admin` does not match it.
+- An owner's existing harness deny `Bash(gh pr merge --admin:*)` still refuses the flag-first
+  spelling. With admin-merge, init stops adding it and doctor stops asking for it; neither removes it.
 - A ruleset hold that is not a bypass the owner takes (a required review GitHub names) is no longer
   surfaced as a gap when `admin-merge` is on; GitHub's own merge then bypasses it with `--admin`.
 
@@ -38,3 +38,7 @@ set the key (`wuwei config allow ...`) nor edit the file: the config door alread
 - The owner's request for an owner setting approves the seventh key (constitution 3.6.0). Overturn
   if a key should be retired instead.
 - `allow` is omitted from config.toml when empty, as `models` is, so existing files do not change.
+- The key name `allow` keeps constitution VII ("never a parallel allow list"): it narrows WUWEI's
+  own deny and grants no harness access. `wuwei config allow X` replaces the list, so 1291's docs
+  set both names.
+- `allow` is workspace-wide: it applies to every repository in `repos`.

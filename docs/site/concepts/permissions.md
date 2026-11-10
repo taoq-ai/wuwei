@@ -8,7 +8,7 @@ Who may call which tool is decided in one place: Claude Code's own permission ru
 | Rules | Contents | Why |
 | --- | --- | --- |
 | allow | `git`, `gh`, reading, writing and searching files | everyday work should not prompt you |
-| deny | force pushes, admin merges, repository deletion, edits to the ledger | the doors, held by the harness as well as the hook |
+| deny | force pushes, admin merges (not added with `allow = ["admin-merge"]`), repository deletion, edits to the ledger | the doors, held by the harness as well as the hook |
 | ask | terraform, tofu, pulumi, kubectl and helm writes | infrastructure is your decision |
 
 Deny rules and WUWEI's hook refusals take precedence over allow rules, so allowing broadly is safe:

@@ -37,6 +37,8 @@ def test_config_reads_allow_as_a_list_of_names(root):
     assert ws.set_config(root, 'allow', 'admin-merge, auto-approve')['allow'] == ['admin-merge', 'auto-approve']
     (root / ws.DIR / 'config.toml').write_text('allow = "admin-merge"\n')
     assert ws.config(root)['allow'] == []  # only a list of names counts, never a bare string read by its letters
+    ws.set_config(root, 'allow', '')
+    assert 'allow' not in (root / ws.DIR / 'config.toml').read_text()  # an empty allow is never written
 
 
 def test_ledger_rows_end_with_lf_on_every_platform(root):

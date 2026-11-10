@@ -36,7 +36,7 @@ capability spec and `tasks.md` all checked.
 
 WUWEI refuses: a merge with safety gaps; a PR opened ready, marked ready or given reviewers before
 its gates pass (a draft opens first); a force push, a push to or deletion of the default branch;
-admin merges, protection, status and access writes through `gh api`; a secret or the workspace
+admin merges (unless the config holds `allow = ["admin-merge"]`), protection, status and access writes through `gh api`; a secret or the workspace
 canary in an outward call; writes to the ledger (`.wuwei/ledger/`); a hand-made `wuwei hook` call;
 and a question to the owner that the process answers. Infrastructure commands ask the owner through
 the harness. Everything else passes and is recorded.

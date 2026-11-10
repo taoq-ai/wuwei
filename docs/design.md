@@ -161,7 +161,7 @@ pull-requests write), meanwhile a close and reopen or an owner exception. A fail
 read shows `required checks unreadable on <branch>: <error>`, waiting, and is not cached. A PR
 GitHub reports `mergeable_state` blocked with no other safety gap reads `GitHub reports the merge
 blocked for a reason WUWEI cannot name`, waiting; it holds a direct merge, and arming auto-merge
-passes, since GitHub's auto-merge waits on that hold.
+passes (with `allow = ["admin-merge"]` in the config the gap is not raised: the owner takes the bypass), since GitHub's auto-merge waits on that hold.
 
 Breaking changes: a breaking change is a SemVer 2.0.0 major, an incompatible change to the
 declared public API. The public API and
@@ -235,7 +235,7 @@ exact gap there; a review-triggered status is review evidence, never CI, and a r
 request is not read: gates start at push, in parallel with CI, and a red check found after they
 pass goes back to the builder, its fix a new head under the delta rule (#1221);
 `--admin` (and `--admin=true` in any spelling pflag reads as true; `--auto` counts only where pflag
-reads it as the flag); a `gh api` write to an endpoint under `repositories/<id>` (spell it
+reads it as the flag), unless the config holds `allow = ["admin-merge"]`, when it meets the merge door; a `gh api` write to an endpoint under `repositories/<id>` (spell it
 `repos/<owner>/<repo>`); a `gh api graphql` query WUWEI cannot read (`--input -`, `-F query=@-`, a
 missing file, or a file outside one plain one-line `gh` call); `gh api` writes to protection, rulesets, statuses,
 collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges`, `git/refs/` or

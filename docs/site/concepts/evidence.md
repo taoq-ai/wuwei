@@ -59,7 +59,7 @@ answer 15 minutes per repository and branch.
 | CI settled, and a required check has no check run and no status of that name on the head | `required check not run at <sha7>: <names>` | held |
 | CI still running, and a required check has no run yet | `required check not run yet at <sha7>: <names>` (waiting) | passes |
 | the protection or rulesets read fails or is malformed | `required checks unreadable on <branch>: <error>` (waiting) | held |
-| GitHub reports the PR's `mergeable_state` blocked, and WUWEI has no other safety gap for it | `GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR` (waiting) | passes |
+| GitHub reports the PR's `mergeable_state` blocked, and WUWEI has no other safety gap for it | `GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR` (waiting; not raised with `allow = ["admin-merge"]`) | passes |
 
 Every one of these gaps holds a direct merge. GitHub creates a job's check run only once the job is
 queued, so while CI runs a missing check may simply not exist yet. GitHub's auto-merge waits on its

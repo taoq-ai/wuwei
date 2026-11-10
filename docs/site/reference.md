@@ -47,7 +47,7 @@ them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refuse
 | `tracker` | `github` | where issues live |
 | `telemetry` | `true` | local tool-call traces |
 | `models` | `{}` | your rows over the [model table](concepts/models.md): `"<role>[ <tier>]" = "<model> <effort>"`; set with `wuwei config models "builder light=opus medium"` |
-| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds |
+| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list |
 
 ## Files
 

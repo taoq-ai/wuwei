@@ -5,3 +5,4 @@
 - [x] T003 Add `allow` to ws.DEFAULTS and the config reader; gate the --admin deny in guards.gh_command and the unnamed gap in evidence.gaps on it; mirror to .claude/wuwei/
 - [x] T004 Docs: constitution 3.6.0 seven keys, design, reference, philosophy, README, SECURITY, charters/_way.md, CLI help, upgrade message; agents build
 - [x] T005 Run the touched test files green and the route corpus differential at main and head
+- [x] T006 Fix round 1: a test that init, the Codex rules and doctor skip the --admin harness deny with admin-merge (an owner's own rule stays), and that an empty allow is never written; run red (1 failed); setup.denied filters DENY; docs in design, doors, evidence, permissions, wuwei-rules and reference
