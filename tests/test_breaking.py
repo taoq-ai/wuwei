@@ -12,10 +12,10 @@ def standard(root):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard'}])
 
 
-def attest(root, gate, breaking='no'):
-    path = root / ws.DIR / 'verdicts' / 'I-1' / f'{gate}.md'
+def attest(root, gate, breaking='no', pr='acme/app#42', head=HEAD):
+    path = root / ws.DIR / 'verdicts' / 'I-1' / f'{gate}-{pr.replace("/", "_")}-{head[:7]}.md'
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(verdict_text(gate=gate, breaking=breaking))
+    path.write_text(verdict_text(gate=gate, breaking=breaking, pr=pr, head=head))
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1', 'gate': gate,
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
 
@@ -50,6 +50,19 @@ def test_the_arch_gate_finds_an_undeclared_break(root, fake):
     fake.prs['42'] = make_pr()
     gates(root, breaking='yes: removes the --format flag from the export command')
     assert texts(root)[0].startswith('breaking change without an announcement')
+
+
+@pytest.mark.parametrize('pr, found', [
+    ('acme/app#41', []),  # an earlier, squash-merged PR of the item: its yes is not this PR's (#1292)
+    ('acme/app#42', ['breaking change without an announcement']),  # this PR's own yes holds
+    ('acme/app', ['breaking change without an announcement']),  # a verdict naming only the repository holds
+])
+def test_a_breaking_yes_holds_only_the_pr_it_names(root, fake, pr, found):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    attest(root, 'arch', 'yes: removes the --format flag', pr=pr, head='c' * 40)  # off this PR's line, as after a squash
+    gates(root)  # this PR's own arch verdict says no at its head
+    assert [t[:39] for t in texts(root) if t.startswith('breaking')] == found
 
 
 def test_a_confirmation_does_not_survive_a_moved_head(root, fake):
