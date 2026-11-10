@@ -104,6 +104,21 @@ def test_a_change_after_the_first_push_reaches_the_branch(remote, tmp_path):
     assert git(a, 'show', 'origin/wuwei/state:plan.json') == 'v2'
 
 
+def test_a_verdict_no_stop_masked_is_pushed_masked_and_pulls_back_clean(remote, tmp_path):
+    """wuwei/state is public: a verdict a gate wrote but never named still reaches it with *** for a token and the canary."""
+    a = workspace(clone(remote, tmp_path / 'a'))
+    token, canary = 'ghp_' + 'A1b2' * 9, 'wuwei-canary-abcdef'
+    (a / ws.DIR / 'canary').write_text(canary + '\n')
+    (a / ws.DIR / 'verdicts' / 'x').mkdir(parents=True)
+    (a / ws.DIR / 'verdicts' / 'x' / 'quality-abc1234.md').write_bytes(f'read {token} beside {canary}\n'.encode() + b'\xff')
+    (a / ws.DIR / 'goals.md').write_text(f'not a verdict: {token}\n')
+    assert sync.push(a).startswith('pushed')
+    shown = subprocess.run(['git', 'show', 'origin/wuwei/state:verdicts/x/quality-abc1234.md'], cwd=a, capture_output=True, check=True).stdout
+    assert shown == b'read *** beside ***\n\xff'
+    assert git(a, 'show', 'origin/wuwei/state:goals.md') == f'not a verdict: {token}'  # only verdicts are masked here
+    assert 'kept local' not in sync.pull(a) and sync.push(a) == 'state already pushed'
+
+
 def test_a_kept_local_copy_is_pushed(remote, tmp_path):
     a = workspace(clone(remote, tmp_path / 'a'))
     (a / ws.DIR / 'plan.json').write_text('v1')
