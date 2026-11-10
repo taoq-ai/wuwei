@@ -1,5 +1,6 @@
 """The plan as a view to approve (#990): one picture and one short question, from the same rows."""
 
+import datetime
 from html import escape
 from pathlib import Path
 import re
@@ -49,6 +50,14 @@ def _size(item):
     return scores.get('size', 0) if item.get('framework', 'wsjf') == 'wsjf' else scores.get('effort', 0)
 
 
+def _ai(root, effort):  # (value, detail): open size points x seat wall-clock per merged size point, builders and gates, 28 days
+    done, at = {i['id'].lower(): _size(i) for i in plan.items(root) if i.get('status') == 'done' and str(i.get('reason', '')).startswith('merged as ')}, datetime.datetime.fromisoformat
+    stop, since = {r['data'].get('agent'): r['ts'] for r in reversed(ws.rows(root, 'seat.stopped'))}, (ws.now() - datetime.timedelta(days=28)).isoformat(timespec='seconds')  # a seat's first stop
+    spans = [(k, (at(stop[a]) - at(r['ts'])).total_seconds() / 3600) for r in ws.rows(root, 'seat.started') if r['ts'] >= since and (k := str(r['data'].get('item')).lower()) in done and (a := r['data'].get('agent')) in stop]
+    n, rate = len(seen := {k for k, _ in spans}), sum(h for _, h in spans) / (sum(done[k] for k in seen) or 1)
+    return ('unmeasured', f'{n} merged items') if n < 5 else (f'{effort * rate:.1f} h', f'{rate:.2f} h per size point, n={n} merged items')
+
+
 def render(root):
     """(page, summary, line): the HTML page, a markdown summary of 30 lines or fewer, the question's line."""
     framework = ws.config(root)['prioritisation']
@@ -63,9 +72,10 @@ def render(root):
     line = (f'{len(open_items)} items on {len(planned)} goals'
             + (f' and {len(groups["unplanned"])} unplanned' if 'unplanned' in groups else '')
             + f', about {effort:g} {unit}; the plan is shown above.')
-    tiles = [(FORMULA[framework], 'ranking'), (f'{effort:g}', unit), (str(len(open_items)), 'open items'),
+    ai = _ai(root, effort)
+    tiles = [(FORMULA[framework], 'ranking'), (f'{effort:g}', unit), (ai[0], f'AI estimate ({ai[1]})'), (str(len(open_items)), 'open items'),
              (str(sum(1 for i in open_items if not i.get('approved'))), 'awaiting approval')]
-    cards, summary = [], [f'**Plan** ({FORMULA[framework]}): {line[:-len("; the plan is shown above.")]}', '']
+    cards, summary = [], [f'**Plan** ({FORMULA[framework]}): {line[:-len("; the plan is shown above.")]}', f'AI estimate: {ai[0]} ({ai[1]})', '']
     for goal in sorted(groups, key=lambda g: (g == 'unplanned', g)):
         outcome, date = known.get(goal, ('', ''))
         rows = sorted(groups[goal], key=lambda i: -i.get('score', 0))
