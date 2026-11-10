@@ -49,7 +49,8 @@ queue; this pass adds, drops or re-ranks.
    `plan: approve this plan? <the line wuwei plan view prints>`, options `Approve` and `Change`. On
    Approve, WUWEI marks the items approved. On Change, apply what the owner said, show the view
    again and re-ask. The answer is recorded only from that question tool. Work outside the goals
-   sits in the view under unplanned; the same question covers it.
+   sits in the view under unplanned; the same question covers it. When the view prints no `Ask:`
+   line (the owner put `auto-approve` in `allow`), every open item is approved: ask nothing.
 10. Start the approved work as the planner charter says: highest score first, under the WIP limit
    and the seat ceiling, none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
-   until the next view is approved.
+   until the next view is approved; with `auto-approve`, `wuwei plan add` approves an item with a goal at once.

@@ -47,6 +47,10 @@ role's lines of `.wuwei/standards.md`.
 
 - Goals in `.wuwei/goals.md` set the direction. Each plan pass ends with the plan as a view
   (`wuwei plan view`, #990) and one `plan:` question, Approve or Change; new items wait for it.
+  With `allow = ["auto-approve"]` in the owner's config (#1291), `wuwei plan view` and
+  `wuwei plan add` approve each open item that has a goal instead, record a `plan.approved` row
+  with `auto: true` and the view line (the report lists them), and print no `Ask:` line once
+  nothing waits. An item with no goal still waits for the owner; every other class still asks.
 - A plan pass offers each goal past its date with no ruling as `goal: G-n met? <evidence>`. A yes
   records the goal as met (the report lists it, and it gets no new items); a no waits until its
   date moves. A ruling holds while the goal keeps the Outcome it answered, so a goal rewritten in
