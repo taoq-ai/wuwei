@@ -28,5 +28,5 @@
 - [x] T015 [US3] A hand-back refused for its verdict records no secret or canary (tests/test_hook.py), run red
 - [x] T016 [US4] A verdict no stop masked is pushed masked and pulls back clean (tests/test_sync.py), run red
 - [x] T017 `guards.mask` takes bytes; hook.py and sync.py use it; rewrite rooted at the workspace; refused row masked
-- [x] T018 Copy guards.py, hook.py and sync.py to the vendored tree; full suite green; runtime 3,973
+- [x] T018 Copy guards.py, hook.py and sync.py to the vendored tree; full suite green; runtime 3,973, 4,000 after merging main with mask folded
 - [x] T019 docs/design.md PreToolUse row and state paragraph; mutants of each fix on both copies

@@ -42,4 +42,5 @@ Fix round on ed7f415 (security, arch, goal FIX):
 ## Lines
 
 hook.py 763 to 765: runtime 3,970 to 3,972. Fix round: guards.py +6, hook.py -5, sync.py 0:
-3,973, +3 over main.
+3,973, +3 over main. After merging main at 7694048 (3,998), mask folds into one expression
+(guards.py +5): 4,000, +2 over main, the cap exactly.
