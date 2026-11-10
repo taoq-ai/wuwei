@@ -536,7 +536,7 @@ def gaps(root, repo, number, listed=None):
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
-        if pr.get('mergeableState') == 'blocked' and not blocking(found):  # GitHub holds it for a reason no gap names
+        if pr.get('mergeableState') == 'blocked' and not blocking(found) and 'admin-merge' not in ws.config(root)['allow']:  # a hold no gap names, or the owner's bypass
             found.append(gap('GitHub reports the merge blocked for a reason WUWEI cannot name: read the merge box on the PR', False))
         if pr.get('state') == 'MERGED':  # what it lacked when it merged is an escape for the retro (#1050)
             return [dict(g, text='post-merge: ' + g['text']) for g in blocking(found)]

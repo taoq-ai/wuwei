@@ -1923,6 +1923,20 @@ def test_github_blocked_with_no_gap_wuwei_can_name_is_a_gap(root, fake, state, o
     assert (denied(root, auto=True) == '') == (other != 'safety')  # GitHub's auto-merge waits on its own hold
 
 
+@pytest.mark.parametrize('other, held', [(None, None), ('ci', '- CI failing: CodeQL'), ('owner', '- owner review needed')])
+def test_allow_admin_merge_drops_the_unnamed_block_and_keeps_every_safety_gap(root, fake, other, held):
+    """#1290: the owner's allow = ["admin-merge"] reads a ruleset hold as the bypass the owner takes; named gaps still hold."""
+    complete(root, fake)
+    ws.set_config(root, 'allow', 'admin-merge')
+    fake.prs['42']['mergeableState'] = 'blocked'
+    if other == 'ci':
+        fake.prs['42']['statusCheckRollup'][0]['conclusion'] = 'FAILURE'
+    if other == 'owner':
+        fake.prs['42']['files'] = make_pr(files=('infra/main.tf', 'tests/test_app.py'))['files']
+    assert BLOCKED not in texts(evidence.gaps(root, 'acme/app', 42))
+    assert (held in denied(root)) if held else denied(root) == ''
+
+
 def test_the_pr_read_carries_github_mergeable_state(root, fake):
     fake.prs['42'] = {**make_pr(), 'mergeableState': 'blocked'}
     assert gh.pr('acme/app', 42)['mergeableState'] == 'blocked'

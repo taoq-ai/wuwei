@@ -231,7 +231,7 @@ query WUWEI cannot read is refused: `--input -`, `-F query=@-`, a missing or emp
 `--input` or `-F query=@` file outside one plain `gh` call; an `--input` file WUWEI reads has its
 whole text, JSON escapes decoded, checked for those mutations. Any REST write on
 `repositories/<id>/...` is refused with the `repos/<owner>/<repo>` spelling to use. `gh pr merge`
-reads `--admin` and `--auto` the way pflag does: `--admin` with any true value is refused, the last
+reads `--admin` and `--auto` the way pflag does: `--admin` with any true value is refused (with `allow = ["admin-merge"]` in `.wuwei/config.toml` it meets the merge door instead), the last
 `--auto` wins, and `--auto` read as another flag's value (`-t --auto`) does not count. The GitHub MCP
 tools `push_files`, `create_or_update_file` and `delete_file` are refused on the default branch or
 with no branch. A draft pull request create passes before its gates (`--draft`, a JSON `draft: true`

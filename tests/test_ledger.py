@@ -20,7 +20,7 @@ def test_ledger_chains_and_detects_a_rewrite(root):
     assert ws.verify(root) == [f'ledger/{ws.clone(root)}.jsonl:1']
 
 
-def test_config_keeps_only_the_six_keys(root):
+def test_config_keeps_only_the_seven_keys(root):
     (root / ws.DIR / 'config.toml').write_text('repos = ["a/b"]\nretired_key = 3\n')
     assert ws.config(root) == {**ws.DEFAULTS, 'repos': ['a/b']}
     ws.write_config(root, ws.raw_config(root))
@@ -32,6 +32,15 @@ def test_config_set_parses_lists_and_switches(root):
     ws.set_config(root, 'telemetry', 'off')
     data = ws.config(root)
     assert data['owner_paths'] == ['infra/**', '.github/**'] and data['telemetry'] is False
+
+
+def test_config_reads_allow_as_a_list_of_names(root):
+    assert ws.config(root)['allow'] == []
+    assert ws.set_config(root, 'allow', 'admin-merge, auto-approve')['allow'] == ['admin-merge', 'auto-approve']
+    (root / ws.DIR / 'config.toml').write_text('allow = "admin-merge"\n')
+    assert ws.config(root)['allow'] == []  # only a list of names counts, never a bare string read by its letters
+    ws.set_config(root, 'allow', '')
+    assert 'allow' not in (root / ws.DIR / 'config.toml').read_text()  # an empty allow is never written
 
 
 def test_ledger_rows_end_with_lf_on_every_platform(root):

@@ -284,6 +284,25 @@ def test_doctor_reads_the_code_host_as_wuwei_does_and_says_when_no_hook_fired(tm
     assert {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks'] == 'ok'
 
 
+def test_admin_merge_in_allow_stops_adding_and_asking_for_the_admin_deny_rule(tmp_path, monkeypatch):
+    """#1290: with allow = ["admin-merge"], init adds no --admin deny (an owner's own rule stays) and doctor does not ask for it."""
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    admin = 'Bash(gh pr merge --admin:*)'
+    (tmp_path / ws.DIR).mkdir()
+    ws.set_config(tmp_path, 'allow', 'admin-merge')
+    setup.init(tmp_path, codex=True)
+    settings = tmp_path / '.claude' / 'settings.json'
+    deny = json.loads(settings.read_text())['permissions']['deny']
+    assert admin not in deny and 'Bash(gh repo delete:*)' in deny
+    assert '"--admin"' not in (tmp_path / '.codex' / 'rules' / 'wuwei.rules').read_text()
+    assert {name: status for name, status, _ in setup.doctor(tmp_path)}['harness rules'] == 'ok'
+    data = json.loads(settings.read_text())
+    data['permissions']['deny'].append(admin)
+    settings.write_text(json.dumps(data))
+    setup.init(tmp_path)
+    assert admin in json.loads(settings.read_text())['permissions']['deny']  # the owner's rule is never removed
+
+
 def test_doctor_hooks_is_ok_only_when_pre_tool_fired_in_the_last_two_minutes(tmp_path, monkeypatch):
     import datetime
     from wuwei import hook

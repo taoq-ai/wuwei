@@ -329,7 +329,7 @@ def test_the_models_key_is_set_kept_and_written_as_toml(root):
     assert data['models'] == {'builder light': 'opus medium', 'shepherd': 'sonnet high'}
     text = (root / ws.DIR / 'config.toml').read_text()
     assert tomllib.loads(text)['models'] == data['models'] == ws.config(root)['models']
-    assert ws.retired(root) == [] and len(ws.DEFAULTS) == 6
+    assert ws.retired(root) == [] and len(ws.DEFAULTS) == 7
 
 
 def test_an_empty_models_key_is_not_written(root):

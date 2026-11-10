@@ -27,7 +27,7 @@
 | `wuwei owe <thread link> "<what>" --who <name> [--within 4h \| --due <ISO>]` | Record a reply someone is waiting for |
 | `wuwei watch [--record "<summary>"]` | The last watch pass and replies owed; record a pass |
 | `wuwei status --all` | The board with process fit too (for the watch) |
-| `wuwei config [key value]` | Show, or set one of the six keys; setting runs in your own session only, a seat is refused |
+| `wuwei config [key value]` | Show, or set one of the seven keys; setting runs in your own session only, a seat is refused |
 | `wuwei verify` | Check the ledger's hash chain |
 | `wuwei agents [check\|build]` | Check or build the role agents from the charters |
 | `wuwei --version` | The plugin version |
@@ -35,7 +35,7 @@
 
 ## Configuration
 
-`.wuwei/config.toml` has six keys. Everything else is discovered or part of the process. Only your own session changes it and
+`.wuwei/config.toml` has seven keys. Everything else is discovered or part of the process. Only your own session changes it and
 `.wuwei/plan.json` (`wuwei config <key> <value>`, the `wuwei plan` actions that write, an edit or a redirect); a seat reads
 them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refused any write, so it cannot change its own gates.
 
@@ -47,6 +47,7 @@ them (`wuwei plan show`, `wuwei plan view`, `wuwei config`, `cat`) and is refuse
 | `tracker` | `github` | where issues live |
 | `telemetry` | `true` | local tool-call traces |
 | `models` | `{}` | your rows over the [model table](concepts/models.md): `"<role>[ <tier>]" = "<model> <effort>"`; set with `wuwei config models "builder light=opus medium"` |
+| `allow` | `[]` | what you allow WUWEI to let through: `admin-merge` lets `gh pr merge <n> --admin` meet the merge door, and drops the gap for a merge GitHub blocks for a reason WUWEI cannot name; every other safety gap still holds, and `wuwei init` stops adding the harness deny for `--admin`. It applies to every repository in the workspace; `wuwei config allow <names>` replaces the whole list |
 
 ## Files
 

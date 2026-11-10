@@ -19,7 +19,7 @@ else:
     import pwd
 
 DIR = '.wuwei'
-DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}}
+DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True, 'models': {}, 'allow': []}
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -134,7 +134,7 @@ def raw_config(root):
 
 
 def config(root):
-    """The six keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
+    """The seven keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
     table, [merge] owner paths, a [telemetry] table)."""
     data = raw_config(root)
     out = {**DEFAULTS, **{key: value for key, value in data.items() if key in DEFAULTS}}
@@ -147,6 +147,7 @@ def config(root):
     if isinstance(out['telemetry'], dict):
         out['telemetry'] = out['telemetry'].get('mode', 'on') not in ('off', 'false')
     out['models'] = {k: v for k, v in out['models'].items() if isinstance(v, str) and len(v.split()) > 1} if isinstance(out['models'], dict) else {}
+    out['allow'] = [name for name in out['allow'] if isinstance(name, str)] if isinstance(out['allow'], list) else []
     merge = data.get('merge') if isinstance(data.get('merge'), dict) else {}
     if not data.get('owner_paths'):
         out['owner_paths'] = [p for key in ('owner_paths', 'never_auto_paths') for p in merge.get(key, [])
@@ -175,7 +176,7 @@ def _toml(value):
 def write_config(root, data):
     atomic_write(Path(root) / DIR / 'config.toml',
                  ''.join(f'{key} = {_toml(data.get(key, DEFAULTS[key]))}\n'
-                         for key in DEFAULTS if key != 'models' or data.get(key)))
+                         for key in DEFAULTS if key not in ('models', 'allow') or data.get(key)))
 
 
 def set_config(root, key, value):
