@@ -321,7 +321,7 @@ def _seat_stop(root, payload, role, tokens, ended):
     if (problem := _verdict_problem(root, payload, role)) is None:
         return None
     if payload.get('stop_hook_active') or ended:  # a block after either reaches no one: record it instead
-        ws.record(root, 'verdict.missing', {'role': role, 'agent': payload.get('agent_id'), 'problem': problem[:300]})
+        ws.record(root, 'verdict.missing', {'role': role, 'agent': payload.get('agent_id'), 'problem': mask(problem, canary)[:300]})  # masked before the cut
         return None
     return {'decision': 'block', 'reason': 'WUWEI: ' + problem}
 
@@ -330,7 +330,8 @@ def _verdict_problem(root, payload, role):
     if (match := re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)) is None:
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
-    verdicts = Path(root) / ws.DIR / 'verdicts'
+    verdicts, canary = Path(root) / ws.DIR / 'verdicts', ws.canary(root)
+    scrub = lambda raw: mask(raw.decode('utf-8', 'surrogateescape'), canary).encode('utf-8', 'surrogateescape')  # verdicts sync to wuwei/state
     def free(p):  # the next <stem>-N.md beside p that no file or link holds, the folder listed once
         try:
             return next(n for held in [{q.name for q in p.parent.iterdir()}] for i in range(2, 999)
@@ -340,7 +341,7 @@ def _verdict_problem(root, payload, role):
     try:
         verdicts, path = verdicts.resolve(), path.resolve()  # a loop raises RuntimeError on 3.11 and 3.12
         if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
-            copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
+            copy, body = Path(root).resolve() / ws.DIR / 'verdicts' / path.as_posix().split('/.wuwei/verdicts/', 1)[1], scrub(path.read_bytes())
             if link := next((p for p in (copy, *copy.parents) if p.is_symlink()), None):  # it would carry the write out
                 return f'{link} is a symlink on the way to {copy}: leave it, and report it under Blocked: for the owner.'
             if copy.exists() and copy.read_bytes() != body:
@@ -348,7 +349,8 @@ def _verdict_problem(root, payload, role):
             ws.atomic_write(copy, body, Path(root).resolve())  # no folder swapped for a link after the check is followed
             path = copy
         path.relative_to(verdicts)
-        body = path.read_bytes()
+        if (body := scrub(raw := path.read_bytes())) != raw:  # a gate's own write: masked before its hash is taken
+            ws.atomic_write(path, body, verdicts)
     except (OSError, ValueError, RuntimeError):
         return f'the verdict must be a readable file under {verdicts.as_posix()}/ (got {match[1]}).'
     rel, sha = path.relative_to(Path(root).resolve()).as_posix(), hashlib.sha256(body).hexdigest()  # / on every OS

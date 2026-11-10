@@ -2003,6 +2003,64 @@ def test_a_broken_canary_never_drops_a_seat_row_or_a_kept_report(root, tmp_path,
     assert kept.read_text() == f'Done: pushed with ***, canary {CANARY}.\nBlocked: none' and kept.read_text() in note
 
 
+LEAKY_VERDICT, MASKED_VERDICT = (verdict_text(findings=f'- [low] blocks: no. read {s} beside {c}') for s, c in ((TOKEN, CANARY), ('***', '***')))
+
+
+def test_a_worktree_verdict_is_copied_in_masked_and_attested_at_the_masked_hash(root, tmp_path_factory):
+    """.wuwei/verdicts syncs to the public wuwei/state branch: the copy holds *** for a token and the canary."""
+    import hashlib
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    written = tmp_path_factory.mktemp('wt') / '.wuwei' / 'verdicts' / 'I-1' / 'quality-abc1234.md'
+    written.parent.mkdir(parents=True)
+    written.write_text(LEAKY_VERDICT)
+    assert reviewer_stop(root, f'Verdict file: {written}') is None
+    copy = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-abc1234.md'
+    assert copy.read_text() == MASKED_VERDICT and written.read_text() == LEAKY_VERDICT
+    assert reviewer_stop(root, f'Verdict file: {written}') is None  # the same verdict again: the masked copy is its own
+    [row] = ws.rows(root, 'attest')
+    assert row['data']['sha256'] == hashlib.sha256(copy.read_bytes()).hexdigest()
+    assert [v['path'] for v in evidence.verdicts(root, 'I-1', 'acme/app')] == ['.wuwei/verdicts/I-1/quality-abc1234.md']
+
+
+def test_a_verdict_written_in_the_workspace_is_masked_in_place_before_its_hash(root):
+    import hashlib
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    path = write_verdict(root, LEAKY_VERDICT)
+    assert reviewer_stop(root, f'Verdict file: {path}') is None
+    assert path.read_text() == MASKED_VERDICT
+    [row] = ws.rows(root, 'attest')
+    assert row['data']['sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert [v['path'] for v in evidence.verdicts(root, 'I-1', 'acme/app')] == [VERDICT_1067]
+
+
+def test_a_verdict_with_no_secret_keeps_its_bytes_even_with_a_stray_non_utf8_byte(root):
+    import hashlib
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    path, body = root / VERDICT_1067, verdict_text(findings='- [low] blocks: no. caf\xe9').encode('latin-1')
+    path.parent.mkdir(parents=True)
+    path.write_bytes(body)
+    assert reviewer_stop(root, f'Verdict file: {path}') is None
+    assert path.read_bytes() == body and ws.rows(root, 'attest')[0]['data']['sha256'] == hashlib.sha256(body).hexdigest()
+
+
+def test_verdict_missing_quotes_no_secret_or_canary_from_a_finding_line(root):
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    path = write_verdict(root, verdict_text(findings=f'- read {TOKEN} beside {CANARY}'))
+    assert reviewer_stop(root, f'Verdict file: {path}', active=True) is None
+    [row] = ws.rows(root, 'verdict.missing')
+    assert '- read *** beside ***' in row['data']['problem']
+
+
+def test_verdict_missing_masks_before_its_cut_at_every_path_length(root):
+    """A token cut at 300 characters no longer matches: masked first, no fragment of it or of the canary is kept."""
+    (root / ws.DIR / 'canary').write_text(CANARY + '\n')
+    for n in range(0, 330, 6):
+        assert reviewer_stop(root, f'Verdict file: /nowhere/{"a" * n}{TOKEN}{CANARY}.md', active=True) is None
+    problems = [r['data']['problem'] for r in ws.rows(root, 'verdict.missing')]
+    assert len(problems) == 55 and any(p.endswith('*') for p in problems)  # some cut fell inside the masked span
+    assert not any('ghp_' in p or 'canary' in p for p in problems)
+
+
 @pytest.mark.parametrize('event', ['Stop', 'PreToolUse'])
 def test_a_notification_the_queue_dropped_is_no_delivery_so_the_report_is_given_in_full_once(root, tmp_path, event):
     """The kill-agents chord or an interrupt clears queued notifications: the row stays, the planner never sees it (#1222)."""
