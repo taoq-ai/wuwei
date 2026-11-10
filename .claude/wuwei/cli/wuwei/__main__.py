@@ -22,6 +22,7 @@ def _ref(text):
 
 def cmd_plan(args):
     root = _root()
+    auto = args.action in ('add', 'view') and 'auto-approve' in ws.config(root)['allow'] and {g.upper() for g in view.goals(root) if g} - set(view.goal_status(root)[1])  # open goals (#1291)
     if args.action == 'add' and args.source:
         for item in plan.add_from(root, args.source):
             print(f'{item["id"]} added with score {item["score"]}')
@@ -42,11 +43,14 @@ def cmd_plan(args):
         plan.mark(root, args.id, status, args.reason or '')
         print(f'{args.id} {status}')
     elif args.action == 'view':
+        ids = auto and plan.approve(root, 'auto-approve', view.render(root)[2], auto)
         path, summary, line = view.write(root)
         if args.html:
             print(view.render(root)[0])
             return 0
-        print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
+        wait = not auto or any(not i.get('approved') for i in plan.items(root) if i.get('status', 'open') == 'open')
+        print(f'{summary}\n\nPage: {path}' + (f'\nAuto-approved (allow holds auto-approve): {", ".join(ids)}' if ids else '')
+              + (f'\nAsk: plan: approve this plan? {line}' if wait else '\nEvery open item is approved: ask no plan: question.'))
     elif args.action == 'run':  # an operations item: done by its run evidence, not a pull request (#1049)
         if not (args.reason or args.job):  # --job: the Codex companion's job file, the one file the board reads for it (#1201)
             raise ValueError('plan run needs --reason "<what ran and what it showed>" or --job <job file>; nothing recorded')
@@ -72,6 +76,8 @@ def cmd_plan(args):
                   f'{item.get("goal") or "":<5} {item.get("repo") or ""}  {item["title"]}')  # a null field prints blank (#1209)
         if not rows:
             print('the plan is empty: run /wuwei-run')
+    if args.action == 'add' and auto and (ids := plan.approve(root, 'auto-approve', view.render(root)[2], auto)):
+        print(f'Auto-approved (allow holds auto-approve): {", ".join(ids)}')
 
 
 def cmd_status(args):

@@ -29,7 +29,10 @@ border-top:1px solid var(--line)}.wv th{color:var(--muted);font-weight:600}
 def goals(root):
     """{G-n: (outcome, date)} from goals.md, keys in any case."""
     path = Path(root) / ws.DIR / 'goals.md'
-    text = path.read_text(encoding='utf-8') if path.is_file() else ''
+    try:
+        text = path.read_text(encoding='utf-8') if path.is_file() else ''
+    except UnicodeDecodeError:  # not UTF-8: no goals, so auto-approve approves nothing and no plan action crashes (#1291)
+        text = ''
     found = {}
     for block in re.split(r'^## ', text, flags=re.M)[1:]:
         name = block.split('\n', 1)[0].strip()

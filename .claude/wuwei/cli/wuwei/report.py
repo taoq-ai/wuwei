@@ -60,6 +60,7 @@ def day(root, date=None):
     prompts = rows('prompt')
     out += ['', '## Owner', f'Owner prompts: {len(prompts)}.']
     out += [f'- {q}' for r in prompts for q in r['data'].get('questions', [])]
+    out += ['', '## Auto-approved'] + [f'- {r["ts"][11:16]} UTC: {", ".join(r["data"]["items"])} ({r["data"].get("line")})' for r in rows('plan.approved') if r['data'].get('auto')]
     stops = Counter(r['data'].get('role') for r in rows('seat.stopped'))
     verdicts = Counter(f'{r["data"].get("gate")} {r["data"].get("verdict")}' for r in rows('attest'))
     out += ['', '## Seats and gates', 'Seats: ' + (', '.join(f'{k} {v}' for k, v in sorted(stops.items())) or 'none') + '.',
