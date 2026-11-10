@@ -218,3 +218,10 @@ def test_the_latest_classification_of_this_pr_decides(root, fake):
     assert [t[:39] for t in texts(root) if t.startswith('breaking')] == ['breaking change without an announcement']
     ask(root, CLASSIFY.replace('acme/app#42', 'acme/app#43'), 'No')  # another PR on the same head
     assert [t[:39] for t in texts(root) if t.startswith('breaking')] == ['breaking change without an announcement']
+
+
+@pytest.mark.parametrize('answer, found', [('No', ['breaking change needs the owner\'s confirmation']), ('Proceed', [])])
+def test_a_proceed_no_keeps_the_confirmation_gap(root, fake, answer, found):
+    arch_yes(root, fake, 'WUWEI-Item: I-1\nAnnouncement: https://status.acme.test/v1-retired')
+    assert ask(root, PROCEED, answer)[-1]['approved'] is (answer == 'Proceed')
+    assert [t[:46] for t in texts(root) if t.startswith('breaking')] == found
