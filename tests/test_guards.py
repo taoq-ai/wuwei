@@ -2308,12 +2308,15 @@ def test_a_push_of_15000_refspecs_makes_the_git_calls_a_push_of_one_makes(root, 
                    input=''.join(f'create refs/tags/t{i} HEAD\n' for i in range(15_000)).encode())
     monkeypatch.setattr(guards, 'TEMP', (str(ahead / 'c'),))
     calls, real = [], subprocess.run
-    monkeypatch.setattr(guards.subprocess, 'run', lambda argv, *a, **k: calls.append(argv) or real(argv, *a, **k))
+    # A cold for-each-ref over 15,000 fresh loose refs can pass the guard's 5 s on a loaded runner, and the door then refuses
+    # before its last git calls (CI: [6, 8]). The timeout has its own test; here git gets the time to finish.
+    monkeypatch.setattr(guards.subprocess, 'run', lambda argv, *a, **k: calls.append(argv) or real(argv, *a, **{**k, 'timeout': 120}))
     counts = []
     for n in (1, 15_000):
         calls.clear()
         command = 'git push origin ' + ''.join(word.format(i) for i in range(n)) + 'feature:main'
-        assert door_reached(guards.bash(root, command, str(ahead / 'c'), 's1')) == 'push', word
+        reason = guards.bash(root, command, str(ahead / 'c'), 's1')['reason']
+        assert guards.PUSHED in reason or os.name == 'nt' and n > 1, (word, reason)  # the default branch, not the git read refusal
         counts.append(len(calls))
     assert counts[0] == counts[1] or os.name == 'nt' and counts[1] < counts[0], (word, counts)  # Windows caps a command line
     # at 32,767 characters: a call naming every ref fails there, and the door holds with fewer calls
