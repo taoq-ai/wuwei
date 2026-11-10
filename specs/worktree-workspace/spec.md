@@ -37,6 +37,10 @@ Phase 4).
    any `.wuwei/` is checked.
 5. A submodule's `.git` file (no `commondir`) or an unreadable `.git` raises out of `find`. Held: a missing file
    reads as empty, and OSError and ValueError fall through to the normal search.
+6. Round 2 read `.git` files in every ancestor before it checked any `.wuwei/`. A `.git` file or a lone
+   `commondir` planted above the workspace then sent its own sessions to None or to a seat-made workspace. A git
+   workspace cloned inside another repository's worktree also resolved to None. Held now (round 3): the
+   look-ahead ends at the nearest folder holding a `.git` entry of any kind or a `.wuwei/config.toml`.
 
 Residual, as on main: a forged `.git` can still point at a workspace the seat made, or at another real
 workspace. The name-based ledger and config guards still deny writes in both. A bare-repository worktree or a
@@ -47,6 +51,7 @@ separate-git-dir checkout keeps the old search, because its common dir is not na
 - FR-1: `find` reads `<candidate>/.git` and the gitdir's `commondir` only when each is a regular file, and spawns
   no git process.
 - FR-2: the nearest candidate whose resolved common dir is named `.git` decides. The answer is the nearest
-  `.wuwei/` at or above that main checkout. With none, the search goes on above the worktree.
+  `.wuwei/` at or above that main checkout. With none, the search goes on above the worktree. The look-ahead
+  ends at the nearest folder holding a `.git` entry or a `.wuwei/config.toml`; nothing above it redirects.
 - FR-3: with no worktree on the path, today's upward search for `.wuwei/` applies.
 - FR-4: the runtime stays within +6 lines; the vendored copy matches.

@@ -32,3 +32,17 @@
 - [x] T012 The security gate's 23-layout probe, main against the head. The six regressions it found (C, F, G, H,
   M, S) resolve to W. The intended moves (A, A2, Q, I, J, K, K2) hold. D and E (forged to a seat-made or other
   workspace) move, as main's stray could
+
+## Phase 5: Gate round 2 at 11029df (arch and goal PASS; security and quality FIX)
+
+- [x] T013 Tests red first at 11029df (9 failed): a `.git` file or a lone `commondir` planted above a git or a
+  set-up workspace, aimed at an empty `.git` or a seat-made workspace (8 cases), and a git workspace cloned inside
+  another repository's worktree
+- [x] T014 The look-ahead ends at the nearest folder holding a `.git` entry or `.wuwei/config.toml`; runtime 3,955
+  lines (+6). SECURITY.md names the fallback above the worktree and the boundary
+- [x] T015 Mutants on both copies, one at a time: drop the name check, the fallback (to None or to path),
+  `is_file`, the `break`, the `.git` boundary, the config boundary: all killed. Scan from `common` itself still
+  survives, as equivalent
+- [x] T016 The security gate's 29-layout probe (probe2fix2) at main and head: T, T2, T3 resolve to W; V (a stray
+  without config in another repository's worktree) is None. Quality's probe2: A and B give the workspace; C keeps
+  the folder; D (a `.wuwei/` with no `config.toml` below a forged `.git`) is None

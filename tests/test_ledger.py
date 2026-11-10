@@ -353,6 +353,37 @@ def test_the_nearest_worktree_names_the_workspace(root, tmp_path_factory):
     assert ws.find(outer) == far and ws.find(_worktree(root, outer / 'inner') / 'src') == root
 
 
+@pytest.mark.parametrize('target', ['empty', 'seat-made'])
+@pytest.mark.parametrize('git', [True, False], ids=['git-workspace', 'plain-workspace'])
+@pytest.mark.parametrize('planted', ['.git', 'commondir'])
+def test_a_redirect_planted_above_a_workspace_never_moves_it(tmp_path_factory, target, git, planted):
+    top, aim = tmp_path_factory.mktemp('top'), tmp_path_factory.mktemp('aim')
+    (aim / '.git').mkdir()
+    if target == 'seat-made':
+        (aim / ws.DIR).mkdir()
+    work = top / 'work'
+    (work / 'sub').mkdir(parents=True)
+    (work / ws.DIR).mkdir()
+    if git:  # the repository alone ends the look-ahead, config or not
+        subprocess.run(['git', 'init', '-q', str(work)], check=True, capture_output=True)
+    else:  # a set-up workspace alone ends it
+        ws.write_config(work, ws.DEFAULTS)
+    if planted == '.git':
+        _forge(top, top / 'g', aim / '.git')
+    else:  # a lone commondir: a missing .git reads as empty, so the folder is its own gitdir
+        (top / 'commondir').write_text(f'{aim / ".git"}\n')
+    assert ws.find(work) == ws.find(work / 'sub') == work
+
+
+def test_a_git_workspace_cloned_inside_another_repositorys_worktree_is_its_own(tmp_path_factory):
+    linked = _worktree(tmp_path_factory.mktemp('other'), tmp_path_factory.mktemp('wt') / 'linked')
+    proj = linked / 'proj'
+    subprocess.run(['git', 'init', '-q', str(proj)], check=True, capture_output=True)
+    (proj / ws.DIR).mkdir()
+    ws.write_config(proj, ws.DEFAULTS)
+    assert ws.find(proj) == proj
+
+
 def test_a_forged_commondir_loop_ends_at_the_enclosing_workspace(root):
     _forge(root / 'p', root / 'p' / 'g', root / 'p' / 'sub' / '.git')
     (root / 'p' / 'sub' / '.git').mkdir(parents=True)  # the commondir names a .git folder below the forged file
